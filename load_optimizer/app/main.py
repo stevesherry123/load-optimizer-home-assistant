@@ -14,7 +14,12 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.5.1"
+try:
+    from .costing import recommend_cycle, tariff_periods_from_entity
+except ImportError:  # Running as /app/main.py in the Home Assistant container.
+    from costing import recommend_cycle, tariff_periods_from_entity
+
+APP_VERSION = "0.6.0"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -285,7 +290,54 @@ def instance_config(options: dict | None = None) -> dict:
         "active_power_threshold": float(os.getenv("LOAD_OPTIMIZER_INSTANCE_1_ACTIVE_POWER_THRESHOLD", "10")),
         "finish_delay": int(os.getenv("LOAD_OPTIMIZER_INSTANCE_1_FINISH_DELAY", "5")),
         "program_policies": options.get("instance_1_program_policies", []),
+        "tariff_entity": str(options.get("tariff_entity", "")).strip(),
+        "tariff_timezone": str(options.get("tariff_timezone", "Europe/London")).strip(),
+        "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
+        "cost_search_hours": int(options.get("cost_search_hours", 24)),
+        "cost_candidate_interval": int(options.get("cost_candidate_interval", 5)),
     }
+
+
+def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> None:
+    status = result.get("status", "error")
+    common = {
+        "tariff_entity": result.get("tariff_entity"),
+        "tariff_periods": result.get("tariff_periods", 0),
+        "tariff_start": result.get("tariff_start"),
+        "tariff_end": result.get("tariff_end"),
+        "reason": result.get("reason"),
+    }
+    publish_entity(token, f"{prefix}_cost_status", status, {
+        "friendly_name": f"{name} Cost Status",
+        "icon": "mdi:currency-gbp",
+        **common,
+    })
+    ready = status == "ready"
+    values = (
+        ("cost_if_started_now", result.get("cost_if_started_now_pence") if ready else "unknown", "p", "mdi:cash-clock"),
+        ("cheapest_start", result.get("start").isoformat() if ready else "unknown", None, "mdi:clock-start"),
+        ("cheapest_cost", result.get("total_cost_pence") if ready else "unknown", "p", "mdi:cash-check"),
+        ("potential_saving", result.get("potential_saving_pence") if ready else "unknown", "p", "mdi:piggy-bank"),
+        ("cost_confidence", result.get("confidence") if ready else "unknown", "%", "mdi:gauge"),
+        ("recommended_program", result.get("program") if ready else "none", None, "mdi:playlist-check"),
+    )
+    for suffix, value, unit, icon in values:
+        attributes = {
+            "friendly_name": f"{name} {suffix.replace('_', ' ').title()}",
+            "icon": icon,
+            **common,
+        }
+        if unit:
+            attributes["unit_of_measurement"] = unit
+        if ready:
+            attributes.update({
+                "program": result.get("program"),
+                "energy_cost_pence": result.get("energy_cost_pence"),
+                "overhead_cost_pence": result.get("overhead_cost_pence"),
+                "negative_price_run": result.get("negative_price_run"),
+                "candidate_count": result.get("candidate_count"),
+            })
+        publish_entity(token, f"{prefix}_{suffix}", value if value is not None else "unknown", attributes)
 
 
 def update_instance(token: str, database: dict, config: dict, now: datetime | None = None) -> None:
@@ -385,6 +437,44 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "optional_field_defaults": policy_defaults,
     })
     summaries = [program_summary(program_name, model) for program_name, model in sorted(models.items())]
+    cost_result = {"status": "tariff_not_configured", "tariff_entity": config.get("tariff_entity")}
+    if config.get("tariff_entity"):
+        tariff_entity = source_state(token, config["tariff_entity"])
+        if tariff_entity is None:
+            cost_result = {
+                "status": "tariff_unavailable",
+                "tariff_entity": config["tariff_entity"],
+                "reason": "Home Assistant tariff entity could not be read",
+            }
+        else:
+            try:
+                periods = tariff_periods_from_entity(
+                    tariff_entity,
+                    reference_utc=now,
+                    timezone_name=config["tariff_timezone"],
+                    price_unit=config["tariff_price_unit"],
+                )
+                cost_result = recommend_cycle(
+                    summaries,
+                    policies,
+                    periods,
+                    reference_utc=now,
+                    search_hours=config["cost_search_hours"],
+                    candidate_interval_minutes=config["cost_candidate_interval"],
+                )
+                cost_result.update({
+                    "tariff_entity": config["tariff_entity"],
+                    "tariff_periods": len(periods),
+                    "tariff_start": periods[0]["start"].isoformat(),
+                    "tariff_end": periods[-1]["end"].isoformat(),
+                })
+            except (TypeError, ValueError) as error:
+                cost_result = {
+                    "status": "tariff_invalid",
+                    "tariff_entity": config["tariff_entity"],
+                    "reason": str(error),
+                }
+    publish_cost_entities(token, prefix, name, cost_result)
     latest_program = normalise_program(last.get("program"))
     selected_program = latest_program if latest_program in models else (next(iter(sorted(models)), None))
     selected_summary = program_summary(selected_program, models[selected_program]) if selected_program else {}

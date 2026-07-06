@@ -18,7 +18,7 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 Start the app and open its log. A successful start includes:
 
 ```text
-Load Optimizer 0.5.1 started
+Load Optimizer 0.6.0 started
 ```
 
 Home Assistant exposes `sensor.load_optimizer_status` and a set of
@@ -91,6 +91,39 @@ Only `program` and `classification` are required. All other policy fields are
 optional and use the conservative defaults published in the
 `optional_field_defaults` attribute of
 `sensor.load_optimizer_1_program_policies`.
+
+## Cost estimation
+
+Cost estimation is optional and read-only. Set **Tariff entity** to a Home
+Assistant entity containing either:
+
+- an `ai_feed` attribute such as `06/07 00:00=18.41p;`, or
+- a structured `rates`, `prices`, `forecast`, or `all_rates` list containing
+  start, end, and price values.
+
+Load Optimizer does not depend on Octopus Intelligence or any particular energy
+supplier. OIE's forecast entity is one compatible source, while other integrations
+can provide structured rates. Leave the tariff entity blank to disable costing.
+
+Use **Tariff price unit** to declare whether structured values are pence or pounds
+per kWh. The `ai_feed` format includes its `p` unit and is always interpreted as
+pence per kWh. The app normalizes timestamps to UTC, scales each representative
+profile to its learned measured energy, and rejects estimates when rates do not
+cover the complete cycle.
+
+The first release searches configurable start intervals over the next 24 hours
+and publishes recommendations only; it never starts an appliance.
+
+- `sensor.load_optimizer_1_cost_status`
+- `sensor.load_optimizer_1_cost_if_started_now`
+- `sensor.load_optimizer_1_cheapest_start`
+- `sensor.load_optimizer_1_cheapest_cost`
+- `sensor.load_optimizer_1_potential_saving`
+- `sensor.load_optimizer_1_cost_confidence`
+- `sensor.load_optimizer_1_recommended_program`
+
+Expected non-ready states include `tariff_not_configured`, `tariff_unavailable`,
+`tariff_invalid`, `no_eligible_programs`, and `insufficient_profile`.
 
 ## Data and authentication
 

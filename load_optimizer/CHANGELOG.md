@@ -6,6 +6,18 @@
   water, consumables, equipment wear, and applicable battery degradation.
 - Add a sanitized appliance and program-policy configuration example.
 
+## 0.6.0
+
+- Add a read-only tariff cost-estimation engine.
+- Accept optional OIE `ai_feed` and common structured Home Assistant rate data.
+- Keep the tariff source configurable with no dependency on OIE or Octopus.
+- Normalize prices to pence per kWh and timestamps to UTC.
+- Scale representative power profiles to learned measured energy.
+- Search policy-eligible five-minute start candidates and support negative prices.
+- Reject incomplete tariff coverage instead of publishing a partial estimate.
+- Publish cost status, cheapest start, expected cost, saving, confidence, and
+  recommended program entities.
+
 ## 0.5.1
 
 - Require only the program name and classification in each policy entry.
