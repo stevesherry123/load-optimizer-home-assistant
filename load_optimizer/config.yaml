@@ -1,5 +1,5 @@
 name: Load Optimizer
-version: "0.5.0"
+version: "0.5.1"
 slug: load_optimizer
 description: Learn appliance cycles and find the most economical time and mode to run them.
 url: https://github.com/stevesherry123/load-optimizer-home-assistant
@@ -37,10 +37,10 @@ schema:
   instance_1_program_policies:
     - program: str
       classification: list(unclassified|preferred|alternative|maintenance|opportunistic|disabled)
-      enabled: bool
-      preference_rank: int(1,100)
-      allow_normal_recommendation: bool
-      allow_negative_price_run: bool
-      minimum_days_between_runs: int(0,3650)
-      maximum_runs_per_window: int(0,20)
-      estimated_overhead_cost_pence: float(0,10000)
+      enabled: bool?
+      preference_rank: int(1,100)?
+      allow_normal_recommendation: bool?
+      allow_negative_price_run: bool?
+      minimum_days_between_runs: int(0,3650)?
+      maximum_runs_per_window: int(0,20)?
+      estimated_overhead_cost_pence: float(0,10000)?

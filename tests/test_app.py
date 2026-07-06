@@ -225,6 +225,18 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertTrue(policies[0]["allow_normal_recommendation"])
         self.assertEqual(policies[0]["estimated_overhead_cost_pence"], 12.5)
 
+    def test_minimal_policy_uses_safe_optional_defaults(self):
+        policy = normalise_program_policy({
+            "program": "PreRinse",
+            "classification": "alternative",
+        })
+
+        self.assertTrue(policy["enabled"])
+        self.assertEqual(policy["preference_rank"], 50)
+        self.assertFalse(policy["allow_normal_recommendation"])
+        self.assertFalse(policy["allow_negative_price_run"])
+        self.assertEqual(policy["maximum_runs_per_window"], 1)
+
     def test_disabled_policy_cannot_be_scheduled(self):
         policy = normalise_program_policy({
             "program": "Quick",

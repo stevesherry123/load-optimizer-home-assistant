@@ -18,7 +18,7 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 Start the app and open its log. A successful start includes:
 
 ```text
-Load Optimizer 0.5.0 started
+Load Optimizer 0.5.1 started
 ```
 
 Home Assistant exposes `sensor.load_optimizer_status` and a set of
@@ -52,6 +52,45 @@ non-energy overhead.
 Newly learned programs default to `unclassified` and are not eligible for a
 recommendation until the user makes an explicit choice. Resolved policy is
 published through `sensor.load_optimizer_1_program_policies`.
+
+### Example configuration
+
+The following example configures one appliance and classifies its `PreRinse`
+program as an alternative that will not be selected automatically:
+
+```yaml
+log_level: info
+scan_interval: 60
+instance_1_name: Dishwasher 1
+instance_1_power_sensor: sensor.your_appliance_power
+instance_1_energy_sensor: sensor.your_appliance_energy
+instance_1_program_sensor: sensor.your_appliance_active_program
+instance_1_state_sensor: sensor.your_appliance_operation_state
+instance_1_active_power_threshold: 10
+instance_1_finish_delay: 5
+instance_1_program_policies:
+  - program: PreRinse
+    classification: alternative
+    enabled: true
+    preference_rank: 50
+    allow_normal_recommendation: false
+    allow_negative_price_run: false
+    minimum_days_between_runs: 0
+    maximum_runs_per_window: 1
+    estimated_overhead_cost_pence: 0
+```
+
+Replace the four `sensor.your_appliance_*` values with entities from the local
+Home Assistant installation. Do not publish private device-specific entity IDs
+when sharing configuration publicly.
+
+The two recommendation flags default to `false` when omitted. Setting a
+classification alone never grants permission for the scheduler to use a program.
+
+Only `program` and `classification` are required. All other policy fields are
+optional and use the conservative defaults published in the
+`optional_field_defaults` attribute of
+`sensor.load_optimizer_1_program_policies`.
 
 ## Data and authentication
 
