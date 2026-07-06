@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 STATUS_ENTITY = "sensor.load_optimizer_status"
@@ -84,6 +84,19 @@ def numeric_state(entity: dict | None) -> float | None:
         return None
 
 
+def normalise_program(value: object) -> str:
+    if value in (None, "", "unknown", "unavailable"):
+        return "unknown"
+    program = str(value)
+    for prefix in (
+        "Dishcare.Dishwasher.Program.",
+        "BSH.Common.EnumType.Program.",
+    ):
+        if program.startswith(prefix):
+            return program.removeprefix(prefix)
+    return program
+
+
 def instance_config() -> dict:
     return {
         "name": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_NAME", "Appliance 1"),
@@ -121,7 +134,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "friendly_name": f"{name} Energy", "device_class": "energy", "unit_of_measurement": "kWh",
         "state_class": "total_increasing", "source_entity": config["energy_sensor"] or None,
     })
-    program = program_entity["state"] if program_entity else "unknown"
+    program = normalise_program(program_entity["state"] if program_entity else None)
     publish_entity(token, f"{prefix}_program", program, {
         "friendly_name": f"{name} Program", "icon": "mdi:format-list-bulleted", "source_entity": config["program_sensor"] or None,
     })
@@ -133,19 +146,30 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         instance["samples"] = int(instance.get("samples", 0)) + 1
         instance["peak_power"] = max(float(instance.get("peak_power", 0)), power)
         instance["below_threshold"] = 0
+        instance.pop("finish_candidate", None)
     elif instance.get("cycle_start"):
         instance["below_threshold"] = int(instance.get("below_threshold", 0)) + 1
+        if not instance.get("finish_candidate"):
+            instance["finish_candidate"] = {
+                "time": now.isoformat(),
+                "energy": energy,
+            }
         if instance["below_threshold"] >= config["finish_delay"]:
             start = datetime.fromisoformat(instance["cycle_start"])
+            finish_candidate = instance["finish_candidate"]
+            finish = datetime.fromisoformat(finish_candidate["time"])
+            finish_energy = finish_candidate.get("energy")
             last = {
                 "program": instance.get("program") or program,
-                "runtime_minutes": round((now - start).total_seconds() / 60, 1),
-                "energy_kwh": round(max(0.0, energy - instance["start_energy"]), 4) if energy is not None and instance.get("start_energy") is not None else None,
-                "peak_power": instance.get("peak_power", 0), "finish": now.isoformat(),
+                "runtime_minutes": round((finish - start).total_seconds() / 60, 1),
+                "energy_kwh": round(max(0.0, finish_energy - instance["start_energy"]), 4) if finish_energy is not None and instance.get("start_energy") is not None else None,
+                "peak_power": instance.get("peak_power", 0),
+                "sample_count": instance.get("samples", 0),
+                "finish": finish.isoformat(),
             }
             instance["last_cycle"] = last
             instance["runs"] = int(instance.get("runs", 0)) + 1
-            for key in ("cycle_start", "start_energy", "peak_power", "samples", "below_threshold", "program"):
+            for key in ("cycle_start", "start_energy", "peak_power", "samples", "below_threshold", "finish_candidate", "program"):
                 instance.pop(key, None)
     if instance.get("cycle_start") and program not in ("unknown", "unavailable", ""):
         instance["program"] = program
@@ -155,7 +179,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "friendly_name": f"{name} Cycle State", "icon": "mdi:dishwasher" if "dishwasher" in name.lower() else "mdi:lightning-bolt",
         "source_state": device_state_entity["state"] if device_state_entity else None,
     })
-    publish_entity(token, f"{prefix}_sample_count", instance.get("samples", 0), {
+    publish_entity(token, f"{prefix}_sample_count", instance.get("samples", instance.get("last_cycle", {}).get("sample_count", 0)), {
         "friendly_name": f"{name} Cycle Samples", "state_class": "measurement", "icon": "mdi:counter",
     })
     publish_entity(token, f"{prefix}_peak_power", instance.get("peak_power", instance.get("last_cycle", {}).get("peak_power", 0)), {
@@ -163,7 +187,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     })
     last = instance.get("last_cycle", {})
     for suffix, value, attrs in (
-        ("last_program", last.get("program", "unknown"), {"icon": "mdi:format-list-bulleted"}),
+        ("last_program", normalise_program(last.get("program")), {"icon": "mdi:format-list-bulleted"}),
         ("last_runtime", last.get("runtime_minutes", 0), {"unit_of_measurement": "min", "device_class": "duration"}),
         ("last_energy", last.get("energy_kwh", 0) if last.get("energy_kwh") is not None else "unknown", {"unit_of_measurement": "kWh", "device_class": "energy"}),
         ("last_finish", last.get("finish", "unknown"), {"device_class": "timestamp"}),

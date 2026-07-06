@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+- Exclude the finish-confirmation delay from learned runtime and finish time.
+- Normalize Home Connect program identifiers into readable names.
+- Retain the completed cycle's sample count.
+- Cancel a pending finish when appliance power resumes.
+
 ## 0.2.0
 
 - Add configurable monitoring for appliance instance 1.
