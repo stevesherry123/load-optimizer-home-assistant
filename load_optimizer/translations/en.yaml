@@ -1,0 +1,7 @@
+configuration:
+  log_level:
+    name: Log level
+    description: Controls how much detail the app writes to its log.
+  scan_interval:
+    name: Scan interval
+    description: Number of seconds between Home Assistant updates.
