@@ -7,12 +7,16 @@ from unittest.mock import patch
 
 from load_optimizer.app.main import (
     bootstrap_program_models,
+    instance_config,
     load_state,
+    load_options,
     normalise_profile,
     normalise_program,
+    normalise_program_policy,
     profile_sample,
     program_summary,
     save_state,
+    resolve_program_policies,
     update_instance,
     update_program_model,
 )
@@ -37,6 +41,12 @@ class StateStorageTests(unittest.TestCase):
             save_state(expected, path)
             self.assertEqual(json.loads(path.read_text()), expected)
             self.assertEqual(load_state(path), expected)
+
+    def test_options_are_loaded_from_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "options.json"
+            path.write_text(json.dumps({"instance_1_program_policies": [{"program": "Eco"}]}))
+            self.assertEqual(load_options(path)["instance_1_program_policies"][0]["program"], "Eco")
 
 
 class InstanceMonitoringTests(unittest.TestCase):
@@ -188,6 +198,50 @@ class ProgramLearningTests(unittest.TestCase):
         model = database["instances"]["1"]["program_models"]["Eco"]
         self.assertEqual(model["runs"], 1)
         self.assertEqual(program_summary("Eco", model)["confidence"], 20)
+
+
+class ProgramPolicyTests(unittest.TestCase):
+    def test_learned_program_defaults_to_safe_unclassified_policy(self):
+        policies = resolve_program_policies({"Eco": {"runs": 2}}, [])
+
+        self.assertEqual(policies[0]["classification"], "unclassified")
+        self.assertFalse(policies[0]["allow_normal_recommendation"])
+        self.assertFalse(policies[0]["allow_negative_price_run"])
+
+    def test_configured_policy_overrides_learned_default(self):
+        policies = resolve_program_policies({"Eco": {"runs": 2}}, [{
+            "program": "Eco",
+            "classification": "preferred",
+            "enabled": True,
+            "preference_rank": 1,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "minimum_days_between_runs": 0,
+            "maximum_runs_per_window": 1,
+            "estimated_overhead_cost_pence": 12.5,
+        }])
+
+        self.assertEqual(policies[0]["classification"], "preferred")
+        self.assertTrue(policies[0]["allow_normal_recommendation"])
+        self.assertEqual(policies[0]["estimated_overhead_cost_pence"], 12.5)
+
+    def test_disabled_policy_cannot_be_scheduled(self):
+        policy = normalise_program_policy({
+            "program": "Quick",
+            "classification": "disabled",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": True,
+        })
+
+        self.assertFalse(policy["enabled"])
+        self.assertFalse(policy["allow_normal_recommendation"])
+        self.assertFalse(policy["allow_negative_price_run"])
+
+    def test_instance_config_reads_policy_options(self):
+        configured = [{"program": "Eco", "classification": "preferred"}]
+        config = instance_config({"instance_1_program_policies": configured})
+        self.assertEqual(config["program_policies"], configured)
 
 
 if __name__ == "__main__":
