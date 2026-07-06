@@ -1,5 +1,5 @@
 name: Load Optimizer
-version: "0.5.1"
+version: "0.6.0"
 slug: load_optimizer
 description: Learn appliance cycles and find the most economical time and mode to run them.
 url: https://github.com/stevesherry123/load-optimizer-home-assistant
@@ -24,6 +24,11 @@ options:
   instance_1_active_power_threshold: 10
   instance_1_finish_delay: 5
   instance_1_program_policies: []
+  tariff_entity: ""
+  tariff_timezone: Europe/London
+  tariff_price_unit: p_per_kwh
+  cost_search_hours: 24
+  cost_candidate_interval: 5
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   scan_interval: int(10,3600)
@@ -44,3 +49,8 @@ schema:
       minimum_days_between_runs: int(0,3650)?
       maximum_runs_per_window: int(0,20)?
       estimated_overhead_cost_pence: float(0,10000)?
+  tariff_entity: str
+  tariff_timezone: str
+  tariff_price_unit: list(p_per_kwh|gbp_per_kwh)
+  cost_search_hours: int(1,72)
+  cost_candidate_interval: int(1,30)

@@ -27,3 +27,18 @@ configuration:
         name: Maximum runs per window
       estimated_overhead_cost_pence:
         name: Estimated overhead cost (pence)
+  tariff_entity:
+    name: Tariff entity
+    description: Optional Home Assistant entity containing future energy prices.
+  tariff_timezone:
+    name: Tariff timezone
+    description: Timezone used when the tariff feed contains local timestamps.
+  tariff_price_unit:
+    name: Tariff price unit
+    description: Unit used by structured tariff values; ai_feed values are always pence per kWh.
+  cost_search_hours:
+    name: Cost search hours
+    description: Number of future hours searched for candidate start times.
+  cost_candidate_interval:
+    name: Candidate interval
+    description: Minutes between simulated candidate start times.
