@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.2.1"
+APP_VERSION = "0.3.0"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 STATUS_ENTITY = "sensor.load_optimizer_status"
@@ -97,6 +97,16 @@ def normalise_program(value: object) -> str:
     return program
 
 
+def profile_sample(start: datetime, now: datetime, power: float | None, energy: float | None) -> dict:
+    sample = {
+        "offset_seconds": max(0, round((now - start).total_seconds())),
+        "power_w": round(power, 3) if power is not None else None,
+    }
+    if energy is not None:
+        sample["energy_kwh"] = round(energy, 6)
+    return sample
+
+
 def instance_config() -> dict:
     return {
         "name": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_NAME", "Appliance 1"),
@@ -142,34 +152,41 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     active = power is not None and power >= config["active_power_threshold"]
     if active:
         if not instance.get("cycle_start"):
-            instance.update(cycle_start=now.isoformat(), start_energy=energy, peak_power=power, samples=0, below_threshold=0)
-        instance["samples"] = int(instance.get("samples", 0)) + 1
+            instance.update(cycle_start=now.isoformat(), start_energy=energy, peak_power=power, samples=0, profile=[], below_threshold=0)
+        start = datetime.fromisoformat(instance["cycle_start"])
+        instance.setdefault("profile", []).append(profile_sample(start, now, power, energy))
+        instance["samples"] = len(instance["profile"])
         instance["peak_power"] = max(float(instance.get("peak_power", 0)), power)
         instance["below_threshold"] = 0
         instance.pop("finish_candidate", None)
     elif instance.get("cycle_start"):
+        start = datetime.fromisoformat(instance["cycle_start"])
+        instance.setdefault("profile", []).append(profile_sample(start, now, power, energy))
+        instance["samples"] = len(instance["profile"])
         instance["below_threshold"] = int(instance.get("below_threshold", 0)) + 1
         if not instance.get("finish_candidate"):
             instance["finish_candidate"] = {
                 "time": now.isoformat(),
                 "energy": energy,
+                "profile_length": len(instance["profile"]),
             }
         if instance["below_threshold"] >= config["finish_delay"]:
-            start = datetime.fromisoformat(instance["cycle_start"])
             finish_candidate = instance["finish_candidate"]
             finish = datetime.fromisoformat(finish_candidate["time"])
             finish_energy = finish_candidate.get("energy")
+            completed_profile = instance["profile"][:finish_candidate["profile_length"]]
             last = {
                 "program": instance.get("program") or program,
                 "runtime_minutes": round((finish - start).total_seconds() / 60, 1),
                 "energy_kwh": round(max(0.0, finish_energy - instance["start_energy"]), 4) if finish_energy is not None and instance.get("start_energy") is not None else None,
                 "peak_power": instance.get("peak_power", 0),
-                "sample_count": instance.get("samples", 0),
+                "sample_count": len(completed_profile),
+                "power_profile": completed_profile,
                 "finish": finish.isoformat(),
             }
             instance["last_cycle"] = last
             instance["runs"] = int(instance.get("runs", 0)) + 1
-            for key in ("cycle_start", "start_energy", "peak_power", "samples", "below_threshold", "finish_candidate", "program"):
+            for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold", "finish_candidate", "program"):
                 instance.pop(key, None)
     if instance.get("cycle_start") and program not in ("unknown", "unavailable", ""):
         instance["program"] = program
@@ -186,6 +203,16 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "friendly_name": f"{name} Peak Power", "device_class": "power", "unit_of_measurement": "W", "state_class": "measurement",
     })
     last = instance.get("last_cycle", {})
+    profile = last.get("power_profile", [])
+    publish_entity(token, f"{prefix}_last_profile", "ready" if profile else "none", {
+        "friendly_name": f"{name} Last Power Profile",
+        "icon": "mdi:chart-line",
+        "program": normalise_program(last.get("program")),
+        "runtime_minutes": last.get("runtime_minutes"),
+        "sample_count": len(profile),
+        "samples": [[sample["offset_seconds"], sample.get("power_w")] for sample in profile],
+        "sample_format": ["offset_seconds", "power_w"],
+    })
     for suffix, value, attrs in (
         ("last_program", normalise_program(last.get("program")), {"icon": "mdi:format-list-bulleted"}),
         ("last_runtime", last.get("runtime_minutes", 0), {"unit_of_measurement": "min", "device_class": "duration"}),

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from load_optimizer.app.main import load_state, normalise_program, save_state, update_instance
+from load_optimizer.app.main import load_state, normalise_program, profile_sample, save_state, update_instance
 
 
 class StateStorageTests(unittest.TestCase):
@@ -64,6 +64,13 @@ class InstanceMonitoringTests(unittest.TestCase):
             "PreRinse",
         )
 
+    def test_profile_sample_uses_cycle_relative_time(self):
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        self.assertEqual(
+            profile_sample(start, start + timedelta(seconds=90), 68.2345, 1.1234567),
+            {"offset_seconds": 90, "power_w": 68.234, "energy_kwh": 1.123457},
+        )
+
     @patch("load_optimizer.app.main.publish_entity")
     @patch("load_optimizer.app.main.source_state")
     def test_sustained_low_power_finishes_cycle(self, source, _publish):
@@ -77,7 +84,9 @@ class InstanceMonitoringTests(unittest.TestCase):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         database = {"schema_version": 1, "instances": {"1": {
             "cycle_start": start.isoformat(), "start_energy": 3.5,
-            "peak_power": 1200, "samples": 10, "below_threshold": 0,
+            "peak_power": 1200, "samples": 10,
+            "profile": [{"offset_seconds": minute * 60, "power_w": 1200} for minute in range(10)],
+            "below_threshold": 0,
             "program": "Eco",
         }}}
 
@@ -91,7 +100,9 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(instance["runs"], 1)
         self.assertEqual(instance["last_cycle"]["runtime_minutes"], 59.0)
         self.assertEqual(instance["last_cycle"]["energy_kwh"], 0.6)
-        self.assertEqual(instance["last_cycle"]["sample_count"], 10)
+        self.assertEqual(instance["last_cycle"]["sample_count"], 11)
+        self.assertEqual(len(instance["last_cycle"]["power_profile"]), 11)
+        self.assertEqual(instance["last_cycle"]["power_profile"][-1]["power_w"], 0.0)
         self.assertEqual(instance["last_cycle"]["finish"], (start + timedelta(minutes=59)).isoformat())
 
     @patch("load_optimizer.app.main.publish_entity")
@@ -106,7 +117,9 @@ class InstanceMonitoringTests(unittest.TestCase):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         database = {"schema_version": 1, "instances": {"1": {
             "cycle_start": start.isoformat(), "start_energy": 3.5,
-            "peak_power": 1200, "samples": 10, "below_threshold": 0,
+            "peak_power": 1200, "samples": 10,
+            "profile": [{"offset_seconds": minute * 60, "power_w": 1200} for minute in range(10)],
+            "below_threshold": 0,
             "program": "Eco",
         }}}
 
@@ -117,7 +130,9 @@ class InstanceMonitoringTests(unittest.TestCase):
         instance = database["instances"]["1"]
         self.assertNotIn("finish_candidate", instance)
         self.assertEqual(instance["below_threshold"], 0)
-        self.assertEqual(instance["samples"], 11)
+        self.assertEqual(instance["samples"], 12)
+        self.assertEqual(instance["profile"][-2]["power_w"], 0.0)
+        self.assertEqual(instance["profile"][-1]["power_w"], 20.0)
 
 
 if __name__ == "__main__":
