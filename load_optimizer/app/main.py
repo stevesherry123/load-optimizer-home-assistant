@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -375,11 +375,14 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     last = instance.get("last_cycle", {})
     models = instance.get("program_models", {})
     policies = resolve_program_policies(models, config.get("program_policies", []))
+    policy_defaults = default_program_policy("program")
+    policy_defaults.pop("program")
     publish_entity(token, f"{prefix}_program_policies", len(policies), {
         "friendly_name": f"{name} Program Policies",
         "icon": "mdi:shield-check",
         "policies": policies,
         "classifications": sorted(PROGRAM_CLASSIFICATIONS),
+        "optional_field_defaults": policy_defaults,
     })
     summaries = [program_summary(program_name, model) for program_name, model in sorted(models.items())]
     latest_program = normalise_program(last.get("program"))

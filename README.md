@@ -16,7 +16,7 @@ https://github.com/stevesherry123/load-optimizer-home-assistant
 Install **Load Optimizer**, start it, and confirm that
 `sensor.load_optimizer_status` reports `running`.
 
-Version `0.5.0` adds the first configurable appliance instance and automatically
+Version `0.5.1` adds the first configurable appliance instance and automatically
 publishes its `sensor.load_optimizer_1_*` monitoring entities. Configure the
 source entities on the App's **Configuration** tab, then restart the App.
 

@@ -4,6 +4,14 @@
 
 - Document true operating cost as a deferred architectural consideration for
   water, consumables, equipment wear, and applicable battery degradation.
+- Add a sanitized appliance and program-policy configuration example.
+
+## 0.5.1
+
+- Require only the program name and classification in each policy entry.
+- Apply safe defaults when optional policy fields are omitted.
+- Expose optional policy defaults on the program-policies sensor.
+- Prevent incomplete but valid policy entries from disappearing on save.
 
 ## 0.5.0
 
