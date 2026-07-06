@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import signal
 import threading
@@ -13,7 +14,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 STATUS_ENTITY = "sensor.load_optimizer_status"
@@ -107,6 +108,106 @@ def profile_sample(start: datetime, now: datetime, power: float | None, energy: 
     return sample
 
 
+def normalise_profile(profile: list[dict], bins: int = 20) -> list[float]:
+    points = sorted(
+        (float(sample["offset_seconds"]), float(sample["power_w"]))
+        for sample in profile
+        if sample.get("power_w") is not None
+    )
+    if not points:
+        return []
+    if len(points) == 1:
+        return [round(points[0][1], 3)] * bins
+
+    duration = max(points[-1][0], 1.0)
+    result = []
+    right = 1
+    for index in range(bins):
+        target = duration * index / (bins - 1)
+        while right < len(points) - 1 and points[right][0] < target:
+            right += 1
+        left_time, left_power = points[right - 1]
+        right_time, right_power = points[right]
+        if right_time == left_time:
+            value = right_power
+        else:
+            ratio = (target - left_time) / (right_time - left_time)
+            value = left_power + ratio * (right_power - left_power)
+        result.append(round(value, 3))
+    return result
+
+
+def update_running_stat(model: dict, name: str, value: float | None) -> None:
+    if value is None:
+        return
+    stat = model.setdefault("statistics", {}).setdefault(name, {"count": 0, "mean": 0.0, "m2": 0.0})
+    stat["count"] += 1
+    delta = float(value) - stat["mean"]
+    stat["mean"] += delta / stat["count"]
+    stat["m2"] += delta * (float(value) - stat["mean"])
+
+
+def stat_summary(model: dict, name: str, digits: int) -> tuple[float | None, float | None]:
+    stat = model.get("statistics", {}).get(name)
+    if not stat or not stat["count"]:
+        return None, None
+    variance = stat["m2"] / (stat["count"] - 1) if stat["count"] > 1 else 0.0
+    return round(stat["mean"], digits), round(math.sqrt(max(0.0, variance)), digits)
+
+
+def program_summary(program: str, model: dict) -> dict:
+    runtime, runtime_stddev = stat_summary(model, "runtime_minutes", 1)
+    energy, energy_stddev = stat_summary(model, "energy_kwh", 4)
+    peak, _ = stat_summary(model, "peak_power_w", 1)
+    variations = []
+    if runtime and runtime_stddev is not None:
+        variations.append(runtime_stddev / runtime)
+    if energy and energy_stddev is not None:
+        variations.append(energy_stddev / energy)
+    consistency = max(0.0, 1.0 - min(max(variations, default=0.0), 1.0))
+    confidence = round(100 * min(model.get("runs", 0) / 5, 1.0) * consistency)
+    return {
+        "program": program,
+        "runs": model.get("runs", 0),
+        "expected_runtime_minutes": runtime,
+        "runtime_stddev_minutes": runtime_stddev,
+        "expected_energy_kwh": energy,
+        "energy_stddev_kwh": energy_stddev,
+        "average_peak_power_w": peak,
+        "confidence": confidence,
+        "representative_profile_w": model.get("representative_profile_w", []),
+    }
+
+
+def update_program_model(instance: dict, cycle: dict) -> dict:
+    program = normalise_program(cycle.get("program"))
+    if program == "unknown":
+        program = "Default"
+    model = instance.setdefault("program_models", {}).setdefault(program, {"runs": 0})
+    model["runs"] += 1
+    update_running_stat(model, "runtime_minutes", cycle.get("runtime_minutes"))
+    update_running_stat(model, "energy_kwh", cycle.get("energy_kwh"))
+    update_running_stat(model, "peak_power_w", cycle.get("peak_power"))
+
+    profile = normalise_profile(cycle.get("power_profile", []))
+    if profile:
+        profile_count = int(model.get("profile_count", 0)) + 1
+        previous = model.get("representative_profile_w", [0.0] * len(profile))
+        model["representative_profile_w"] = [
+            round(old + (new - old) / profile_count, 3)
+            for old, new in zip(previous, profile)
+        ]
+        model["profile_count"] = profile_count
+    model["last_updated"] = cycle.get("finish")
+    return program_summary(program, model)
+
+
+def bootstrap_program_models(database: dict) -> None:
+    for instance in database.get("instances", {}).values():
+        if "program_models" not in instance and instance.get("last_cycle"):
+            update_program_model(instance, instance["last_cycle"])
+
+
 def instance_config() -> dict:
     return {
         "name": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_NAME", "Appliance 1"),
@@ -185,6 +286,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 "finish": finish.isoformat(),
             }
             instance["last_cycle"] = last
+            update_program_model(instance, last)
             instance["runs"] = int(instance.get("runs", 0)) + 1
             for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold", "finish_candidate", "program"):
                 instance.pop(key, None)
@@ -203,6 +305,26 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "friendly_name": f"{name} Peak Power", "device_class": "power", "unit_of_measurement": "W", "state_class": "measurement",
     })
     last = instance.get("last_cycle", {})
+    models = instance.get("program_models", {})
+    summaries = [program_summary(program_name, model) for program_name, model in sorted(models.items())]
+    latest_program = normalise_program(last.get("program"))
+    selected_program = latest_program if latest_program in models else (next(iter(sorted(models)), None))
+    selected_summary = program_summary(selected_program, models[selected_program]) if selected_program else {}
+    publish_entity(token, f"{prefix}_learned_programs", len(models), {
+        "friendly_name": f"{name} Learned Programs",
+        "icon": "mdi:database-check",
+        "programs": summaries,
+    })
+    publish_entity(token, f"{prefix}_program_model", selected_program or "none", {
+        "friendly_name": f"{name} Program Model",
+        "icon": "mdi:chart-bell-curve-cumulative",
+        **selected_summary,
+        "profile_format": ["progress_percent", "power_w"],
+        "representative_profile": [
+            [round(index * 100 / (len(selected_summary.get("representative_profile_w", [])) - 1), 1), power]
+            for index, power in enumerate(selected_summary.get("representative_profile_w", []))
+        ] if len(selected_summary.get("representative_profile_w", [])) > 1 else [],
+    })
     profile = last.get("power_profile", [])
     publish_entity(token, f"{prefix}_last_profile", "ready" if profile else "none", {
         "friendly_name": f"{name} Last Power Profile",
@@ -262,6 +384,7 @@ def main() -> None:
 
     interval = max(10, int(os.getenv("LOAD_OPTIMIZER_SCAN_INTERVAL", "60")))
     state = load_state()
+    bootstrap_program_models(state)
     config = instance_config()
     save_state(state)
     health_server = run_health_server()

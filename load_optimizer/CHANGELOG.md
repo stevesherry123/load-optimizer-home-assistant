@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Learn separate running statistics for each appliance program.
+- Calculate expected runtime, energy, peak power, variation, and confidence.
+- Build a compact representative 20-point power profile for each program.
+- Publish learned models through `sensor.load_optimizer_1_learned_programs` and
+  `sensor.load_optimizer_1_program_model`.
+- Seed learning from the most recent compatible cycle after upgrade.
+
 ## 0.3.0
 
 - Capture timestamped power and energy samples throughout each cycle.
