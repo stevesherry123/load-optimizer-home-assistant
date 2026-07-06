@@ -5,3 +5,25 @@ configuration:
   scan_interval:
     name: Scan interval
     description: Number of seconds between Home Assistant updates.
+  instance_1_program_policies:
+    name: Instance 1 program policies
+    description: Classify learned programs and set recommendation safeguards.
+    fields:
+      program:
+        name: Program
+      classification:
+        name: Classification
+      enabled:
+        name: Enabled
+      preference_rank:
+        name: Preference rank
+      allow_normal_recommendation:
+        name: Allow normal recommendation
+      allow_negative_price_run:
+        name: Allow negative-price run
+      minimum_days_between_runs:
+        name: Minimum days between runs
+      maximum_runs_per_window:
+        name: Maximum runs per window
+      estimated_overhead_cost_pence:
+        name: Estimated overhead cost (pence)

@@ -18,7 +18,7 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 Start the app and open its log. A successful start includes:
 
 ```text
-Load Optimizer 0.4.0 started
+Load Optimizer 0.5.0 started
 ```
 
 Home Assistant exposes `sensor.load_optimizer_status` and a set of
@@ -40,6 +40,18 @@ expected runtime, energy, peak power, variation, confidence, and a representativ
 - `sensor.load_optimizer_1_program_model` exposes the latest program model.
 - Confidence grows over the first five consistent runs and falls when observed
   runtime or energy varies significantly.
+
+## Program policies
+
+Program policies are configured separately from learned measurements. Each
+policy can classify a program as `preferred`, `alternative`, `maintenance`,
+`opportunistic`, `disabled`, or `unclassified`, and can control normal and
+negative-price eligibility, preference rank, cooldown, run limits, and estimated
+non-energy overhead.
+
+Newly learned programs default to `unclassified` and are not eligible for a
+recommendation until the user makes an explicit choice. Resolved policy is
+published through `sensor.load_optimizer_1_program_policies`.
 
 ## Data and authentication
 

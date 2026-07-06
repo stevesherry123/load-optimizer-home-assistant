@@ -14,10 +14,20 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
+OPTIONS_PATH = Path("/data/options.json")
 STATUS_ENTITY = "sensor.load_optimizer_status"
+
+PROGRAM_CLASSIFICATIONS = {
+    "unclassified",
+    "preferred",
+    "alternative",
+    "maintenance",
+    "opportunistic",
+    "disabled",
+}
 
 LOGGER = logging.getLogger("load_optimizer")
 STOP_EVENT = threading.Event()
@@ -47,6 +57,13 @@ def save_state(data: dict, path: Path = DATA_PATH) -> None:
     temporary_path = path.with_suffix(".tmp")
     temporary_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     temporary_path.replace(path)
+
+
+def load_options(path: Path = OPTIONS_PATH) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def api_request(token: str, path: str, payload: dict | None = None) -> dict | None:
@@ -208,7 +225,57 @@ def bootstrap_program_models(database: dict) -> None:
             update_program_model(instance, instance["last_cycle"])
 
 
-def instance_config() -> dict:
+def default_program_policy(program: str) -> dict:
+    return {
+        "program": program,
+        "classification": "unclassified",
+        "enabled": True,
+        "preference_rank": 50,
+        "allow_normal_recommendation": False,
+        "allow_negative_price_run": False,
+        "minimum_days_between_runs": 0,
+        "maximum_runs_per_window": 1,
+        "estimated_overhead_cost_pence": 0.0,
+    }
+
+
+def normalise_program_policy(raw: dict) -> dict:
+    program = normalise_program(raw.get("program"))
+    if program == "unknown":
+        raise ValueError("Program policy requires a program name")
+    policy = default_program_policy(program)
+    classification = str(raw.get("classification", "unclassified")).lower()
+    if classification not in PROGRAM_CLASSIFICATIONS:
+        raise ValueError(f"Unsupported program classification: {classification}")
+    policy.update({
+        "classification": classification,
+        "enabled": bool(raw.get("enabled", policy["enabled"])),
+        "preference_rank": max(1, min(100, int(raw.get("preference_rank", policy["preference_rank"])))),
+        "allow_normal_recommendation": bool(raw.get("allow_normal_recommendation", policy["allow_normal_recommendation"])),
+        "allow_negative_price_run": bool(raw.get("allow_negative_price_run", policy["allow_negative_price_run"])),
+        "minimum_days_between_runs": max(0, int(raw.get("minimum_days_between_runs", policy["minimum_days_between_runs"]))),
+        "maximum_runs_per_window": max(0, int(raw.get("maximum_runs_per_window", policy["maximum_runs_per_window"]))),
+        "estimated_overhead_cost_pence": max(0.0, float(raw.get("estimated_overhead_cost_pence", policy["estimated_overhead_cost_pence"]))),
+    })
+    if classification == "disabled":
+        policy.update(enabled=False, allow_normal_recommendation=False, allow_negative_price_run=False)
+    return policy
+
+
+def resolve_program_policies(models: dict, configured: list[dict]) -> list[dict]:
+    resolved = {program: default_program_policy(program) for program in models}
+    for raw in configured:
+        try:
+            policy = normalise_program_policy(raw)
+        except (TypeError, ValueError) as error:
+            LOGGER.warning("Ignoring invalid program policy: %s", error)
+            continue
+        resolved[policy["program"]] = policy
+    return [resolved[program] for program in sorted(resolved)]
+
+
+def instance_config(options: dict | None = None) -> dict:
+    options = options if options is not None else load_options()
     return {
         "name": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_NAME", "Appliance 1"),
         "power_sensor": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_POWER_SENSOR", "").strip(),
@@ -217,6 +284,7 @@ def instance_config() -> dict:
         "state_sensor": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_STATE_SENSOR", "").strip(),
         "active_power_threshold": float(os.getenv("LOAD_OPTIMIZER_INSTANCE_1_ACTIVE_POWER_THRESHOLD", "10")),
         "finish_delay": int(os.getenv("LOAD_OPTIMIZER_INSTANCE_1_FINISH_DELAY", "5")),
+        "program_policies": options.get("instance_1_program_policies", []),
     }
 
 
@@ -306,6 +374,13 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     })
     last = instance.get("last_cycle", {})
     models = instance.get("program_models", {})
+    policies = resolve_program_policies(models, config.get("program_policies", []))
+    publish_entity(token, f"{prefix}_program_policies", len(policies), {
+        "friendly_name": f"{name} Program Policies",
+        "icon": "mdi:shield-check",
+        "policies": policies,
+        "classifications": sorted(PROGRAM_CLASSIFICATIONS),
+    })
     summaries = [program_summary(program_name, model) for program_name, model in sorted(models.items())]
     latest_program = normalise_program(last.get("program"))
     selected_program = latest_program if latest_program in models else (next(iter(sorted(models)), None))
