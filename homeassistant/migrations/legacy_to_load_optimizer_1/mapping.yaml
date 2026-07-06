@@ -1,0 +1,20 @@
+migration:
+  source: legacy_dishwasher
+  target_instance: 1
+  entities:
+    input_boolean.dishwasher_learning_active: input_boolean.load_optimizer_1_learning_active
+    input_text.dishwasher_cycle_program: input_text.load_optimizer_1_cycle_program
+    input_text.dishwasher_cycle_profile: input_text.load_optimizer_1_cycle_profile
+    input_number.dishwasher_cycle_sample_count: input_number.load_optimizer_1_cycle_sample_count
+    input_datetime.dishwasher_cycle_start: input_datetime.load_optimizer_1_cycle_start
+    input_number.dishwasher_cycle_start_energy: input_number.load_optimizer_1_cycle_start_energy
+    input_number.dishwasher_peak_power: input_number.load_optimizer_1_peak_power
+    input_text.dishwasher_last_program: input_text.load_optimizer_1_last_program
+    input_number.dishwasher_last_runtime_minutes: input_number.load_optimizer_1_last_runtime_minutes
+    input_number.dishwasher_last_energy_kwh: input_number.load_optimizer_1_last_energy_kwh
+    input_datetime.dishwasher_last_finish: input_datetime.load_optimizer_1_last_finish
+    input_text.dishwasher_learning_database: input_text.load_optimizer_1_learning_database
+    input_text.dishwasher_learning_summary: input_text.load_optimizer_1_learning_summary
+    input_number.dishwasher_expected_runtime: input_number.load_optimizer_1_expected_runtime
+    input_number.dishwasher_expected_energy: input_number.load_optimizer_1_expected_energy
+
