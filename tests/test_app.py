@@ -5,7 +5,17 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from load_optimizer.app.main import load_state, normalise_program, profile_sample, save_state, update_instance
+from load_optimizer.app.main import (
+    bootstrap_program_models,
+    load_state,
+    normalise_profile,
+    normalise_program,
+    profile_sample,
+    program_summary,
+    save_state,
+    update_instance,
+    update_program_model,
+)
 
 
 class StateStorageTests(unittest.TestCase):
@@ -71,6 +81,13 @@ class InstanceMonitoringTests(unittest.TestCase):
             {"offset_seconds": 90, "power_w": 68.234, "energy_kwh": 1.123457},
         )
 
+    def test_profile_is_interpolated_into_fixed_bins(self):
+        profile = [
+            {"offset_seconds": 0, "power_w": 0},
+            {"offset_seconds": 10, "power_w": 100},
+        ]
+        self.assertEqual(normalise_profile(profile, bins=5), [0.0, 25.0, 50.0, 75.0, 100.0])
+
     @patch("load_optimizer.app.main.publish_entity")
     @patch("load_optimizer.app.main.source_state")
     def test_sustained_low_power_finishes_cycle(self, source, _publish):
@@ -104,6 +121,7 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(len(instance["last_cycle"]["power_profile"]), 11)
         self.assertEqual(instance["last_cycle"]["power_profile"][-1]["power_w"], 0.0)
         self.assertEqual(instance["last_cycle"]["finish"], (start + timedelta(minutes=59)).isoformat())
+        self.assertEqual(instance["program_models"]["Eco"]["runs"], 1)
 
     @patch("load_optimizer.app.main.publish_entity")
     @patch("load_optimizer.app.main.source_state")
@@ -133,6 +151,43 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(instance["samples"], 12)
         self.assertEqual(instance["profile"][-2]["power_w"], 0.0)
         self.assertEqual(instance["profile"][-1]["power_w"], 20.0)
+
+
+class ProgramLearningTests(unittest.TestCase):
+    def cycle(self, runtime, energy, peak):
+        return {
+            "program": "Eco",
+            "runtime_minutes": runtime,
+            "energy_kwh": energy,
+            "peak_power": peak,
+            "finish": "2026-01-01T12:00:00+00:00",
+            "power_profile": [
+                {"offset_seconds": 0, "power_w": 0},
+                {"offset_seconds": runtime * 60, "power_w": peak},
+            ],
+        }
+
+    def test_repeated_cycles_update_program_average(self):
+        instance = {}
+        update_program_model(instance, self.cycle(60, 1.0, 1000))
+        summary = update_program_model(instance, self.cycle(70, 1.2, 1200))
+
+        self.assertEqual(summary["runs"], 2)
+        self.assertEqual(summary["expected_runtime_minutes"], 65.0)
+        self.assertEqual(summary["expected_energy_kwh"], 1.1)
+        self.assertEqual(summary["average_peak_power_w"], 1100.0)
+        self.assertEqual(len(summary["representative_profile_w"]), 20)
+        self.assertGreater(summary["confidence"], 0)
+
+    def test_bootstrap_seeds_model_only_once(self):
+        database = {"instances": {"1": {"last_cycle": self.cycle(60, 1.0, 1000)}}}
+
+        bootstrap_program_models(database)
+        bootstrap_program_models(database)
+
+        model = database["instances"]["1"]["program_models"]["Eco"]
+        self.assertEqual(model["runs"], 1)
+        self.assertEqual(program_summary("Eco", model)["confidence"], 20)
 
 
 if __name__ == "__main__":

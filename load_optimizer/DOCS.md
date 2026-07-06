@@ -18,7 +18,7 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 Start the app and open its log. A successful start includes:
 
 ```text
-Load Optimizer 0.3.0 started
+Load Optimizer 0.4.0 started
 ```
 
 Home Assistant exposes `sensor.load_optimizer_status` and a set of
@@ -29,6 +29,17 @@ After a completed cycle, `sensor.load_optimizer_1_last_profile` exposes the
 timestamped power samples in its `samples` attribute. Each compact sample is
 `[offset_seconds, power_w]`, allowing dashboards and future tariff calculations
 to align the profile without depending on a particular appliance or integration.
+
+## Program learning
+
+Completed cycles are grouped by their normalized program name. The app maintains
+expected runtime, energy, peak power, variation, confidence, and a representative
+20-point power profile without retaining an ever-growing list of raw cycles.
+
+- `sensor.load_optimizer_1_learned_programs` summarizes every learned program.
+- `sensor.load_optimizer_1_program_model` exposes the latest program model.
+- Confidence grows over the first five consistent runs and falls when observed
+  runtime or energy varies significantly.
 
 ## Data and authentication
 
