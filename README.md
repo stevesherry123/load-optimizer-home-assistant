@@ -16,9 +16,9 @@ https://github.com/stevesherry123/load-optimizer-home-assistant
 Install **Load Optimizer**, start it, and confirm that
 `sensor.load_optimizer_status` reports `running`.
 
-Version `0.1.0` is the first runtime scaffold. Appliance configuration and cycle
-learning will be introduced incrementally while the private legacy implementation
-is retained locally as migration reference.
+Version `0.2.0` adds the first configurable appliance instance and automatically
+publishes its `sensor.load_optimizer_1_*` monitoring entities. Configure the
+source entities on the App's **Configuration** tab, then restart the App.
 
 ## Goals
 
@@ -44,13 +44,14 @@ Use the instance-based namespace everywhere:
 - `load_optimizer_2_*` for the second appliance instance
 - future adapters can map their own device-specific sensors into the same shared model
 
-Examples:
+The App now publishes examples such as:
 
-- `input_boolean.load_optimizer_1_learning_active`
-- `input_text.load_optimizer_1_cycle_profile`
-- `input_text.load_optimizer_1_learning_database`
-- `input_number.load_optimizer_1_expected_runtime`
-- `input_number.load_optimizer_1_expected_energy`
+- `sensor.load_optimizer_1_status`
+- `sensor.load_optimizer_1_power`
+- `sensor.load_optimizer_1_energy`
+- `sensor.load_optimizer_1_cycle_state`
+- `sensor.load_optimizer_1_last_runtime`
+- `sensor.load_optimizer_1_last_energy`
 
 ## Current Scope
 
@@ -78,9 +79,20 @@ The first public implementation should support:
 │   └── run.sh
 ├── docs/
 │   ├── architecture.md
+│   ├── deployment.md
+│   ├── home_assistant_config.md
 │   ├── migration.md
-│   └── naming.md
-└── tests/
+│   ├── naming.md
+│   └── validation.md
+└── homeassistant/
+    ├── adapters/
+    ├── dashboards/
+    ├── helpers/
+    ├── legacy/
+    ├── migrations/
+    ├── packages/
+    ├── pyscript/
+    └── templates/
 ```
 
 ## Public-State Model
@@ -99,7 +111,11 @@ The shared state model should focus on:
 
 ## Project Status
 
-Version `0.1.0` provides the installable App runtime, private persistence,
-health monitoring, and a Home Assistant status sensor. Appliance instance
-configuration, cycle learning, tariff analysis, and legacy migration are the
-next development milestones.
+The installable App scaffold is now the future-facing runtime. The existing
+`homeassistant/` files remain temporarily as migration reference and will be
+retired after their behavior and data have moved into the App.
+
+For rollout, use:
+
+- `docs/deployment.md`
+- `docs/validation.md`

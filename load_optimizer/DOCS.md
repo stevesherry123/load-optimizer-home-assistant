@@ -1,28 +1,29 @@
 # Load Optimizer
 
-Load Optimizer is at an early public preview stage. This release establishes the
-Home Assistant App runtime, persistent storage, health monitoring, and secure
-communication with Home Assistant.
+Load Optimizer monitors a configurable appliance through Home Assistant, detects
+its power cycles, and retains completed-cycle statistics in private app storage.
 
 ## Configuration
 
 - **Log level** controls diagnostic detail.
 - **Scan interval** controls how often the app refreshes its Home Assistant state.
+- **Instance 1 name** is the friendly appliance name, such as `Dishwasher 1`.
+- **Power sensor** is required for cycle detection.
+- **Energy, program, and state sensors** are optional but improve cycle records.
+- **Active power threshold** is the wattage above which a cycle is considered active.
+- **Finish delay** is the number of consecutive scans below that threshold before a cycle ends.
 
 ## First start
 
 Start the app and open its log. A successful start includes:
 
 ```text
-Load Optimizer 0.1.0 started
+Load Optimizer 0.2.0 started
 ```
 
-Home Assistant will then expose `sensor.load_optimizer_status` with the state
-`running`.
-
-This preview does not yet monitor an appliance. Device instance configuration,
-cycle learning, tariff analysis, and legacy migration will arrive in subsequent
-versions.
+Home Assistant exposes `sensor.load_optimizer_status` and a set of
+`sensor.load_optimizer_1_*` entities. Until a power sensor is configured,
+`sensor.load_optimizer_1_status` reports `configuration_required`.
 
 ## Data and authentication
 
