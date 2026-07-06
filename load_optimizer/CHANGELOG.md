@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Capture timestamped power and energy samples throughout each cycle.
+- Persist the completed power profile with the learned cycle record.
+- Publish the last profile through `sensor.load_optimizer_1_last_profile`.
+- Preserve genuine low-power pauses while excluding the finish-confirmation tail.
+
 ## 0.2.1
 
 - Exclude the finish-confirmation delay from learned runtime and finish time.

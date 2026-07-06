@@ -18,12 +18,17 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 Start the app and open its log. A successful start includes:
 
 ```text
-Load Optimizer 0.2.1 started
+Load Optimizer 0.3.0 started
 ```
 
 Home Assistant exposes `sensor.load_optimizer_status` and a set of
 `sensor.load_optimizer_1_*` entities. Until a power sensor is configured,
 `sensor.load_optimizer_1_status` reports `configuration_required`.
+
+After a completed cycle, `sensor.load_optimizer_1_last_profile` exposes the
+timestamped power samples in its `samples` attribute. Each compact sample is
+`[offset_seconds, power_w]`, allowing dashboards and future tariff calculations
+to align the profile without depending on a particular appliance or integration.
 
 ## Data and authentication
 
