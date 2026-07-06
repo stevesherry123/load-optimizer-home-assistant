@@ -4,6 +4,16 @@
 
 - Document true operating cost as a deferred architectural consideration for
   water, consumables, equipment wear, and applicable battery degradation.
+- Add a sanitized appliance and program-policy configuration example.
+
+## 0.5.0
+
+- Add configurable per-program policy classifications.
+- Keep user preferences separate from learned program measurements.
+- Support preferred, alternative, maintenance, opportunistic, disabled, and
+  unclassified programs.
+- Add limits and explicit eligibility flags for normal and negative-price use.
+- Publish resolved policies through `sensor.load_optimizer_1_program_policies`.
 
 ## 0.4.0
 
