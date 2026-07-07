@@ -20,6 +20,7 @@ from load_optimizer.app.main import (
     publish_restart_warning,
     save_state,
     reset_configured_instances,
+    reset_request_status,
     resolve_program_policies,
     running_instances,
     update_instance,
@@ -91,6 +92,32 @@ class StateStorageTests(unittest.TestCase):
 
         self.assertEqual(removed, [])
         self.assertIn("1", database["instances"])
+
+    def test_reset_request_status_reports_consumed_request(self):
+        database = {"schema_version": 1, "processed_reset_instance_ids": ["2"]}
+
+        self.assertEqual(
+            reset_request_status(database, {"reset_instance_ids": "2"}),
+            {
+                "reset_status": "consumed",
+                "reset_requested_instance_ids": ["2"],
+                "reset_processed_instance_ids": ["2"],
+                "reset_pending_instance_ids": [],
+                "reset_invalid_tokens": [],
+                "reset_message": "Reset request has already been applied for instance(s): 2.",
+            },
+        )
+
+    def test_reset_request_status_reports_pending_and_invalid_values(self):
+        database = {"schema_version": 1, "processed_reset_instance_ids": ["2"]}
+
+        status = reset_request_status(database, {"reset_instance_ids": "2, 3, nope"})
+
+        self.assertEqual(status["reset_status"], "partially_invalid")
+        self.assertEqual(status["reset_requested_instance_ids"], ["2", "3"])
+        self.assertEqual(status["reset_processed_instance_ids"], ["2"])
+        self.assertEqual(status["reset_pending_instance_ids"], ["3"])
+        self.assertEqual(status["reset_invalid_tokens"], ["nope"])
 
     def test_running_instances_reports_active_captures(self):
         database = {"schema_version": 1, "instances": {

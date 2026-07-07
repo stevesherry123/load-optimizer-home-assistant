@@ -6,6 +6,14 @@
   water, consumables, equipment wear, and applicable battery degradation.
 - Add a sanitized appliance and program-policy configuration example.
 
+## 0.7.3
+
+- Expose reset request feedback on `sensor.load_optimizer_status`, including
+  whether the configured reset request is pending, consumed, invalid, or partly
+  invalid.
+- Publish requested, processed, pending, and invalid reset IDs so users can see
+  that a lingering one-shot reset value has already been handled.
+
 ## 0.7.2
 
 - Make `reset_instance_ids` one-shot while the same value remains configured, so
