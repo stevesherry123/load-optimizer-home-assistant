@@ -6,6 +6,15 @@
   water, consumables, equipment wear, and applicable battery degradation.
 - Add a sanitized appliance and program-policy configuration example.
 
+## 0.7.1
+
+- Add a manual `reset_instance_ids` safety valve for clearing selected
+  appliance instance data without touching other instances.
+- Warn through a Home Assistant persistent notification when the app starts
+  while one or more instances are already mid-cycle.
+- Expose active capture instances on `sensor.load_optimizer_status` to make
+  restart/update interruptions visible.
+
 ## 0.7.0
 
 - Add multi-instance appliance monitoring for the Home Assistant app.

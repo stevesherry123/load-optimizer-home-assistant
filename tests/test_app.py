@@ -17,8 +17,11 @@ from load_optimizer.app.main import (
     normalise_program_policy,
     profile_sample,
     program_summary,
+    publish_restart_warning,
     save_state,
+    reset_configured_instances,
     resolve_program_policies,
+    running_instances,
     update_instance,
     update_program_model,
 )
@@ -43,6 +46,60 @@ class StateStorageTests(unittest.TestCase):
             save_state(expected, path)
             self.assertEqual(json.loads(path.read_text()), expected)
             self.assertEqual(load_state(path), expected)
+
+    def test_reset_configured_instances_only_removes_requested_instances(self):
+        database = {"schema_version": 1, "instances": {
+            "1": {"runs": 3},
+            "2": {"runs": 1},
+            "3": {"runs": 5},
+        }}
+
+        removed = reset_configured_instances(database, {"reset_instance_ids": "2, nope"})
+
+        self.assertEqual(removed, ["2"])
+        self.assertIn("1", database["instances"])
+        self.assertNotIn("2", database["instances"])
+        self.assertIn("3", database["instances"])
+
+    def test_empty_reset_does_not_default_to_instance_one(self):
+        database = {"schema_version": 1, "instances": {"1": {"runs": 3}}}
+
+        removed = reset_configured_instances(database, {"reset_instance_ids": "nope"})
+
+        self.assertEqual(removed, [])
+        self.assertIn("1", database["instances"])
+
+    def test_running_instances_reports_active_captures(self):
+        database = {"schema_version": 1, "instances": {
+            "1": {"cycle_start": "2026-01-01T00:00:00+00:00"},
+            "2": {"runs": 1},
+        }}
+        configs = [
+            {"instance_id": "1", "name": "Dishwasher 1"},
+            {"instance_id": "2", "name": "Washing Machine 1"},
+        ]
+
+        self.assertEqual(running_instances(database, configs), [{
+            "instance_id": "1",
+            "name": "Dishwasher 1",
+            "cycle_start": "2026-01-01T00:00:00+00:00",
+        }])
+
+    @patch("load_optimizer.app.main.api_request")
+    def test_restart_warning_creates_persistent_notification(self, api_request):
+        publish_restart_warning("token", [{
+            "instance_id": "2",
+            "name": "Washing Machine 1",
+            "cycle_start": "2026-01-01T00:00:00+00:00",
+        }])
+
+        api_request.assert_called_once()
+        self.assertEqual(api_request.call_args.args[1], "/services/persistent_notification/create")
+        self.assertEqual(
+            api_request.call_args.args[2]["notification_id"],
+            "load_optimizer_restart_running_cycle",
+        )
+        self.assertIn("Washing Machine 1", api_request.call_args.args[2]["message"])
 
     def test_options_are_loaded_from_json(self):
         with tempfile.TemporaryDirectory() as directory:

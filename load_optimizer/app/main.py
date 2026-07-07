@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.7.1"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -311,12 +311,66 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
 
 def configured_instance_ids(options: dict) -> list[str]:
     raw_ids = str(options.get("instance_ids", "1"))
+    return parse_instance_ids(raw_ids, default=["1"])
+
+
+def parse_instance_ids(raw_ids: object, default: list[str] | None = None) -> list[str]:
+    raw_ids = str(raw_ids)
     instance_ids = []
     for raw_id in raw_ids.split(","):
         instance_id = raw_id.strip()
         if instance_id.isdigit() and int(instance_id) > 0 and instance_id not in instance_ids:
             instance_ids.append(instance_id)
-    return instance_ids or ["1"]
+    return instance_ids or (default if default is not None else [])
+
+
+def reset_configured_instances(database: dict, options: dict) -> list[str]:
+    raw_reset = str(options.get("reset_instance_ids", "")).strip()
+    if not raw_reset:
+        return []
+    reset_ids = parse_instance_ids(raw_reset)
+    instances = database.setdefault("instances", {})
+    removed = []
+    for instance_id in reset_ids:
+        if instance_id in instances:
+            instances.pop(instance_id, None)
+            removed.append(instance_id)
+    if removed:
+        LOGGER.warning("Reset Load Optimizer instance data for: %s", ", ".join(removed))
+    return removed
+
+
+def running_instances(database: dict, configs: list[dict]) -> list[dict]:
+    instances = database.get("instances", {})
+    running = []
+    for config in configs:
+        instance_id = str(config["instance_id"])
+        instance = instances.get(instance_id, {})
+        if instance.get("cycle_start"):
+            running.append({
+                "instance_id": instance_id,
+                "name": config["name"],
+                "cycle_start": instance["cycle_start"],
+            })
+    return running
+
+
+def publish_restart_warning(token: str, running: list[dict]) -> None:
+    if not running:
+        return
+    lines = [
+        f"- Instance {item['instance_id']} ({item['name']}) started at {item['cycle_start']}"
+        for item in running
+    ]
+    api_request(token, "/services/persistent_notification/create", {
+        "notification_id": "load_optimizer_restart_running_cycle",
+        "title": "Load Optimizer restarted during a cycle",
+        "message": (
+            "Load Optimizer started while one or more appliance cycles were already "
+            "being tracked. The current cycle data may be incomplete or split.\n\n"
+            + "\n".join(lines)
+        ),
+    })
 
 
 def instance_configs(options: dict | None = None) -> list[dict]:
@@ -547,10 +601,11 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         publish_entity(token, f"{prefix}_{suffix}", value, {"friendly_name": f"{name} {suffix.replace('_', ' ').title()}", **attrs})
 
 
-def publish_status(token: str, instance_count: int) -> None:
+def publish_status(token: str, instance_count: int, running: list[dict] | None = None) -> None:
     publish_entity(token, STATUS_ENTITY, "running", {
         "friendly_name": "Load Optimizer Status", "icon": "mdi:transmission-tower",
         "version": APP_VERSION, "instances": instance_count,
+        "active_capture_instances": running or [],
     })
 
 
@@ -585,23 +640,26 @@ def main() -> None:
         raise RuntimeError("SUPERVISOR_TOKEN was not provided by Home Assistant")
 
     interval = max(10, int(os.getenv("LOAD_OPTIMIZER_SCAN_INTERVAL", "60")))
-    state = load_state()
-    bootstrap_program_models(state)
     options = load_options()
+    state = load_state()
+    reset_configured_instances(state, options)
+    bootstrap_program_models(state)
     configs = instance_configs(options)
+    startup_running = running_instances(state, configs)
     save_state(state)
     health_server = run_health_server()
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     LOGGER.info("Load Optimizer %s started", APP_VERSION)
+    publish_restart_warning(token, startup_running)
 
     try:
         while not STOP_EVENT.is_set():
             for config in configs:
                 update_instance(token, state, config)
             save_state(state)
-            publish_status(token, len(configs))
+            publish_status(token, len(configs), running_instances(state, configs))
             STOP_EVENT.wait(interval)
     finally:
         health_server.shutdown()

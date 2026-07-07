@@ -8,6 +8,9 @@ configuration:
   instance_ids:
     name: Instance IDs
     description: Comma-separated appliance instance numbers to monitor, such as 1 or 1,2.
+  reset_instance_ids:
+    name: Reset instance IDs
+    description: Optional comma-separated instance numbers to clear from app storage on next start. Clear this after use.
   instance_1_name:
     name: Instance 1 name
     description: Friendly name for appliance instance 1.
