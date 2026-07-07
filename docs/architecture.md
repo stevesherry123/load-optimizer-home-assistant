@@ -140,6 +140,20 @@ This classification should support cost estimation as well as recommendation:
 two cycles with the same total energy can have very different costs when their
 high-power phases land in different tariff windows.
 
+## Runtime Status Clarity
+
+Status: Backlog / user experience
+
+Instance status should distinguish between configuration health and active
+capture state. Today `sensor.load_optimizer_N_cycle_state` correctly reports
+`running` during a detected cycle, while `sensor.load_optimizer_N_status` can
+still report `ready`.
+
+Future versions should expose a clearer instance status such as `capturing`
+while preserving separate health and configuration indicators. This will make
+live monitoring easier to understand without changing the underlying cycle
+state model.
+
 ## Retirement Plan
 
 Legacy helper names should remain only long enough to migrate state forward.
