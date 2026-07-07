@@ -8,7 +8,7 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 - **Log level** controls diagnostic detail.
 - **Scan interval** controls how often the app refreshes its Home Assistant state.
 - **Instance IDs** is a comma-separated list of appliance instances to monitor,
-  such as `1` or `1,2`.
+  such as `1` or `1,2`. Quotes are recommended in YAML examples for clarity.
 - **Reset instance IDs** is normally blank. Set it briefly to a comma-separated
   list such as `2` to clear selected learned instance data on the next app
   start, then clear it again.
@@ -129,14 +129,16 @@ To clear contaminated learning data for a single instance, set
 reset_instance_ids: "2"
 ```
 
-After confirming the instance has reset, set it back to:
+The same reset request is processed only once while it remains configured, so an
+accidentally lingering value will not repeatedly wipe new data on every restart.
+After confirming the instance has reset, still set it back to:
 
 ```yaml
 reset_instance_ids: ""
 ```
 
-Leaving `reset_instance_ids` populated will clear that instance again on every
-app start.
+Clearing the field also re-arms it, allowing the same instance to be reset again
+later if needed.
 
 ## Cost estimation
 

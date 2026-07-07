@@ -60,6 +60,29 @@ class StateStorageTests(unittest.TestCase):
         self.assertIn("1", database["instances"])
         self.assertNotIn("2", database["instances"])
         self.assertIn("3", database["instances"])
+        self.assertEqual(database["processed_reset_instance_ids"], ["2"])
+
+    def test_reset_configured_instances_is_one_shot_while_config_remains_set(self):
+        database = {"schema_version": 1, "instances": {"2": {"runs": 1}}}
+        options = {"reset_instance_ids": "2"}
+
+        self.assertEqual(reset_configured_instances(database, options), ["2"])
+        database["instances"]["2"] = {"runs": 99}
+        self.assertEqual(reset_configured_instances(database, options), [])
+
+        self.assertIn("2", database["instances"])
+        self.assertEqual(database["instances"]["2"]["runs"], 99)
+
+    def test_clearing_reset_config_allows_future_reset(self):
+        database = {
+            "schema_version": 1,
+            "instances": {"2": {"runs": 99}},
+            "processed_reset_instance_ids": ["2"],
+        }
+
+        self.assertEqual(reset_configured_instances(database, {"reset_instance_ids": ""}), [])
+        self.assertNotIn("processed_reset_instance_ids", database)
+        self.assertEqual(reset_configured_instances(database, {"reset_instance_ids": "2"}), ["2"])
 
     def test_empty_reset_does_not_default_to_instance_one(self):
         database = {"schema_version": 1, "instances": {"1": {"runs": 3}}}

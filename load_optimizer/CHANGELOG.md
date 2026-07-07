@@ -6,6 +6,13 @@
   water, consumables, equipment wear, and applicable battery degradation.
 - Add a sanitized appliance and program-policy configuration example.
 
+## 0.7.2
+
+- Make `reset_instance_ids` one-shot while the same value remains configured, so
+  an accidental lingering reset value does not repeatedly clear new learning
+  after every restart.
+- Re-arm reset processing when `reset_instance_ids` is cleared.
+
 ## 0.7.1
 
 - Add a manual `reset_instance_ids` safety valve for clearing selected
