@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.1"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -332,11 +332,18 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
         if ready:
             attributes.update({
                 "program": result.get("program"),
+                "energy_kwh": result.get("energy_kwh"),
                 "energy_cost_pence": result.get("energy_cost_pence"),
                 "overhead_cost_pence": result.get("overhead_cost_pence"),
                 "negative_price_run": result.get("negative_price_run"),
                 "candidate_count": result.get("candidate_count"),
             })
+            if suffix in {"cheapest_cost", "cheapest_start", "recommended_program"}:
+                attributes["cost_breakdown"] = result.get("cost_breakdown", [])
+                attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
+            if suffix == "cost_if_started_now":
+                attributes["cost_breakdown"] = result.get("cost_if_started_now_breakdown", [])
+                attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
         publish_entity(token, f"{prefix}_{suffix}", value if value is not None else "unknown", attributes)
 
 

@@ -6,6 +6,13 @@
   water, consumables, equipment wear, and applicable battery degradation.
 - Add a sanitized appliance and program-policy configuration example.
 
+## 0.6.1
+
+- Publish a per-tariff-window cost breakdown for profile-based estimates.
+- Expose how much learned cycle energy falls into each half-hour price period.
+- Preserve profile-weighted costing for cycles where high-power phases occur in
+  cheaper or negative-price windows and low-power phases continue later.
+
 ## 0.6.0
 
 - Add a read-only tariff cost-estimation engine.

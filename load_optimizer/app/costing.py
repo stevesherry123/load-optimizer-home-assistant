@@ -165,6 +165,7 @@ def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> di
     start = start.astimezone(timezone.utc)
     cost = 0.0
     energy = 0.0
+    breakdown_by_start: dict[datetime, dict] = {}
     for segment in _profile_segments(model):
         segment_start = start + timedelta(seconds=segment["offset_start"])
         segment_end = start + timedelta(seconds=segment["offset_end"])
@@ -176,12 +177,37 @@ def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> di
                 continue
             seconds = (overlap_end - overlap_start).total_seconds()
             segment_energy = segment["power_w"] * seconds / 3_600_000
+            segment_cost = segment_energy * period["price_p_per_kwh"]
             energy += segment_energy
-            cost += segment_energy * period["price_p_per_kwh"]
+            cost += segment_cost
             covered_seconds += seconds
+            bucket = breakdown_by_start.setdefault(period["start"], {
+                "start": period["start"],
+                "end": period["end"],
+                "price_p_per_kwh": period["price_p_per_kwh"],
+                "energy_kwh": 0.0,
+                "energy_cost_pence": 0.0,
+            })
+            bucket["energy_kwh"] += segment_energy
+            bucket["energy_cost_pence"] += segment_cost
         if covered_seconds + 0.001 < (segment_end - segment_start).total_seconds():
             raise ValueError("Tariff does not fully cover the cycle")
-    return {"energy_kwh": round(energy, 6), "energy_cost_pence": round(cost, 4)}
+    breakdown = [
+        {
+            "start": item["start"].isoformat(),
+            "end": item["end"].isoformat(),
+            "price_p_per_kwh": item["price_p_per_kwh"],
+            "energy_kwh": round(item["energy_kwh"], 6),
+            "energy_cost_pence": round(item["energy_cost_pence"], 4),
+        }
+        for item in sorted(breakdown_by_start.values(), key=lambda value: value["start"])
+        if item["energy_kwh"] > 0
+    ]
+    return {
+        "energy_kwh": round(energy, 6),
+        "energy_cost_pence": round(cost, 4),
+        "cost_breakdown": breakdown,
+    }
 
 
 def _next_candidate(reference: datetime, interval_minutes: int) -> datetime:
@@ -231,6 +257,8 @@ def recommend_cycle(
                     "program": model["program"],
                     "start": start,
                     "energy_cost_pence": estimate["energy_cost_pence"],
+                    "energy_kwh": estimate["energy_kwh"],
+                    "cost_breakdown": estimate["cost_breakdown"],
                     "overhead_cost_pence": policy["estimated_overhead_cost_pence"],
                     "total_cost_pence": round(total_cost, 4),
                     "confidence": model.get("confidence", 0),
@@ -249,12 +277,15 @@ def recommend_cycle(
         now_estimate = estimate_cycle_cost(reference_utc, selected_model, periods)
         policy = policy_by_program[cheapest["program"]]
         now_cost = round(now_estimate["energy_cost_pence"] + policy["estimated_overhead_cost_pence"], 4)
+        now_breakdown = now_estimate["cost_breakdown"]
     except ValueError:
         now_cost = None
+        now_breakdown = []
     return {
         "status": "ready",
         **cheapest,
         "cost_if_started_now_pence": now_cost,
+        "cost_if_started_now_breakdown": now_breakdown,
         "potential_saving_pence": round(max(0.0, now_cost - cheapest["total_cost_pence"]), 4) if now_cost is not None else None,
         "candidate_count": len(candidates),
     }

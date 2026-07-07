@@ -58,6 +58,44 @@ class CostEstimationTests(unittest.TestCase):
 
         self.assertAlmostEqual(result["energy_kwh"], 1.0)
         self.assertAlmostEqual(result["energy_cost_pence"], 10.0)
+        self.assertEqual(result["cost_breakdown"][0]["energy_kwh"], 1.0)
+        self.assertEqual(result["cost_breakdown"][0]["energy_cost_pence"], 10.0)
+
+    def test_cost_breakdown_uses_power_timing_not_flat_average(self):
+        model = {
+            "program": "Intensive",
+            "expected_runtime_minutes": 60,
+            "expected_energy_kwh": 1.0,
+            "representative_profile_w": [2000, 2000, 0],
+        }
+
+        result = estimate_cycle_cost(
+            self.start,
+            model,
+            [
+                self.period(0, 30, 0),
+                self.period(30, 60, 50),
+            ],
+        )
+
+        self.assertEqual(result["energy_kwh"], 1.0)
+        self.assertEqual(result["energy_cost_pence"], 16.6667)
+        self.assertEqual(result["cost_breakdown"], [
+            {
+                "start": "2026-07-06T00:00:00+00:00",
+                "end": "2026-07-06T00:30:00+00:00",
+                "price_p_per_kwh": 0,
+                "energy_kwh": 0.666667,
+                "energy_cost_pence": 0.0,
+            },
+            {
+                "start": "2026-07-06T00:30:00+00:00",
+                "end": "2026-07-06T01:00:00+00:00",
+                "price_p_per_kwh": 50,
+                "energy_kwh": 0.333333,
+                "energy_cost_pence": 16.6667,
+            },
+        ])
 
     def test_tariff_gap_rejects_cost(self):
         with self.assertRaisesRegex(ValueError, "fully cover"):
@@ -94,6 +132,8 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["start"], self.start + timedelta(hours=1))
         self.assertEqual(result["total_cost_pence"], 7.0)
         self.assertEqual(result["potential_saving_pence"], 15.0)
+        self.assertEqual(result["cost_breakdown"][0]["energy_cost_pence"], 5.0)
+        self.assertEqual(result["cost_if_started_now_breakdown"][0]["energy_cost_pence"], 20.0)
 
     def test_opportunistic_policy_only_uses_negative_window(self):
         model = {**self.model, "expected_runtime_minutes": 30}
