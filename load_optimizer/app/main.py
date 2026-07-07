@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.7.1"
+APP_VERSION = "0.7.2"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -327,14 +327,21 @@ def parse_instance_ids(raw_ids: object, default: list[str] | None = None) -> lis
 def reset_configured_instances(database: dict, options: dict) -> list[str]:
     raw_reset = str(options.get("reset_instance_ids", "")).strip()
     if not raw_reset:
+        database.pop("processed_reset_instance_ids", None)
         return []
     reset_ids = parse_instance_ids(raw_reset)
+    processed = set(database.get("processed_reset_instance_ids", []))
+    reset_ids = [instance_id for instance_id in reset_ids if instance_id not in processed]
+    if not reset_ids:
+        return []
     instances = database.setdefault("instances", {})
     removed = []
     for instance_id in reset_ids:
         if instance_id in instances:
             instances.pop(instance_id, None)
             removed.append(instance_id)
+        processed.add(instance_id)
+    database["processed_reset_instance_ids"] = sorted(processed, key=int)
     if removed:
         LOGGER.warning("Reset Load Optimizer instance data for: %s", ", ".join(removed))
     return removed
