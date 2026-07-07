@@ -122,6 +122,13 @@ and publishes recommendations only; it never starts an appliance.
 - `sensor.load_optimizer_1_cost_confidence`
 - `sensor.load_optimizer_1_recommended_program`
 
+Ready cost entities include a `cost_breakdown` attribute where applicable. Each
+entry shows the tariff period start/end, the price in pence per kWh, the learned
+cycle energy allocated to that period, and the resulting cost. This is important
+for long-running appliances: a cycle can continue into an expensive period while
+most of its high-power work happened earlier during a cheap, free, or negative
+price window.
+
 Expected non-ready states include `tariff_not_configured`, `tariff_unavailable`,
 `tariff_invalid`, `no_eligible_programs`, and `insufficient_profile`.
 
