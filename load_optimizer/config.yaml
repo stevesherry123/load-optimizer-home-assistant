@@ -1,5 +1,5 @@
 name: Load Optimizer
-version: "0.7.0"
+version: "0.7.1"
 slug: load_optimizer
 description: Learn appliance cycles and find the most economical time and mode to run them.
 url: https://github.com/stevesherry123/load-optimizer-home-assistant
@@ -17,6 +17,7 @@ options:
   log_level: info
   scan_interval: 60
   instance_ids: "1"
+  reset_instance_ids: ""
   instance_1_name: Appliance 1
   instance_1_power_sensor: ""
   instance_1_energy_sensor: ""
@@ -42,6 +43,7 @@ schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   scan_interval: int(10,3600)
   instance_ids: str
+  reset_instance_ids: str
   instance_1_name: str
   instance_1_power_sensor: str
   instance_1_energy_sensor: str

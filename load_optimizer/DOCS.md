@@ -9,6 +9,9 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 - **Scan interval** controls how often the app refreshes its Home Assistant state.
 - **Instance IDs** is a comma-separated list of appliance instances to monitor,
   such as `1` or `1,2`.
+- **Reset instance IDs** is normally blank. Set it briefly to a comma-separated
+  list such as `2` to clear selected learned instance data on the next app
+  start, then clear it again.
 - **Instance N name** is the friendly appliance name, such as `Dishwasher 1` or
   `Washing Machine 1`.
 - **Power sensor** is required for cycle detection.
@@ -66,6 +69,7 @@ alternative that will not be selected automatically:
 log_level: info
 scan_interval: 60
 instance_ids: "1,2"
+reset_instance_ids: ""
 instance_1_name: Dishwasher 1
 instance_1_power_sensor: sensor.your_appliance_power
 instance_1_energy_sensor: sensor.your_appliance_energy
@@ -105,6 +109,34 @@ Only `program` and `classification` are required. All other policy fields are
 optional and use the conservative defaults published in the
 `optional_field_defaults` attribute of
 `sensor.load_optimizer_N_program_policies`.
+
+## Operational Safeguards
+
+If the app starts while an instance already has an active cycle capture, Home
+Assistant receives a persistent notification. This can happen during manual
+restarts, host restarts, or public auto-updates. The app does not automatically
+discard or repair that capture because doing so could lose useful data; it
+instead makes the interruption visible so the user can decide whether to keep or
+reset the affected instance.
+
+The main status entity also exposes `active_capture_instances` so dashboards and
+debugging views can show whether any appliance was mid-cycle at the last update.
+
+To clear contaminated learning data for a single instance, set
+`reset_instance_ids` and restart the app:
+
+```yaml
+reset_instance_ids: "2"
+```
+
+After confirming the instance has reset, set it back to:
+
+```yaml
+reset_instance_ids: ""
+```
+
+Leaving `reset_instance_ids` populated will clear that instance again on every
+app start.
 
 ## Cost estimation
 
