@@ -110,6 +110,36 @@ This broader cost model will be particularly relevant when evaluating negative
 electricity prices. Consuming electricity may appear profitable while still
 incurring water, consumable, and equipment costs.
 
+## Inferred Cycle Classification
+
+Status: Backlog / future learning
+
+Some appliances do not expose a selected program or operation state to Home
+Assistant. Washing machines connected only through a smart plug are a good
+example: the app can see power and energy, but not whether the user selected a
+short spin, rinse, cotton wash, eco wash, or maintenance cycle.
+
+Future versions should infer a probable cycle class from the learned power
+signature. Useful signals include:
+
+- total runtime
+- total energy
+- peak power
+- number and timing of heating phases
+- number and timing of spin-like high-power bursts
+- idle gaps or soak periods
+- energy distribution across the cycle
+
+The first implementation should stay conservative. A dumb washing machine can
+initially learn under `Default`, then later split learned runs into inferred
+classes such as `ShortSpin`, `Wash`, `EcoWash`, `Rinse`, or `Maintenance` once
+there is enough evidence. Inferred classes should be visible to the user and
+remain overrideable through explicit program policies.
+
+This classification should support cost estimation as well as recommendation:
+two cycles with the same total energy can have very different costs when their
+high-power phases land in different tariff windows.
+
 ## Retirement Plan
 
 Legacy helper names should remain only long enough to migrate state forward.
