@@ -9,9 +9,11 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 - **Scan interval** controls how often the app refreshes its Home Assistant state.
 - **Instance IDs** is a comma-separated list of appliance instances to monitor,
   such as `1` or `1,2`. Quotes are recommended in YAML examples for clarity.
-- **Reset instance IDs** is normally blank. Set it briefly to a comma-separated
-  list such as `2` to clear selected learned instance data on the next app
-  start, then clear it again.
+- **Reset instance IDs** is normally blank. Set it to a comma-separated list
+  such as `2` to clear selected learned instance data on the next app start.
+  The request is one-shot while the same value remains configured, and
+  `sensor.load_optimizer_status` reports whether it is pending, consumed, or
+  invalid.
 - **Instance N name** is the friendly appliance name, such as `Dishwasher 1` or
   `Washing Machine 1`.
 - **Power sensor** is required for cycle detection.
@@ -131,7 +133,11 @@ reset_instance_ids: "2"
 
 The same reset request is processed only once while it remains configured, so an
 accidentally lingering value will not repeatedly wipe new data on every restart.
-After confirming the instance has reset, still set it back to:
+`sensor.load_optimizer_status` exposes reset feedback attributes including
+`reset_status`, `reset_requested_instance_ids`, `reset_processed_instance_ids`,
+`reset_pending_instance_ids`, `reset_invalid_tokens`, and `reset_message`.
+
+After confirming the instance has reset, you may still set it back to:
 
 ```yaml
 reset_instance_ids: ""

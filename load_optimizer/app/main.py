@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.7.2"
+APP_VERSION = "0.7.3"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -324,6 +324,61 @@ def parse_instance_ids(raw_ids: object, default: list[str] | None = None) -> lis
     return instance_ids or (default if default is not None else [])
 
 
+def reset_request_status(database: dict, options: dict) -> dict:
+    raw_reset = str(options.get("reset_instance_ids", "")).strip()
+    if not raw_reset:
+        return {
+            "reset_status": "idle",
+            "reset_requested_instance_ids": [],
+            "reset_processed_instance_ids": [],
+            "reset_pending_instance_ids": [],
+            "reset_invalid_tokens": [],
+            "reset_message": "No reset request is configured.",
+        }
+
+    requested = parse_instance_ids(raw_reset)
+    invalid = [
+        token.strip()
+        for token in raw_reset.split(",")
+        if token.strip() and token.strip() not in requested
+    ]
+    processed = sorted(
+        {
+            str(instance_id)
+            for instance_id in database.get("processed_reset_instance_ids", [])
+            if str(instance_id).isdigit()
+        },
+        key=int,
+    )
+    pending = [instance_id for instance_id in requested if instance_id not in processed]
+
+    if pending:
+        status = "pending"
+        message = f"Reset pending for instance(s): {', '.join(pending)}."
+    elif requested:
+        status = "consumed"
+        message = (
+            f"Reset request has already been applied for instance(s): "
+            f"{', '.join(requested)}."
+        )
+    else:
+        status = "invalid"
+        message = "Reset request does not contain any valid positive instance IDs."
+
+    if invalid and status != "invalid":
+        status = "partially_invalid"
+        message = f"{message} Ignored invalid value(s): {', '.join(invalid)}."
+
+    return {
+        "reset_status": status,
+        "reset_requested_instance_ids": requested,
+        "reset_processed_instance_ids": processed,
+        "reset_pending_instance_ids": pending,
+        "reset_invalid_tokens": invalid,
+        "reset_message": message,
+    }
+
+
 def reset_configured_instances(database: dict, options: dict) -> list[str]:
     raw_reset = str(options.get("reset_instance_ids", "")).strip()
     if not raw_reset:
@@ -608,11 +663,17 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         publish_entity(token, f"{prefix}_{suffix}", value, {"friendly_name": f"{name} {suffix.replace('_', ' ').title()}", **attrs})
 
 
-def publish_status(token: str, instance_count: int, running: list[dict] | None = None) -> None:
+def publish_status(
+    token: str,
+    instance_count: int,
+    running: list[dict] | None = None,
+    reset_status: dict | None = None,
+) -> None:
     publish_entity(token, STATUS_ENTITY, "running", {
         "friendly_name": "Load Optimizer Status", "icon": "mdi:transmission-tower",
         "version": APP_VERSION, "instances": instance_count,
         "active_capture_instances": running or [],
+        **(reset_status or {}),
     })
 
 
@@ -666,7 +727,12 @@ def main() -> None:
             for config in configs:
                 update_instance(token, state, config)
             save_state(state)
-            publish_status(token, len(configs), running_instances(state, configs))
+            publish_status(
+                token,
+                len(configs),
+                running_instances(state, configs),
+                reset_request_status(state, options),
+            )
             STOP_EVENT.wait(interval)
     finally:
         health_server.shutdown()
