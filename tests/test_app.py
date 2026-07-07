@@ -7,7 +7,9 @@ from unittest.mock import patch
 
 from load_optimizer.app.main import (
     bootstrap_program_models,
+    configured_instance_ids,
     instance_config,
+    instance_configs,
     load_state,
     load_options,
     normalise_profile,
@@ -52,6 +54,7 @@ class StateStorageTests(unittest.TestCase):
 class InstanceMonitoringTests(unittest.TestCase):
     def setUp(self):
         self.config = {
+            "instance_id": "1",
             "name": "Dishwasher 1",
             "power_sensor": "sensor.test_power",
             "energy_sensor": "sensor.test_energy",
@@ -77,6 +80,33 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(instance["program"], "Eco")
         self.assertEqual(instance["peak_power"], 1200)
         self.assertEqual(instance["samples"], 1)
+
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.source_state")
+    def test_second_instance_uses_own_state_and_entity_prefix(self, source, publish):
+        source.side_effect = lambda _token, entity_id: {
+            "sensor.washer_power": {"state": "500"},
+            "sensor.washer_energy": {"state": "8.25"},
+            "sensor.washer_program": {"state": "Cottons"},
+        }.get(entity_id)
+        database = {"schema_version": 1, "instances": {"1": {"runs": 3}}}
+        config = {
+            **self.config,
+            "instance_id": "2",
+            "name": "Washing Machine 1",
+            "power_sensor": "sensor.washer_power",
+            "energy_sensor": "sensor.washer_energy",
+            "program_sensor": "sensor.washer_program",
+        }
+
+        update_instance("token", database, config, datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+        self.assertIn("1", database["instances"])
+        self.assertIn("2", database["instances"])
+        self.assertEqual(database["instances"]["2"]["program"], "Cottons")
+        published_ids = [call.args[1] for call in publish.call_args_list]
+        self.assertIn("sensor.load_optimizer_2_status", published_ids)
+        self.assertIn("sensor.load_optimizer_2_power", published_ids)
 
     def test_bosch_program_name_is_normalised(self):
         self.assertEqual(
@@ -254,6 +284,32 @@ class ProgramPolicyTests(unittest.TestCase):
         configured = [{"program": "Eco", "classification": "preferred"}]
         config = instance_config({"instance_1_program_policies": configured})
         self.assertEqual(config["program_policies"], configured)
+
+    def test_instance_config_reads_requested_instance(self):
+        options = {
+            "instance_ids": "1,2",
+            "instance_2_name": "Washing Machine 1",
+            "instance_2_power_sensor": "sensor.washing_power",
+            "instance_2_program_policies": [{"program": "Cottons", "classification": "preferred"}],
+        }
+
+        config = instance_config("2", options)
+
+        self.assertEqual(config["instance_id"], "2")
+        self.assertEqual(config["name"], "Washing Machine 1")
+        self.assertEqual(config["power_sensor"], "sensor.washing_power")
+        self.assertEqual(config["program_policies"][0]["program"], "Cottons")
+
+    def test_instance_configs_follow_configured_ids(self):
+        options = {"instance_ids": "1, 2, nope, 2, 0", "instance_2_name": "Washer"}
+
+        configs = instance_configs(options)
+
+        self.assertEqual([config["instance_id"] for config in configs], ["1", "2"])
+        self.assertEqual(configs[1]["name"], "Washer")
+
+    def test_configured_instance_ids_default_to_first_instance(self):
+        self.assertEqual(configured_instance_ids({}), ["1"])
 
 
 if __name__ == "__main__":

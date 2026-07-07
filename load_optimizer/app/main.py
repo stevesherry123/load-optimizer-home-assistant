@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.6.1"
+APP_VERSION = "0.7.0"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -279,23 +279,49 @@ def resolve_program_policies(models: dict, configured: list[dict]) -> list[dict]
     return [resolved[program] for program in sorted(resolved)]
 
 
-def instance_config(options: dict | None = None) -> dict:
+def _option_or_env(options: dict, key: str, default: object = "") -> object:
+    env_key = f"LOAD_OPTIMIZER_{key.upper()}"
+    return os.getenv(env_key, options.get(key, default))
+
+
+def instance_config(instance_id: str | dict = "1", options: dict | None = None) -> dict:
+    if isinstance(instance_id, dict) and options is None:
+        options = instance_id
+        instance_id = "1"
+    instance_id = str(instance_id)
     options = options if options is not None else load_options()
+    prefix = f"instance_{instance_id}"
     return {
-        "name": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_NAME", "Appliance 1"),
-        "power_sensor": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_POWER_SENSOR", "").strip(),
-        "energy_sensor": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_ENERGY_SENSOR", "").strip(),
-        "program_sensor": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_PROGRAM_SENSOR", "").strip(),
-        "state_sensor": os.getenv("LOAD_OPTIMIZER_INSTANCE_1_STATE_SENSOR", "").strip(),
-        "active_power_threshold": float(os.getenv("LOAD_OPTIMIZER_INSTANCE_1_ACTIVE_POWER_THRESHOLD", "10")),
-        "finish_delay": int(os.getenv("LOAD_OPTIMIZER_INSTANCE_1_FINISH_DELAY", "5")),
-        "program_policies": options.get("instance_1_program_policies", []),
+        "instance_id": instance_id,
+        "name": str(_option_or_env(options, f"{prefix}_name", f"Appliance {instance_id}")),
+        "power_sensor": str(_option_or_env(options, f"{prefix}_power_sensor", "")).strip(),
+        "energy_sensor": str(_option_or_env(options, f"{prefix}_energy_sensor", "")).strip(),
+        "program_sensor": str(_option_or_env(options, f"{prefix}_program_sensor", "")).strip(),
+        "state_sensor": str(_option_or_env(options, f"{prefix}_state_sensor", "")).strip(),
+        "active_power_threshold": float(_option_or_env(options, f"{prefix}_active_power_threshold", 10)),
+        "finish_delay": int(_option_or_env(options, f"{prefix}_finish_delay", 5)),
+        "program_policies": options.get(f"{prefix}_program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_timezone": str(options.get("tariff_timezone", "Europe/London")).strip(),
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_candidate_interval": int(options.get("cost_candidate_interval", 5)),
     }
+
+
+def configured_instance_ids(options: dict) -> list[str]:
+    raw_ids = str(options.get("instance_ids", "1"))
+    instance_ids = []
+    for raw_id in raw_ids.split(","):
+        instance_id = raw_id.strip()
+        if instance_id.isdigit() and int(instance_id) > 0 and instance_id not in instance_ids:
+            instance_ids.append(instance_id)
+    return instance_ids or ["1"]
+
+
+def instance_configs(options: dict | None = None) -> list[dict]:
+    options = options if options is not None else load_options()
+    return [instance_config(instance_id, options) for instance_id in configured_instance_ids(options)]
 
 
 def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> None:
@@ -349,14 +375,15 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
 
 def update_instance(token: str, database: dict, config: dict, now: datetime | None = None) -> None:
     now = now or datetime.now(timezone.utc)
-    instance = database.setdefault("instances", {}).setdefault("1", {})
+    instance_id = str(config.get("instance_id", "1"))
+    instance = database.setdefault("instances", {}).setdefault(instance_id, {})
     power_entity = source_state(token, config["power_sensor"])
     energy_entity = source_state(token, config["energy_sensor"])
     program_entity = source_state(token, config["program_sensor"])
     device_state_entity = source_state(token, config["state_sensor"])
     power = numeric_state(power_entity)
     energy = numeric_state(energy_entity)
-    prefix = "sensor.load_optimizer_1"
+    prefix = f"sensor.load_optimizer_{instance_id}"
     name = config["name"]
 
     configured = bool(config["power_sensor"])
@@ -560,7 +587,8 @@ def main() -> None:
     interval = max(10, int(os.getenv("LOAD_OPTIMIZER_SCAN_INTERVAL", "60")))
     state = load_state()
     bootstrap_program_models(state)
-    config = instance_config()
+    options = load_options()
+    configs = instance_configs(options)
     save_state(state)
     health_server = run_health_server()
 
@@ -570,9 +598,10 @@ def main() -> None:
 
     try:
         while not STOP_EVENT.is_set():
-            update_instance(token, state, config)
+            for config in configs:
+                update_instance(token, state, config)
             save_state(state)
-            publish_status(token, len(state.get("instances", {})))
+            publish_status(token, len(configs))
             STOP_EVENT.wait(interval)
     finally:
         health_server.shutdown()
