@@ -16,9 +16,11 @@ https://github.com/stevesherry123/load-optimizer-home-assistant
 Install **Load Optimizer**, start it, and confirm that
 `sensor.load_optimizer_status` reports `running`.
 
-Version `0.6.0` adds the first configurable appliance instance and automatically
-publishes its `sensor.load_optimizer_1_*` monitoring entities. Configure the
-source entities on the App's **Configuration** tab, then restart the App.
+Version `0.7.0` supports multiple configured appliance instances. Configure
+`instance_ids` on the App's **Configuration** tab, for example `1` for just the
+dishwasher or `1,2` for dishwasher plus washing machine, then restart the App.
+Each instance publishes its own `sensor.load_optimizer_N_*` monitoring and cost
+entities.
 
 ## Goals
 
@@ -44,22 +46,22 @@ Use the instance-based namespace everywhere:
 - `load_optimizer_2_*` for the second appliance instance
 - future adapters can map their own device-specific sensors into the same shared model
 
-The App now publishes examples such as:
+For each configured instance, the App publishes examples such as:
 
-- `sensor.load_optimizer_1_status`
-- `sensor.load_optimizer_1_power`
-- `sensor.load_optimizer_1_energy`
-- `sensor.load_optimizer_1_cycle_state`
-- `sensor.load_optimizer_1_last_runtime`
-- `sensor.load_optimizer_1_last_energy`
-- `sensor.load_optimizer_1_last_profile`
-- `sensor.load_optimizer_1_learned_programs`
-- `sensor.load_optimizer_1_program_model`
-- `sensor.load_optimizer_1_program_policies`
-- `sensor.load_optimizer_1_cost_status`
-- `sensor.load_optimizer_1_cheapest_start`
-- `sensor.load_optimizer_1_cheapest_cost`
-- `sensor.load_optimizer_1_recommended_program`
+- `sensor.load_optimizer_N_status`
+- `sensor.load_optimizer_N_power`
+- `sensor.load_optimizer_N_energy`
+- `sensor.load_optimizer_N_cycle_state`
+- `sensor.load_optimizer_N_last_runtime`
+- `sensor.load_optimizer_N_last_energy`
+- `sensor.load_optimizer_N_last_profile`
+- `sensor.load_optimizer_N_learned_programs`
+- `sensor.load_optimizer_N_program_model`
+- `sensor.load_optimizer_N_program_policies`
+- `sensor.load_optimizer_N_cost_status`
+- `sensor.load_optimizer_N_cheapest_start`
+- `sensor.load_optimizer_N_cheapest_cost`
+- `sensor.load_optimizer_N_recommended_program`
 
 ## Current Scope
 

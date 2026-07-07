@@ -5,8 +5,75 @@ configuration:
   scan_interval:
     name: Scan interval
     description: Number of seconds between Home Assistant updates.
+  instance_ids:
+    name: Instance IDs
+    description: Comma-separated appliance instance numbers to monitor, such as 1 or 1,2.
+  instance_1_name:
+    name: Instance 1 name
+    description: Friendly name for appliance instance 1.
+  instance_1_power_sensor:
+    name: Instance 1 power sensor
+    description: Power sensor used to detect appliance cycles.
+  instance_1_energy_sensor:
+    name: Instance 1 energy sensor
+    description: Energy sensor used to measure completed cycle energy.
+  instance_1_program_sensor:
+    name: Instance 1 program sensor
+    description: Optional sensor containing the selected or active program.
+  instance_1_state_sensor:
+    name: Instance 1 state sensor
+    description: Optional sensor containing the appliance running state.
+  instance_1_active_power_threshold:
+    name: Instance 1 active power threshold
+    description: Watts above which the appliance is treated as running.
+  instance_1_finish_delay:
+    name: Instance 1 finish delay
+    description: Number of consecutive scans below the threshold before a cycle ends.
   instance_1_program_policies:
     name: Instance 1 program policies
+    description: Classify learned programs and set recommendation safeguards.
+    fields:
+      program:
+        name: Program
+      classification:
+        name: Classification
+      enabled:
+        name: Enabled
+      preference_rank:
+        name: Preference rank
+      allow_normal_recommendation:
+        name: Allow normal recommendation
+      allow_negative_price_run:
+        name: Allow negative-price run
+      minimum_days_between_runs:
+        name: Minimum days between runs
+      maximum_runs_per_window:
+        name: Maximum runs per window
+      estimated_overhead_cost_pence:
+        name: Estimated overhead cost (pence)
+  instance_2_name:
+    name: Instance 2 name
+    description: Friendly name for appliance instance 2.
+  instance_2_power_sensor:
+    name: Instance 2 power sensor
+    description: Power sensor used to detect appliance cycles.
+  instance_2_energy_sensor:
+    name: Instance 2 energy sensor
+    description: Energy sensor used to measure completed cycle energy.
+  instance_2_program_sensor:
+    name: Instance 2 program sensor
+    description: Optional sensor containing the selected or active program.
+  instance_2_state_sensor:
+    name: Instance 2 state sensor
+    description: Optional sensor containing the appliance running state.
+  instance_2_active_power_threshold:
+    name: Instance 2 active power threshold
+    description: Watts above which the appliance is treated as running.
+  instance_2_finish_delay:
+    name: Instance 2 finish delay
+    description: Number of consecutive scans below the threshold before a cycle ends.
+  instance_2_program_policies:
+    name: Instance 2 program policies
     description: Classify learned programs and set recommendation safeguards.
     fields:
       program:

@@ -6,6 +6,16 @@
   water, consumables, equipment wear, and applicable battery degradation.
 - Add a sanitized appliance and program-policy configuration example.
 
+## 0.7.0
+
+- Add multi-instance appliance monitoring for the Home Assistant app.
+- Keep existing installs on instance `1` by default while allowing
+  comma-separated `instance_ids`, such as `1,2`.
+- Publish each configured appliance under its own numbered sensor namespace,
+  for example `sensor.load_optimizer_1_*` and `sensor.load_optimizer_2_*`.
+- Add instance `2` add-on configuration fields for bringing a washing machine
+  into the same learning and tariff-cost pipeline.
+
 ## 0.6.1
 
 - Publish a per-tariff-window cost breakdown for profile-based estimates.

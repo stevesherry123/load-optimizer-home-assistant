@@ -1,5 +1,5 @@
 name: Load Optimizer
-version: "0.6.1"
+version: "0.7.0"
 slug: load_optimizer
 description: Learn appliance cycles and find the most economical time and mode to run them.
 url: https://github.com/stevesherry123/load-optimizer-home-assistant
@@ -16,6 +16,7 @@ ports:
 options:
   log_level: info
   scan_interval: 60
+  instance_ids: "1"
   instance_1_name: Appliance 1
   instance_1_power_sensor: ""
   instance_1_energy_sensor: ""
@@ -24,6 +25,14 @@ options:
   instance_1_active_power_threshold: 10
   instance_1_finish_delay: 5
   instance_1_program_policies: []
+  instance_2_name: Washing Machine 1
+  instance_2_power_sensor: ""
+  instance_2_energy_sensor: ""
+  instance_2_program_sensor: ""
+  instance_2_state_sensor: ""
+  instance_2_active_power_threshold: 10
+  instance_2_finish_delay: 5
+  instance_2_program_policies: []
   tariff_entity: ""
   tariff_timezone: Europe/London
   tariff_price_unit: p_per_kwh
@@ -32,6 +41,7 @@ options:
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   scan_interval: int(10,3600)
+  instance_ids: str
   instance_1_name: str
   instance_1_power_sensor: str
   instance_1_energy_sensor: str
@@ -40,6 +50,23 @@ schema:
   instance_1_active_power_threshold: float(0,100000)
   instance_1_finish_delay: int(1,120)
   instance_1_program_policies:
+    - program: str
+      classification: list(unclassified|preferred|alternative|maintenance|opportunistic|disabled)
+      enabled: bool?
+      preference_rank: int(1,100)?
+      allow_normal_recommendation: bool?
+      allow_negative_price_run: bool?
+      minimum_days_between_runs: int(0,3650)?
+      maximum_runs_per_window: int(0,20)?
+      estimated_overhead_cost_pence: float(0,10000)?
+  instance_2_name: str
+  instance_2_power_sensor: str
+  instance_2_energy_sensor: str
+  instance_2_program_sensor: str
+  instance_2_state_sensor: str
+  instance_2_active_power_threshold: float(0,100000)
+  instance_2_finish_delay: int(1,120)
+  instance_2_program_policies:
     - program: str
       classification: list(unclassified|preferred|alternative|maintenance|opportunistic|disabled)
       enabled: bool?
