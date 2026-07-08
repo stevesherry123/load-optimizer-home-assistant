@@ -1,0 +1,82 @@
+input_boolean:
+  load_optimizer_1_learning_active:
+    name: Load Optimizer 1 Learning Active
+
+input_text:
+  load_optimizer_1_cycle_program:
+    name: Load Optimizer 1 Cycle Program
+    max: 100
+
+  load_optimizer_1_cycle_profile:
+    name: Load Optimizer 1 Cycle Profile
+    max: 255
+
+  load_optimizer_1_learning_database:
+    name: Load Optimizer 1 Learning Database
+    max: 255
+
+  load_optimizer_1_learning_summary:
+    name: Load Optimizer 1 Learning Summary
+    max: 255
+
+  load_optimizer_1_last_program:
+    name: Load Optimizer 1 Last Program
+    max: 100
+
+  load_optimizer_1_cycle_state:
+    name: Load Optimizer 1 Cycle State
+    max: 100
+
+input_number:
+  load_optimizer_1_cycle_sample_count:
+    name: Load Optimizer 1 Cycle Sample Count
+    min: 0
+    max: 2000
+    step: 1
+
+  load_optimizer_1_cycle_start_energy:
+    name: Load Optimizer 1 Cycle Start Energy
+    min: 0
+    max: 100
+    step: 0.001
+
+  load_optimizer_1_peak_power:
+    name: Load Optimizer 1 Peak Power
+    min: 0
+    max: 5000
+    step: 1
+
+  load_optimizer_1_last_runtime_minutes:
+    name: Load Optimizer 1 Last Runtime Minutes
+    min: 0
+    max: 1000
+    step: 1
+
+  load_optimizer_1_last_energy_kwh:
+    name: Load Optimizer 1 Last Energy kWh
+    min: 0
+    max: 100
+    step: 0.001
+
+  load_optimizer_1_expected_runtime:
+    name: Load Optimizer 1 Expected Runtime
+    min: 0
+    max: 1000
+    step: 1
+
+  load_optimizer_1_expected_energy:
+    name: Load Optimizer 1 Expected Energy
+    min: 0
+    max: 100
+    step: 0.001
+
+input_datetime:
+  load_optimizer_1_cycle_start:
+    name: Load Optimizer 1 Cycle Start
+    has_date: true
+    has_time: true
+
+  load_optimizer_1_last_finish:
+    name: Load Optimizer 1 Last Finish
+    has_date: true
+    has_time: true
