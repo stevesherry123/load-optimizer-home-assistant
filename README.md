@@ -75,6 +75,18 @@ The first public implementation should support:
 - cost estimation
 - migration from legacy dishwasher and washing machine helpers
 
+## Roadmap Highlights
+
+Upcoming design work is focused on richer scheduling and recommendation logic:
+
+- per-instance earliest start and latest finish constraints
+- profile-weighted cost estimation across tariff windows
+- active recommended-window state for dashboards and automations
+- manual recalculation after tariff, policy, or configuration changes
+- inferred cycle classification for appliances that only expose power usage
+
+See `docs/architecture.md` for the fuller roadmap and design notes.
+
 ## Repository Layout
 
 ```text
