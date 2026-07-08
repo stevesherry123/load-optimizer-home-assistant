@@ -164,6 +164,43 @@ Energy sensors can still be exposed and retained as diagnostic metadata, but the
 learned model should prefer profile-integrated energy so the same approach works
 across dishwashers, washing machines, EVs, and other future load types.
 
+## Scheduling Roadmap
+
+Status: Backlog / planned
+
+Load Optimizer should remain device-agnostic while improving the user-facing
+experience around tariff windows and run recommendations. A review of existing
+community Agile-window projects highlighted several useful features that should
+be adapted into this project without narrowing it to Octopus-only tariffs or
+fixed-duration appliance assumptions.
+
+Planned scheduling features:
+
+- per-instance earliest start and latest finish constraints
+- clear recommended start and finish sensors
+- a recommended-window active state for dashboards and automations
+- a manual recalculation service for tariff, policy, or test changes
+- profile-weighted cost estimation across half-hour tariff slots
+- a simple fallback estimator when only runtime and total kWh are known
+- a guided Home Assistant configuration flow in a future integration phase
+
+The preferred cost model is profile-weighted. Instead of multiplying total kWh
+by an average tariff price, the optimiser should map the learned power profile
+onto each candidate tariff window. This matters for long appliance cycles where
+most energy is consumed during a small number of heating or charging phases.
+
+Per-instance constraints should support common real-world rules such as:
+
+- only run overnight
+- finish before a household wake-up time
+- avoid noisy spin phases late at night
+- allow opportunistic operation during negative-price windows
+- reserve maintenance or high-consumption cycles for special conditions
+
+The project may expose binary sensors later, but the core model should first
+publish enough state for either binary sensors or ordinary sensors to be built
+on top.
+
 ## Runtime Status Clarity
 
 Status: Backlog / user experience
