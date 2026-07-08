@@ -6,6 +6,15 @@
   water, consumables, equipment wear, and applicable battery degradation.
 - Add a sanitized appliance and program-policy configuration example.
 
+## 0.7.4
+
+- Calculate completed-cycle energy from the captured power profile instead of
+  relying primarily on daily energy counter deltas.
+- Keep the energy sensor delta as diagnostic metadata when available, but avoid
+  daily-counter reset problems for cycles that span midnight or follow another
+  same-day cycle.
+- Add regression coverage for daily energy counters resetting during a cycle.
+
 ## 0.7.3
 
 - Expose reset request feedback on `sensor.load_optimizer_status`, including

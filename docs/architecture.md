@@ -136,9 +136,33 @@ classes such as `ShortSpin`, `Wash`, `EcoWash`, `Rinse`, or `Maintenance` once
 there is enough evidence. Inferred classes should be visible to the user and
 remain overrideable through explicit program policies.
 
+For the first washing-machine classifier, expect a small number of practical
+classes rather than an exhaustive programme list. The initial target is likely
+three broad usage patterns:
+
+- short spin or drain-style cycles
+- normal wash cycles
+- longer, hotter, or maintenance-style cycles
+
 This classification should support cost estimation as well as recommendation:
 two cycles with the same total energy can have very different costs when their
 high-power phases land in different tariff windows.
+
+## Energy Measurement
+
+Status: Active design principle
+
+Completed-cycle energy should be calculated from captured power samples wherever
+possible. Integrating the power profile avoids common problems with daily energy
+counters, including:
+
+- multiple cycles on the same day
+- cycles that span midnight
+- source sensors that reset, round, or lag unexpectedly
+
+Energy sensors can still be exposed and retained as diagnostic metadata, but the
+learned model should prefer profile-integrated energy so the same approach works
+across dishwashers, washing machines, EVs, and other future load types.
 
 ## Runtime Status Clarity
 
