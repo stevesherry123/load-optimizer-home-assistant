@@ -15,6 +15,7 @@ from load_optimizer.app.main import (
     normalise_profile,
     normalise_program,
     normalise_program_policy,
+    profile_energy_kwh,
     profile_sample,
     program_summary,
     publish_restart_warning,
@@ -235,6 +236,15 @@ class InstanceMonitoringTests(unittest.TestCase):
         ]
         self.assertEqual(normalise_profile(profile, bins=5), [0.0, 25.0, 50.0, 75.0, 100.0])
 
+    def test_profile_energy_integrates_power_samples(self):
+        profile = [
+            {"offset_seconds": 0, "power_w": 1000},
+            {"offset_seconds": 1800, "power_w": 1000},
+            {"offset_seconds": 3600, "power_w": 0},
+        ]
+
+        self.assertEqual(profile_energy_kwh(profile), 0.75)
+
     @patch("load_optimizer.app.main.publish_entity")
     @patch("load_optimizer.app.main.source_state")
     def test_sustained_low_power_finishes_cycle(self, source, _publish):
@@ -263,12 +273,45 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertNotIn("cycle_start", instance)
         self.assertEqual(instance["runs"], 1)
         self.assertEqual(instance["last_cycle"]["runtime_minutes"], 59.0)
-        self.assertEqual(instance["last_cycle"]["energy_kwh"], 0.6)
+        self.assertEqual(instance["last_cycle"]["energy_kwh"], 0.68)
+        self.assertEqual(instance["last_cycle"]["energy_source"], "power_profile")
+        self.assertEqual(instance["last_cycle"]["energy_sensor_delta_kwh"], 0.6)
         self.assertEqual(instance["last_cycle"]["sample_count"], 11)
         self.assertEqual(len(instance["last_cycle"]["power_profile"]), 11)
         self.assertEqual(instance["last_cycle"]["power_profile"][-1]["power_w"], 0.0)
         self.assertEqual(instance["last_cycle"]["finish"], (start + timedelta(minutes=59)).isoformat())
         self.assertEqual(instance["program_models"]["Eco"]["runs"], 1)
+
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.source_state")
+    def test_profile_energy_survives_daily_counter_reset(self, source, _publish):
+        self.config["finish_delay"] = 1
+        readings = {"power": "0", "energy": "0.1", "program": "Eco"}
+        source.side_effect = lambda _token, entity_id: {
+            "sensor.test_power": {"state": readings["power"]},
+            "sensor.test_energy": {"state": readings["energy"]},
+            "sensor.test_program": {"state": readings["program"]},
+        }.get(entity_id)
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        database = {"schema_version": 1, "instances": {"1": {
+            "cycle_start": start.isoformat(),
+            "start_energy": 9.9,
+            "peak_power": 1000,
+            "samples": 2,
+            "profile": [
+                {"offset_seconds": 0, "power_w": 1000},
+                {"offset_seconds": 1800, "power_w": 1000},
+            ],
+            "below_threshold": 0,
+            "program": "Eco",
+        }}}
+
+        update_instance("token", database, self.config, start + timedelta(hours=1))
+
+        last = database["instances"]["1"]["last_cycle"]
+        self.assertEqual(last["energy_kwh"], 0.75)
+        self.assertEqual(last["energy_source"], "power_profile")
+        self.assertEqual(last["energy_sensor_delta_kwh"], 0.0)
 
     @patch("load_optimizer.app.main.publish_entity")
     @patch("load_optimizer.app.main.source_state")

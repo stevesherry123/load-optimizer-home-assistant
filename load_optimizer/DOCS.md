@@ -37,6 +37,9 @@ After a completed cycle, `sensor.load_optimizer_1_last_profile` exposes the
 timestamped power samples in its `samples` attribute. Each compact sample is
 `[offset_seconds, power_w]`, allowing dashboards and future tariff calculations
 to align the profile without depending on a particular appliance or integration.
+Completed-cycle energy is calculated from these power samples where possible,
+which avoids daily energy counter reset issues when a cycle spans midnight or
+when multiple cycles run on the same day.
 
 ## Program learning
 

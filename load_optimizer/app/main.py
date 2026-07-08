@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.7.3"
+APP_VERSION = "0.7.4"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -157,6 +157,23 @@ def normalise_profile(profile: list[dict], bins: int = 20) -> list[float]:
             value = left_power + ratio * (right_power - left_power)
         result.append(round(value, 3))
     return result
+
+
+def profile_energy_kwh(profile: list[dict]) -> float | None:
+    points = sorted(
+        (float(sample["offset_seconds"]), float(sample["power_w"]))
+        for sample in profile
+        if sample.get("offset_seconds") is not None and sample.get("power_w") is not None
+    )
+    if len(points) < 2:
+        return None
+    energy = 0.0
+    for (start_seconds, start_power), (end_seconds, end_power) in zip(points, points[1:]):
+        duration_seconds = end_seconds - start_seconds
+        if duration_seconds <= 0:
+            continue
+        energy += ((start_power + end_power) / 2) * duration_seconds / 3_600_000
+    return round(energy, 4)
 
 
 def update_running_stat(model: dict, name: str, value: float | None) -> None:
@@ -546,10 +563,18 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
             finish = datetime.fromisoformat(finish_candidate["time"])
             finish_energy = finish_candidate.get("energy")
             completed_profile = instance["profile"][:finish_candidate["profile_length"]]
+            profile_energy = profile_energy_kwh(completed_profile)
+            sensor_energy = (
+                round(max(0.0, finish_energy - instance["start_energy"]), 4)
+                if finish_energy is not None and instance.get("start_energy") is not None
+                else None
+            )
             last = {
                 "program": instance.get("program") or program,
                 "runtime_minutes": round((finish - start).total_seconds() / 60, 1),
-                "energy_kwh": round(max(0.0, finish_energy - instance["start_energy"]), 4) if finish_energy is not None and instance.get("start_energy") is not None else None,
+                "energy_kwh": profile_energy if profile_energy is not None else sensor_energy,
+                "energy_source": "power_profile" if profile_energy is not None else "energy_sensor_delta",
+                "energy_sensor_delta_kwh": sensor_energy,
                 "peak_power": instance.get("peak_power", 0),
                 "sample_count": len(completed_profile),
                 "power_profile": completed_profile,
@@ -649,6 +674,9 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "icon": "mdi:chart-line",
         "program": normalise_program(last.get("program")),
         "runtime_minutes": last.get("runtime_minutes"),
+        "energy_kwh": last.get("energy_kwh"),
+        "energy_source": last.get("energy_source"),
+        "energy_sensor_delta_kwh": last.get("energy_sensor_delta_kwh"),
         "sample_count": len(profile),
         "samples": [[sample["offset_seconds"], sample.get("power_w")] for sample in profile],
         "sample_format": ["offset_seconds", "power_w"],
