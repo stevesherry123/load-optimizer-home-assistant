@@ -1,0 +1,12 @@
+adapter:
+  instance: 1
+  type: dishwasher
+  source: configure_in_app
+  entities:
+    active_program: sensor.replace_with_active_program
+    selected_program: sensor.replace_with_selected_program
+    operation_state: sensor.replace_with_operation_state
+    power: sensor.replace_with_power
+    energy: sensor.replace_with_energy
+    remaining_program_time: sensor.replace_with_remaining_program_time
+    delayed_start_relative: sensor.replace_with_delayed_start
