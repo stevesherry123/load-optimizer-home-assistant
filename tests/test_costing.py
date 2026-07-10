@@ -6,6 +6,7 @@ from load_optimizer.app.costing import (
     parse_ai_feed,
     parse_structured_rates,
     recommend_cycle,
+    tariff_periods_from_entity,
 )
 
 
@@ -28,6 +29,28 @@ class TariffParsingTests(unittest.TestCase):
             "value_inc_vat": 0.241,
         }], price_unit="gbp_per_kwh")
 
+        self.assertEqual(periods[0]["price_p_per_kwh"], 24.1)
+
+    def test_nested_event_rates_are_supported(self):
+        periods = tariff_periods_from_entity(
+            {
+                "attributes": {
+                    "event_type": "octopus_energy_electricity_current_day_rates",
+                    "last_event_attributes": {
+                        "rates": [{
+                            "start": "2026-07-06T00:00:00+01:00",
+                            "end": "2026-07-06T00:30:00+01:00",
+                            "value_inc_vat": 0.241,
+                        }],
+                    },
+                },
+            },
+            reference_utc=datetime(2026, 7, 6, tzinfo=timezone.utc),
+            timezone_name="Europe/London",
+            price_unit="gbp_per_kwh",
+        )
+
+        self.assertEqual(periods[0]["start"], datetime(2026, 7, 5, 23, 0, tzinfo=timezone.utc))
         self.assertEqual(periods[0]["price_p_per_kwh"], 24.1)
 
 

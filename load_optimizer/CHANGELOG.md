@@ -4,6 +4,7 @@
 
 - Add `tariff_entities` for combining multiple tariff sources, such as
   BottlecapDave Octopus Energy current-day and next-day rate events.
+- Read nested tariff rate payloads from Home Assistant event entities.
 - Keep `tariff_entity` as a backwards-compatible single-source option.
 - Mark local cleaned tariff template feeds as compatibility helpers rather than
   recommended public prerequisites.

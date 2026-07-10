@@ -13,6 +13,7 @@ FEED_ENTRY = re.compile(
     r"(?P<price>[+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*p",
     re.IGNORECASE,
 )
+STRUCTURED_RATE_KEYS = ("rates", "prices", "forecast", "all_rates")
 
 
 def _nearest_year(day: int, month: int, reference_local: datetime) -> int:
@@ -115,6 +116,22 @@ def parse_structured_rates(rates: list[dict], *, price_unit: str) -> list[dict]:
     return periods
 
 
+def _find_structured_rates(value: object, *, depth: int = 0) -> list[dict] | None:
+    """Find rate lists on direct attributes or nested Home Assistant event payloads."""
+    if depth > 4:
+        return None
+    if isinstance(value, dict):
+        for key in STRUCTURED_RATE_KEYS:
+            rates = value.get(key)
+            if isinstance(rates, list) and rates:
+                return rates
+        for nested_value in value.values():
+            rates = _find_structured_rates(nested_value, depth=depth + 1)
+            if rates:
+                return rates
+    return None
+
+
 def tariff_periods_from_entity(
     entity: dict,
     *,
@@ -126,10 +143,9 @@ def tariff_periods_from_entity(
     feed = attributes.get("ai_feed")
     if isinstance(feed, str) and feed.strip():
         return parse_ai_feed(feed, reference_utc=reference_utc, timezone_name=timezone_name)
-    for key in ("rates", "prices", "forecast", "all_rates"):
-        rates = attributes.get(key)
-        if isinstance(rates, list) and rates:
-            return parse_structured_rates(rates, price_unit=price_unit)
+    rates = _find_structured_rates(attributes)
+    if rates:
+        return parse_structured_rates(rates, price_unit=price_unit)
     raise ValueError("Tariff entity has no supported future-rate attribute")
 
 
