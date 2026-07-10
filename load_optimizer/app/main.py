@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.7.9"
+APP_VERSION = "0.7.10"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -258,6 +258,9 @@ def program_summary(program: str, model: dict) -> dict:
     return {
         "program": program,
         "runs": model.get("runs", 0),
+        "first_seen": model.get("first_seen"),
+        "last_seen": model.get("last_seen") or model.get("last_updated"),
+        "profile_count": model.get("profile_count", 0),
         "expected_runtime_minutes": runtime,
         "runtime_stddev_minutes": runtime_stddev,
         "expected_energy_kwh": energy,
@@ -265,6 +268,7 @@ def program_summary(program: str, model: dict) -> dict:
         "average_peak_power_w": peak,
         "confidence": confidence,
         "representative_profile_w": model.get("representative_profile_w", []),
+        "recent_cycles": model.get("recent_cycles", []),
     }
 
 
@@ -274,6 +278,9 @@ def update_program_model(instance: dict, cycle: dict) -> dict:
         program = "Default"
     model = instance.setdefault("program_models", {}).setdefault(program, {"runs": 0})
     model["runs"] += 1
+    if not model.get("first_seen"):
+        model["first_seen"] = cycle.get("finish")
+    model["last_seen"] = cycle.get("finish")
     update_running_stat(model, "runtime_minutes", cycle.get("runtime_minutes"))
     update_running_stat(model, "energy_kwh", cycle.get("energy_kwh"))
     update_running_stat(model, "peak_power_w", cycle.get("peak_power"))
@@ -288,6 +295,16 @@ def update_program_model(instance: dict, cycle: dict) -> dict:
         ]
         model["profile_count"] = profile_count
     model["last_updated"] = cycle.get("finish")
+    recent_cycles = model.setdefault("recent_cycles", [])
+    recent_cycles.append({
+        "finish": cycle.get("finish"),
+        "runtime_minutes": cycle.get("runtime_minutes"),
+        "energy_kwh": cycle.get("energy_kwh"),
+        "peak_power_w": cycle.get("peak_power"),
+        "sample_count": cycle.get("sample_count"),
+        "energy_source": cycle.get("energy_source"),
+    })
+    del recent_cycles[:-10]
     return program_summary(program, model)
 
 

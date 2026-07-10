@@ -2,10 +2,16 @@
 
 ## Unreleased
 
+- No unreleased changes.
+
+## 0.7.10
+
 - Remove retired local Home Assistant package, helper, template, dashboard, and
   Pyscript scaffolding from the public repository.
 - Update architecture, naming, and setup documentation to describe the
   installable App as the supported runtime.
+- Expose learned-program audit fields including first seen, last seen, profile
+  count, and recent cycle summaries to make run-count issues diagnosable.
 
 ## 0.7.9
 
