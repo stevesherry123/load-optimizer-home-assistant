@@ -99,7 +99,10 @@ configuration:
         name: Estimated overhead cost (pence)
   tariff_entity:
     name: Tariff entity
-    description: Optional Home Assistant entity containing future energy prices.
+    description: Optional single Home Assistant entity containing future energy prices. Use tariff entities for multiple sources.
+  tariff_entities:
+    name: Tariff entities
+    description: Optional comma-separated Home Assistant entities containing future energy prices, such as current-day and next-day rate events.
   tariff_timezone:
     name: Tariff timezone
     description: Timezone used when the tariff feed contains local timestamps.

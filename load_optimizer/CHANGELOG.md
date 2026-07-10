@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add `tariff_entities` for combining multiple tariff sources, such as
+  BottlecapDave Octopus Energy current-day and next-day rate events.
+- Keep `tariff_entity` as a backwards-compatible single-source option.
+- Mark local cleaned tariff template feeds as compatibility helpers rather than
+  recommended public prerequisites.
 - Document true operating cost as a deferred architectural consideration for
   water, consumables, equipment wear, and applicable battery degradation.
 - Add a sanitized appliance and program-policy configuration example.

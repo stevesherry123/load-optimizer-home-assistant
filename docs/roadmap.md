@@ -123,3 +123,6 @@ After the new model is validated:
 - legacy dashboards should be replaced or archived
 - legacy helper entities should be deleted
 
+Local tariff-normalising templates, including `sensor.octopus_price_feed_clean`,
+should also be decommissioned once Load Optimizer has been validated against the
+upstream BottlecapDave Octopus Energy rate event entities directly.
