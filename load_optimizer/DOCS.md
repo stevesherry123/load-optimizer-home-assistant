@@ -173,10 +173,8 @@ tariff_entities: "event.octopus_energy_electricity_xxx_current_day_rates,event.o
 tariff_price_unit: gbp_per_kwh
 ```
 
-Local cleaned template sensors such as `sensor.octopus_price_feed_clean` can
-still work as compatibility sources when they expose an `ai_feed` attribute, but
-they are not required public prerequisites and should be considered migration
-helpers.
+Any Home Assistant entity that exposes one of the supported rate formats can be
+used. Avoid publishing private entity IDs in shared examples.
 
 Use **Tariff price unit** to declare whether structured values are pence or pounds
 per kWh. The `ai_feed` format includes its `p` unit and is always interpreted as

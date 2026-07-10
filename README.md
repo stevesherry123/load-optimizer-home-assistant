@@ -29,15 +29,14 @@ entities.
 - Estimate runtime, energy use, and cost from learned data.
 - Recommend economical start times.
 - Recommend the best program or cycle when the appliance offers a choice.
-- Keep entity names consistent, public, and migration-friendly.
+- Keep entity names consistent, public, and instance-friendly.
 
 ## Design Principles
 
 - Use a shared core for cycle tracking and optimisation.
 - Treat each appliance as an instance, using `1` for the first one.
 - Keep device-specific logic in adapters only.
-- Migrate existing helper state forward where possible.
-- Retire legacy entities after the new structure is stable.
+- Keep the public install path focused on the supported App runtime.
 
 ## Naming Convention
 
@@ -74,7 +73,7 @@ The first public implementation should support:
 - learned summaries
 - dashboard status cards
 - cost estimation
-- migration from legacy dishwasher and washing machine helpers
+- multi-instance appliance monitoring
 
 ## Roadmap
 
@@ -94,20 +93,9 @@ Planned work and backlog ideas are tracked in `docs/roadmap.md`.
 │   └── run.sh
 ├── docs/
 │   ├── architecture.md
-│   ├── deployment.md
-│   ├── home_assistant_config.md
-│   ├── migration.md
 │   ├── naming.md
-│   └── validation.md
-└── homeassistant/
-    ├── adapters/
-    ├── dashboards/
-    ├── helpers/
-    ├── legacy/
-    ├── migrations/
-    ├── packages/
-    ├── pyscript/
-    └── templates/
+│   └── roadmap.md
+└── tests/
 ```
 
 ## Public-State Model
@@ -126,11 +114,8 @@ The shared state model should focus on:
 
 ## Project Status
 
-The installable App scaffold is now the future-facing runtime. The existing
-`homeassistant/` files remain temporarily as migration reference and will be
-retired after their behavior and data have moved into the App.
+The installable Home Assistant App is the supported runtime. Retired local
+package, template, helper, and Pyscript scaffolding has been removed from this
+repository so the public install path stays clean.
 
-For rollout, use:
-
-- `docs/deployment.md`
-- `docs/validation.md`
+For setup and operational notes, use `load_optimizer/DOCS.md`.

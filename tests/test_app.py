@@ -53,25 +53,25 @@ class StateStorageTests(unittest.TestCase):
 
 
 class ConfigurationTests(unittest.TestCase):
-    def test_instance_config_combines_new_and_legacy_tariff_entities(self):
+    def test_instance_config_combines_multiple_and_single_tariff_fields(self):
         config = instance_config("1", {
             "tariff_entities": "event.current_day_rates, event.next_day_rates",
-            "tariff_entity": "sensor.legacy_feed",
+            "tariff_entity": "sensor.single_feed",
         })
 
         self.assertEqual(config["tariff_entities"], [
             "event.current_day_rates",
             "event.next_day_rates",
-            "sensor.legacy_feed",
+            "sensor.single_feed",
         ])
 
-    def test_instance_config_does_not_duplicate_legacy_tariff_entity(self):
+    def test_instance_config_does_not_duplicate_single_tariff_entity(self):
         config = instance_config("1", {
-            "tariff_entities": "sensor.legacy_feed",
-            "tariff_entity": "sensor.legacy_feed",
+            "tariff_entities": "sensor.single_feed",
+            "tariff_entity": "sensor.single_feed",
         })
 
-        self.assertEqual(config["tariff_entities"], ["sensor.legacy_feed"])
+        self.assertEqual(config["tariff_entities"], ["sensor.single_feed"])
 
     def test_reset_configured_instances_only_removes_requested_instances(self):
         database = {"schema_version": 1, "instances": {

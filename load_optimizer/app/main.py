@@ -359,9 +359,9 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
     options = options if options is not None else load_options()
     prefix = f"instance_{instance_id}"
     tariff_entities = entity_list(options.get("tariff_entities", ""))
-    legacy_tariff_entity = str(options.get("tariff_entity", "")).strip()
-    if legacy_tariff_entity and legacy_tariff_entity not in tariff_entities:
-        tariff_entities.append(legacy_tariff_entity)
+    single_tariff_entity = str(options.get("tariff_entity", "")).strip()
+    if single_tariff_entity and single_tariff_entity not in tariff_entities:
+        tariff_entities.append(single_tariff_entity)
     return {
         "instance_id": instance_id,
         "name": str(_option_or_env(options, f"{prefix}_name", f"Appliance {instance_id}")),

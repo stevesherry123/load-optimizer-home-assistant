@@ -114,15 +114,12 @@ This broader cost model will be particularly relevant when evaluating negative
 electricity prices. Consuming electricity may appear profitable while still
 incurring water, consumable, and equipment costs.
 
-## Legacy Retirement
+## Completed Appliance Infrastructure Cleanup
 
-Legacy helper names should remain only long enough to migrate state forward.
-After the new model is validated:
+The retired local appliance packages, templates, helper definitions, dashboards,
+and Pyscript files have been removed from this repository. Future work should
+continue to keep the public project focused on the installable App runtime.
 
-- legacy scripts should be removed
-- legacy dashboards should be replaced or archived
-- legacy helper entities should be deleted
-
-Local tariff-normalising templates, including `sensor.octopus_price_feed_clean`,
-should also be decommissioned once Load Optimizer has been validated against the
-upstream BottlecapDave Octopus Energy rate event entities directly.
+Energy-provider helper layers are a separate integration concern. They should be
+reviewed independently from the appliance cleanup so useful Octopus or tariff
+logic is not removed accidentally.
