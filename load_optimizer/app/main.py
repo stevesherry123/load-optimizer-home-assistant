@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.7.8"
+APP_VERSION = "0.7.9"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -532,6 +532,8 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
     }
     if result.get("tariff_diagnostics") is not None:
         common["tariff_diagnostics"] = result["tariff_diagnostics"]
+    if result.get("tariff_parse_errors") is not None:
+        common["tariff_parse_errors"] = result["tariff_parse_errors"]
     publish_entity(token, f"{prefix}_cost_status", status, {
         "friendly_name": f"{name} Cost Status",
         "icon": "mdi:currency-gbp",
@@ -704,13 +706,22 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
             tariff_diagnostics = [tariff_entity_diagnostic(state) for state in tariff_states]
             try:
                 periods = []
+                tariff_parse_errors = []
                 for tariff_state in tariff_states:
-                    periods.extend(tariff_periods_from_entity(
-                        tariff_state,
-                        reference_utc=now,
-                        timezone_name=config["tariff_timezone"],
-                        price_unit=config["tariff_price_unit"],
-                    ))
+                    try:
+                        periods.extend(tariff_periods_from_entity(
+                            tariff_state,
+                            reference_utc=now,
+                            timezone_name=config["tariff_timezone"],
+                            price_unit=config["tariff_price_unit"],
+                        ))
+                    except (TypeError, ValueError) as error:
+                        tariff_parse_errors.append({
+                            "entity_id": tariff_state.get("entity_id"),
+                            "reason": str(error),
+                        })
+                if not periods:
+                    raise ValueError("No configured tariff entity produced a supported future-rate attribute")
                 periods.sort(key=lambda period: period["start"])
                 cost_result = recommend_cycle(
                     summaries,
@@ -727,6 +738,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "tariff_start": periods[0]["start"].isoformat(),
                     "tariff_end": periods[-1]["end"].isoformat(),
                     "tariff_diagnostics": tariff_diagnostics,
+                    "tariff_parse_errors": tariff_parse_errors,
                 })
             except (TypeError, ValueError) as error:
                 cost_result = {
