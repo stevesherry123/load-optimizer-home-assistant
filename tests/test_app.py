@@ -24,6 +24,7 @@ from load_optimizer.app.main import (
     reset_request_status,
     resolve_program_policies,
     running_instances,
+    tariff_entity_diagnostic,
     tariff_state_from_entity,
     update_instance,
     update_program_model,
@@ -215,6 +216,22 @@ class ConfigurationTests(unittest.TestCase):
 
         self.assertEqual(state["attributes"]["rates"][0]["value_inc_vat"], 0.241)
         render_template.assert_not_called()
+
+    def test_tariff_entity_diagnostic_reports_keys_and_counts(self):
+        diagnostic = tariff_entity_diagnostic({
+            "entity_id": "event.rates",
+            "state": "2026-07-06T00:00:00+00:00",
+            "attributes": {
+                "rates": [{"value_inc_vat": 0.241}],
+                "last_event_attributes": {"event_type": "rates"},
+            },
+        })
+
+        self.assertEqual(diagnostic["entity_id"], "event.rates")
+        self.assertEqual(diagnostic["rates_type"], "list")
+        self.assertEqual(diagnostic["rates_count"], 1)
+        self.assertEqual(diagnostic["last_event_attributes_type"], "dict")
+        self.assertIn("rates", diagnostic["attribute_keys"])
 
 
 class InstanceMonitoringTests(unittest.TestCase):

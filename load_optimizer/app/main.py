@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.7.7"
+APP_VERSION = "0.7.8"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -125,6 +125,29 @@ def tariff_state_from_entity(token: str, entity_id: str) -> dict | None:
             attributes["tariff_rates_source"] = f"template_state_attr:{attribute}"
             break
     return state
+
+
+def tariff_entity_diagnostic(state: dict | None) -> dict:
+    if state is None:
+        return {"readable": False}
+    attributes = state.get("attributes", {})
+    diagnostic = {
+        "entity_id": state.get("entity_id"),
+        "state": state.get("state"),
+        "readable": True,
+        "attribute_keys": sorted(attributes.keys()),
+    }
+    for key in ("rates", "prices", "forecast", "all_rates", "last_event_attributes"):
+        value = attributes.get(key)
+        if isinstance(value, list):
+            diagnostic[f"{key}_type"] = "list"
+            diagnostic[f"{key}_count"] = len(value)
+        elif isinstance(value, dict):
+            diagnostic[f"{key}_type"] = "dict"
+            diagnostic[f"{key}_keys"] = sorted(value.keys())
+        elif value is not None:
+            diagnostic[f"{key}_type"] = type(value).__name__
+    return diagnostic
 
 
 def numeric_state(entity: dict | None) -> float | None:
@@ -501,11 +524,14 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
     status = result.get("status", "error")
     common = {
         "tariff_entity": result.get("tariff_entity"),
+        "tariff_entities": result.get("tariff_entities", []),
         "tariff_periods": result.get("tariff_periods", 0),
         "tariff_start": result.get("tariff_start"),
         "tariff_end": result.get("tariff_end"),
         "reason": result.get("reason"),
     }
+    if result.get("tariff_diagnostics") is not None:
+        common["tariff_diagnostics"] = result["tariff_diagnostics"]
     publish_entity(token, f"{prefix}_cost_status", status, {
         "friendly_name": f"{name} Cost Status",
         "icon": "mdi:currency-gbp",
@@ -675,6 +701,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 "reason": f"Home Assistant tariff entities could not be read: {', '.join(missing_entities)}",
             }
         else:
+            tariff_diagnostics = [tariff_entity_diagnostic(state) for state in tariff_states]
             try:
                 periods = []
                 for tariff_state in tariff_states:
@@ -699,12 +726,14 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "tariff_periods": len(periods),
                     "tariff_start": periods[0]["start"].isoformat(),
                     "tariff_end": periods[-1]["end"].isoformat(),
+                    "tariff_diagnostics": tariff_diagnostics,
                 })
             except (TypeError, ValueError) as error:
                 cost_result = {
                     "status": "tariff_invalid",
                     "tariff_entity": ", ".join(tariff_entities),
                     "tariff_entities": tariff_entities,
+                    "tariff_diagnostics": tariff_diagnostics,
                     "reason": str(error),
                 }
     publish_cost_entities(token, prefix, name, cost_result)
