@@ -490,11 +490,28 @@ class ProgramLearningTests(unittest.TestCase):
         summary = update_program_model(instance, self.cycle(70, 1.2, 1200))
 
         self.assertEqual(summary["runs"], 2)
+        self.assertEqual(summary["profile_count"], 2)
+        self.assertEqual(summary["first_seen"], "2026-01-01T12:00:00+00:00")
+        self.assertEqual(summary["last_seen"], "2026-01-01T12:00:00+00:00")
+        self.assertEqual(len(summary["recent_cycles"]), 2)
         self.assertEqual(summary["expected_runtime_minutes"], 65.0)
         self.assertEqual(summary["expected_energy_kwh"], 1.1)
         self.assertEqual(summary["average_peak_power_w"], 1100.0)
         self.assertEqual(len(summary["representative_profile_w"]), 20)
         self.assertGreater(summary["confidence"], 0)
+
+    def test_program_summary_reports_historic_last_updated_as_last_seen(self):
+        summary = program_summary("Eco", {
+            "runs": 1,
+            "last_updated": "2026-01-01T12:00:00+00:00",
+            "statistics": {
+                "runtime_minutes": {"count": 1, "mean": 60.0, "m2": 0.0},
+                "energy_kwh": {"count": 1, "mean": 1.0, "m2": 0.0},
+                "peak_power_w": {"count": 1, "mean": 1000.0, "m2": 0.0},
+            },
+        })
+
+        self.assertEqual(summary["last_seen"], "2026-01-01T12:00:00+00:00")
 
     def test_bootstrap_seeds_model_only_once(self):
         database = {"instances": {"1": {"last_cycle": self.cycle(60, 1.0, 1000)}}}
