@@ -24,6 +24,7 @@ from load_optimizer.app.main import (
     reset_request_status,
     resolve_program_policies,
     running_instances,
+    tariff_state_from_entity,
     update_instance,
     update_program_model,
 )
@@ -179,6 +180,41 @@ class ConfigurationTests(unittest.TestCase):
             path = Path(directory) / "options.json"
             path.write_text(json.dumps({"instance_1_program_policies": [{"program": "Eco"}]}))
             self.assertEqual(load_options(path)["instance_1_program_policies"][0]["program"], "Eco")
+
+    @patch("load_optimizer.app.main.render_template")
+    @patch("load_optimizer.app.main.source_state")
+    def test_tariff_state_falls_back_to_template_attribute(self, source_state, render_template):
+        source_state.return_value = {
+            "entity_id": "event.rates",
+            "state": "2026-07-06T00:00:00+00:00",
+            "attributes": {"event_types": ["octopus_energy_electricity_current_day_rates"]},
+        }
+        render_template.side_effect = [
+            [{
+                "start": "2026-07-06T00:00:00+01:00",
+                "end": "2026-07-06T00:30:00+01:00",
+                "value_inc_vat": 0.241,
+            }],
+        ]
+
+        state = tariff_state_from_entity("token", "event.rates")
+
+        self.assertEqual(state["attributes"]["rates"][0]["value_inc_vat"], 0.241)
+        self.assertEqual(state["attributes"]["tariff_rates_source"], "template_state_attr:rates")
+
+    @patch("load_optimizer.app.main.render_template")
+    @patch("load_optimizer.app.main.source_state")
+    def test_tariff_state_keeps_direct_rate_attributes(self, source_state, render_template):
+        source_state.return_value = {
+            "entity_id": "event.rates",
+            "state": "2026-07-06T00:00:00+00:00",
+            "attributes": {"rates": [{"value_inc_vat": 0.241}]},
+        }
+
+        state = tariff_state_from_entity("token", "event.rates")
+
+        self.assertEqual(state["attributes"]["rates"][0]["value_inc_vat"], 0.241)
+        render_template.assert_not_called()
 
 
 class InstanceMonitoringTests(unittest.TestCase):
