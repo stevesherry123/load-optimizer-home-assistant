@@ -33,42 +33,40 @@ Each adapter should:
 
 Home Assistant should be used for:
 
-- helper entities for persistence
-- template sensors
-- scripts and automations
-- dashboards
+- source power, energy, program, and state sensors
+- tariff entities from any compatible supplier integration or custom source
+- published `sensor.load_optimizer_*` entities from the App
+- dashboards, notifications, and automations built on top of those sensors
 
 ## Canonical Entities
 
 The first appliance instance should use the `load_optimizer_1_*` namespace.
 
-Suggested core helpers:
+Published App sensors include:
 
-- `input_boolean.load_optimizer_1_learning_active`
-- `input_text.load_optimizer_1_cycle_program`
-- `input_text.load_optimizer_1_cycle_profile`
-- `input_number.load_optimizer_1_cycle_sample_count`
-- `input_datetime.load_optimizer_1_cycle_start`
-- `input_number.load_optimizer_1_cycle_start_energy`
-- `input_number.load_optimizer_1_peak_power`
-- `input_text.load_optimizer_1_last_program`
-- `input_number.load_optimizer_1_last_runtime_minutes`
-- `input_number.load_optimizer_1_last_energy_kwh`
-- `input_datetime.load_optimizer_1_last_finish`
-- `input_text.load_optimizer_1_learning_database`
-- `input_text.load_optimizer_1_learning_summary`
-
-Suggested prediction helpers:
-
-- `input_number.load_optimizer_1_expected_runtime`
-- `input_number.load_optimizer_1_expected_energy`
-
-Suggested display sensors:
-
-- `sensor.load_optimizer_1_selected_program`
+- `sensor.load_optimizer_1_status`
+- `sensor.load_optimizer_1_power`
+- `sensor.load_optimizer_1_energy`
+- `sensor.load_optimizer_1_program`
 - `sensor.load_optimizer_1_cycle_state`
-- `sensor.load_optimizer_1_recommendation`
-- `sensor.load_optimizer_1_scheduled_start`
+- `sensor.load_optimizer_1_sample_count`
+- `sensor.load_optimizer_1_peak_power`
+- `sensor.load_optimizer_1_last_program`
+- `sensor.load_optimizer_1_last_runtime`
+- `sensor.load_optimizer_1_last_energy`
+- `sensor.load_optimizer_1_last_finish`
+- `sensor.load_optimizer_1_last_profile`
+- `sensor.load_optimizer_1_total_runs`
+- `sensor.load_optimizer_1_learned_programs`
+- `sensor.load_optimizer_1_program_model`
+- `sensor.load_optimizer_1_program_policies`
+- `sensor.load_optimizer_1_cost_status`
+- `sensor.load_optimizer_1_cheapest_start`
+- `sensor.load_optimizer_1_cheapest_cost`
+- `sensor.load_optimizer_1_cost_if_started_now`
+- `sensor.load_optimizer_1_potential_saving`
+- `sensor.load_optimizer_1_cost_confidence`
+- `sensor.load_optimizer_1_recommended_program`
 
 ## Data Flow
 
@@ -77,17 +75,18 @@ Suggested display sensors:
 3. Core stores sampled power into the current profile.
 4. Core writes end-of-cycle summary data.
 5. Core updates the learned database.
-6. Prediction helpers expose learned values to the dashboard and scheduler.
+6. App sensors expose learned values, cost estimates, and recommendations.
 
 ## Persistence Strategy
 
-The first version will remain Home Assistant-native and helper-based.
+The supported runtime stores internal data in the App's private `/data`
+directory and publishes Home Assistant sensors for visibility.
 
 That gives:
 
-- easy migration from the existing setup
-- transparent state for dashboards
-- a community-friendly installation path
+- a clean public installation path
+- app-owned persistence that does not require user-managed helpers
+- transparent read-only state for dashboards and automations
 
 ## Energy Measurement
 
@@ -111,11 +110,9 @@ Planned work, backlog items, and future feature ideas live in
 `docs/roadmap.md`. This keeps the architecture document focused on the current
 shape and design principles of the system.
 
-## Retirement Plan
+## Retired Local Infrastructure
 
-Legacy helper names should remain only long enough to migrate state forward.
-After the new model is validated:
-
-- legacy scripts should be removed
-- legacy dashboards should be replaced or archived
-- legacy helper entities should be deleted
+The earlier local appliance packages, templates, helper definitions, dashboards,
+and Pyscript files are no longer part of the repository. Future contributions
+should target the supported App runtime and avoid reintroducing app-managed
+`dishwasher_*` or `washing_machine_*` helper namespaces.

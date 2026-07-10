@@ -24,53 +24,48 @@ Do not use shared public names like:
 - `dishwasher_*`
 - `washing_machine_*`
 
-Those names can exist only in adapter mapping code or legacy migration files.
+Those names may still exist in a user's Home Assistant instance as source
+sensor names, but the App should not create or document them as managed public
+state.
 
 ## Entity Categories
 
-### Runtime state
+### Runtime State
 
-- `load_optimizer_1_learning_active`
+- `load_optimizer_1_status`
 - `load_optimizer_1_cycle_state`
-- `load_optimizer_1_cycle_start`
-- `load_optimizer_1_cycle_start_energy`
+- `load_optimizer_1_sample_count`
 
-### Current cycle data
+### Current Cycle Data
 
-- `load_optimizer_1_cycle_program`
-- `load_optimizer_1_cycle_profile`
-- `load_optimizer_1_cycle_sample_count`
+- `load_optimizer_1_power`
+- `load_optimizer_1_energy`
+- `load_optimizer_1_program`
 - `load_optimizer_1_peak_power`
 
-### Learned summary data
+### Learned Summary Data
 
 - `load_optimizer_1_last_program`
-- `load_optimizer_1_last_runtime_minutes`
-- `load_optimizer_1_last_energy_kwh`
+- `load_optimizer_1_last_runtime`
+- `load_optimizer_1_last_energy`
 - `load_optimizer_1_last_finish`
-- `load_optimizer_1_learning_database`
-- `load_optimizer_1_learning_summary`
+- `load_optimizer_1_last_profile`
+- `load_optimizer_1_total_runs`
+- `load_optimizer_1_learned_programs`
+- `load_optimizer_1_program_model`
+- `load_optimizer_1_program_policies`
 
-### Prediction data
+### Cost And Recommendation Data
 
-- `load_optimizer_1_expected_runtime`
-- `load_optimizer_1_expected_energy`
-- `load_optimizer_1_recommendation`
-- `load_optimizer_1_scheduled_start`
-
-## Migration Mapping
-
-Legacy entity names should be migrated into the new namespace wherever the meaning still exists.
-
-Examples:
-
-- `input_boolean.dishwasher_learning_active` -> `input_boolean.load_optimizer_1_learning_active`
-- `input_text.dishwasher_cycle_profile` -> `input_text.load_optimizer_1_cycle_profile`
-- `input_text.dishwasher_last_program` -> `input_text.load_optimizer_1_last_program`
-- `input_number.washing_machine_learning_active` -> `input_boolean.load_optimizer_2_learning_active` if that washing machine becomes instance 2 in the public model
+- `load_optimizer_1_cost_status`
+- `load_optimizer_1_cheapest_start`
+- `load_optimizer_1_cheapest_cost`
+- `load_optimizer_1_cost_if_started_now`
+- `load_optimizer_1_potential_saving`
+- `load_optimizer_1_cost_confidence`
+- `load_optimizer_1_recommended_program`
 
 ## Notes
 
 - Keep adapter-specific source names out of the public dashboard labels.
 - Use human-friendly display names in the UI, but stable `load_optimizer_*` entity IDs underneath.
-

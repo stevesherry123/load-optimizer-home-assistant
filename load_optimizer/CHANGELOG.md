@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-- No unreleased changes.
+- Remove retired local Home Assistant package, helper, template, dashboard, and
+  Pyscript scaffolding from the public repository.
+- Update architecture, naming, and setup documentation to describe the
+  installable App as the supported runtime.
 
 ## 0.7.9
 
@@ -29,8 +32,8 @@
   BottlecapDave Octopus Energy current-day and next-day rate events.
 - Read nested tariff rate payloads from Home Assistant event entities.
 - Keep `tariff_entity` as a backwards-compatible single-source option.
-- Mark local cleaned tariff template feeds as compatibility helpers rather than
-  recommended public prerequisites.
+- Mark custom tariff feeds as compatibility sources rather than recommended
+  public prerequisites.
 - Document true operating cost as a deferred architectural consideration for
   water, consumables, equipment wear, and applicable battery degradation.
 - Add a sanitized appliance and program-policy configuration example.
