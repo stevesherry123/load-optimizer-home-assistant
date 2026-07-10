@@ -4,6 +4,12 @@
 
 - No unreleased changes.
 
+## 0.7.7
+
+- Add a Home Assistant template fallback for tariff entities whose rate lists
+  are available through `state_attr()` but not returned in the normal state API
+  payload.
+
 ## 0.7.6
 
 - Add `tariff_entities` for combining multiple tariff sources, such as

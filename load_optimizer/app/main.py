@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.7.6"
+APP_VERSION = "0.7.7"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -90,6 +90,16 @@ def api_request(token: str, path: str, payload: dict | None = None) -> dict | No
         return None
 
 
+def render_template(token: str, template: str) -> object | None:
+    response = api_request(token, "/template", {"template": template})
+    if isinstance(response, str):
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            return response
+    return response
+
+
 def publish_entity(token: str, entity_id: str, state: object, attributes: dict) -> None:
     api_request(token, f"/states/{entity_id}", {"state": str(state), "attributes": attributes})
 
@@ -98,6 +108,23 @@ def source_state(token: str, entity_id: str) -> dict | None:
     if not entity_id:
         return None
     return api_request(token, f"/states/{entity_id}")
+
+
+def tariff_state_from_entity(token: str, entity_id: str) -> dict | None:
+    state = source_state(token, entity_id)
+    if state is None:
+        return None
+    attributes = state.setdefault("attributes", {})
+    if any(isinstance(attributes.get(key), list) and attributes.get(key) for key in ("rates", "prices", "forecast", "all_rates")):
+        return state
+    for attribute in ("rates", "prices", "forecast", "all_rates"):
+        template = "{{ state_attr('" + entity_id.replace("'", "\\'") + "', '" + attribute + "') | to_json }}"
+        value = render_template(token, template)
+        if isinstance(value, list) and value:
+            attributes[attribute] = value
+            attributes["tariff_rates_source"] = f"template_state_attr:{attribute}"
+            break
+    return state
 
 
 def numeric_state(entity: dict | None) -> float | None:
@@ -635,7 +662,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         tariff_states = []
         missing_entities = []
         for entity_id in tariff_entities:
-            tariff_state = source_state(token, entity_id)
+            tariff_state = tariff_state_from_entity(token, entity_id)
             if tariff_state is None:
                 missing_entities.append(entity_id)
             else:
