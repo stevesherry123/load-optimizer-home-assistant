@@ -4,6 +4,11 @@
 
 - No unreleased changes.
 
+## 0.7.8
+
+- Publish safe tariff diagnostics on cost status sensors when configured tariff
+  entities are readable but do not expose a supported rate list.
+
 ## 0.7.7
 
 - Add a Home Assistant template fallback for tariff entities whose rate lists
