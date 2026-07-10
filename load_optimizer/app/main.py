@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.7.4"
+APP_VERSION = "0.7.5"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -308,6 +308,10 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
     instance_id = str(instance_id)
     options = options if options is not None else load_options()
     prefix = f"instance_{instance_id}"
+    tariff_entities = entity_list(options.get("tariff_entities", ""))
+    legacy_tariff_entity = str(options.get("tariff_entity", "")).strip()
+    if legacy_tariff_entity and legacy_tariff_entity not in tariff_entities:
+        tariff_entities.append(legacy_tariff_entity)
     return {
         "instance_id": instance_id,
         "name": str(_option_or_env(options, f"{prefix}_name", f"Appliance {instance_id}")),
@@ -319,11 +323,20 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "finish_delay": int(_option_or_env(options, f"{prefix}_finish_delay", 5)),
         "program_policies": options.get(f"{prefix}_program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
+        "tariff_entities": tariff_entities,
         "tariff_timezone": str(options.get("tariff_timezone", "Europe/London")).strip(),
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_candidate_interval": int(options.get("cost_candidate_interval", 5)),
     }
+
+
+def entity_list(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if str(item).strip()]
+    return [item.strip() for item in str(raw).split(",") if item.strip()]
 
 
 def configured_instance_ids(options: dict) -> list[str]:
@@ -612,23 +625,39 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "optional_field_defaults": policy_defaults,
     })
     summaries = [program_summary(program_name, model) for program_name, model in sorted(models.items())]
-    cost_result = {"status": "tariff_not_configured", "tariff_entity": config.get("tariff_entity")}
-    if config.get("tariff_entity"):
-        tariff_entity = source_state(token, config["tariff_entity"])
-        if tariff_entity is None:
+    tariff_entities = config.get("tariff_entities", [])
+    cost_result = {
+        "status": "tariff_not_configured",
+        "tariff_entity": config.get("tariff_entity"),
+        "tariff_entities": tariff_entities,
+    }
+    if tariff_entities:
+        tariff_states = []
+        missing_entities = []
+        for entity_id in tariff_entities:
+            tariff_state = source_state(token, entity_id)
+            if tariff_state is None:
+                missing_entities.append(entity_id)
+            else:
+                tariff_states.append(tariff_state)
+        if missing_entities:
             cost_result = {
                 "status": "tariff_unavailable",
-                "tariff_entity": config["tariff_entity"],
-                "reason": "Home Assistant tariff entity could not be read",
+                "tariff_entity": ", ".join(tariff_entities),
+                "tariff_entities": tariff_entities,
+                "reason": f"Home Assistant tariff entities could not be read: {', '.join(missing_entities)}",
             }
         else:
             try:
-                periods = tariff_periods_from_entity(
-                    tariff_entity,
-                    reference_utc=now,
-                    timezone_name=config["tariff_timezone"],
-                    price_unit=config["tariff_price_unit"],
-                )
+                periods = []
+                for tariff_state in tariff_states:
+                    periods.extend(tariff_periods_from_entity(
+                        tariff_state,
+                        reference_utc=now,
+                        timezone_name=config["tariff_timezone"],
+                        price_unit=config["tariff_price_unit"],
+                    ))
+                periods.sort(key=lambda period: period["start"])
                 cost_result = recommend_cycle(
                     summaries,
                     policies,
@@ -638,7 +667,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     candidate_interval_minutes=config["cost_candidate_interval"],
                 )
                 cost_result.update({
-                    "tariff_entity": config["tariff_entity"],
+                    "tariff_entity": ", ".join(tariff_entities),
+                    "tariff_entities": tariff_entities,
                     "tariff_periods": len(periods),
                     "tariff_start": periods[0]["start"].isoformat(),
                     "tariff_end": periods[-1]["end"].isoformat(),
@@ -646,7 +676,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
             except (TypeError, ValueError) as error:
                 cost_result = {
                     "status": "tariff_invalid",
-                    "tariff_entity": config["tariff_entity"],
+                    "tariff_entity": ", ".join(tariff_entities),
+                    "tariff_entities": tariff_entities,
                     "reason": str(error),
                 }
     publish_cost_entities(token, prefix, name, cost_result)

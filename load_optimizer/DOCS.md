@@ -151,8 +151,11 @@ later if needed.
 
 ## Cost estimation
 
-Cost estimation is optional and read-only. Set **Tariff entity** to a Home
-Assistant entity containing either:
+Cost estimation is optional and read-only. Set **Tariff entities** to one or
+more comma-separated Home Assistant entities containing future electricity
+prices. The older **Tariff entity** field remains supported for a single source.
+
+Each tariff source can contain either:
 
 - an `ai_feed` attribute such as `06/07 00:00=18.41p;`, or
 - a structured `rates`, `prices`, `forecast`, or `all_rates` list containing
@@ -160,7 +163,20 @@ Assistant entity containing either:
 
 Load Optimizer does not depend on Octopus Intelligence or any particular energy
 supplier. OIE's forecast entity is one compatible source, while other integrations
-can provide structured rates. Leave the tariff entity blank to disable costing.
+can provide structured rates. Leave both tariff fields blank to disable costing.
+
+For BottlecapDave's Octopus Energy integration, prefer the upstream rate event
+entities directly, for example:
+
+```yaml
+tariff_entities: "event.octopus_energy_electricity_xxx_current_day_rates,event.octopus_energy_electricity_xxx_next_day_rates"
+tariff_price_unit: gbp_per_kwh
+```
+
+Local cleaned template sensors such as `sensor.octopus_price_feed_clean` can
+still work as compatibility sources when they expose an `ai_feed` attribute, but
+they are not required public prerequisites and should be considered migration
+helpers.
 
 Use **Tariff price unit** to declare whether structured values are pence or pounds
 per kWh. The `ai_feed` format includes its `p` unit and is always interpreted as
