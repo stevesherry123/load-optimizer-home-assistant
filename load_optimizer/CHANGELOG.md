@@ -4,6 +4,14 @@
 
 - No unreleased changes.
 
+## 0.7.9
+
+- Allow combined tariff sources to continue when one configured source is
+  readable but currently has no rates, such as an empty next-day event before
+  future Agile rates have been published.
+- Publish per-source tariff parse errors without failing the whole cost
+  estimator when at least one source has usable rates.
+
 ## 0.7.8
 
 - Publish safe tariff diagnostics on cost status sensors when configured tariff

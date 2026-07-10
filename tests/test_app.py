@@ -291,6 +291,58 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertIn("sensor.load_optimizer_2_status", published_ids)
         self.assertIn("sensor.load_optimizer_2_power", published_ids)
 
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.source_state")
+    def test_empty_secondary_tariff_source_does_not_invalidate_costing(self, source, publish):
+        source.side_effect = lambda _token, entity_id: {
+            "sensor.test_power": {"state": "0"},
+            "sensor.test_energy": {"state": "3.5"},
+            "sensor.test_program": {"state": "Eco"},
+            "event.current_rates": {
+                "entity_id": "event.current_rates",
+                "state": "2026-01-01T00:00:00+00:00",
+                "attributes": {"rates": [
+                    {"start": "2026-01-01T00:00:00+00:00", "end": "2026-01-01T00:30:00+00:00", "value_inc_vat": 0.10},
+                    {"start": "2026-01-01T00:30:00+00:00", "end": "2026-01-01T01:00:00+00:00", "value_inc_vat": 0.10},
+                ]},
+            },
+            "event.next_rates": {
+                "entity_id": "event.next_rates",
+                "state": "2026-01-01T00:00:00+00:00",
+                "attributes": {"rates": []},
+            },
+        }.get(entity_id)
+        database = {"schema_version": 1, "instances": {"1": {"program_models": {
+            "Eco": {
+                "program": "Eco",
+                "runs": 1,
+                "expected_runtime_minutes": 30,
+                "expected_energy_kwh": 1,
+                "representative_profile_w": [1000, 1000],
+                "confidence": 20,
+            },
+        }}}}
+        config = {
+            **self.config,
+            "program_policies": [{"program": "Eco", "classification": "preferred", "allow_normal_recommendation": True}],
+            "tariff_entity": "",
+            "tariff_entities": ["event.current_rates", "event.next_rates"],
+            "tariff_timezone": "Europe/London",
+            "tariff_price_unit": "gbp_per_kwh",
+            "cost_search_hours": 1,
+            "cost_candidate_interval": 30,
+        }
+
+        update_instance("token", database, config, datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+        cost_status = next(
+            call for call in publish.call_args_list
+            if call.args[1] == "sensor.load_optimizer_1_cost_status"
+        )
+        self.assertEqual(cost_status.args[2], "insufficient_profile")
+        self.assertEqual(cost_status.args[3]["tariff_periods"], 2)
+        self.assertEqual(cost_status.args[3]["tariff_parse_errors"][0]["entity_id"], "event.next_rates")
+
     def test_bosch_program_name_is_normalised(self):
         self.assertEqual(
             normalise_program("Dishcare.Dishwasher.Program.PreRinse"),
