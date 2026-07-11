@@ -4,6 +4,13 @@
 
 - No unreleased changes.
 
+## 0.8.0
+
+- Add a repeatable `instances` add-on configuration list so the app can expand
+  beyond two appliances without adding new static `instance_N_*` fields.
+- Keep the older `instance_ids` and `instance_N_*` fields as backward-compatible
+  configuration for existing installs while the migration path is proven.
+
 ## 0.7.10
 
 - Remove retired local Home Assistant package, helper, template, dashboard, and

@@ -17,9 +17,10 @@ https://github.com/stevesherry123/load-optimizer-home-assistant
 Install **Load Optimizer**, start it, and confirm that
 `sensor.load_optimizer_status` reports `running`.
 
-Version `0.7.0` supports multiple configured appliance instances. Configure
-`instance_ids` on the App's **Configuration** tab, for example `1` for just the
-dishwasher or `1,2` for dishwasher plus washing machine, then restart the App.
+Version `0.8.0` supports a repeatable `instances` configuration list for
+multiple appliances. Existing `instance_ids` and `instance_N_*` settings remain
+understood by the runtime for compatibility, but new installs should use the
+repeatable list.
 Each instance publishes its own `sensor.load_optimizer_N_*` monitoring and cost
 entities.
 
