@@ -4,6 +4,20 @@
 
 - No unreleased changes.
 
+## 0.8.2
+
+- Replace the unsupported repeatable add-on schema with a persisted
+  `instances_yaml` option for scalable appliance configuration.
+- Keep legacy `instance_ids` and `instance_N_*` fields active for existing
+  installs while allowing unlimited instances through the YAML/JSON field.
+
+## 0.8.1
+
+- Exclude active cycles from learning when the app starts and detects that the
+  capture was already in progress.
+- Publish the excluded cycle as `sensor.load_optimizer_N_last_discarded_cycle`
+  so interrupted runs remain visible without poisoning learned profiles.
+
 ## 0.8.0
 
 - Add a repeatable `instances` add-on configuration list so the app can expand

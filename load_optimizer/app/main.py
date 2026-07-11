@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.8.2"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -425,6 +425,99 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
     }
 
 
+def parse_config_scalar(value: str) -> object:
+    value = value.strip()
+    if not value:
+        return ""
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        return value[1:-1]
+    lowered = value.lower()
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    if lowered in {"null", "none"}:
+        return ""
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
+def parse_key_value(text: str) -> tuple[str, object] | None:
+    if ":" not in text:
+        return None
+    key, value = text.split(":", 1)
+    return key.strip(), parse_config_scalar(value)
+
+
+def parse_instances_yaml(raw: object) -> list[dict]:
+    if isinstance(raw, list):
+        return [entry for entry in raw if isinstance(entry, dict)]
+    raw = str(raw or "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            parsed = parsed.get("instances", [])
+        if isinstance(parsed, list):
+            return [entry for entry in parsed if isinstance(entry, dict)]
+    except json.JSONDecodeError:
+        pass
+
+    lines = [line.rstrip() for line in raw.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    if lines and lines[0].strip() == "instances:":
+        lines = [line[2:] if line.startswith("  ") else line for line in lines[1:]]
+
+    instances = []
+    current = None
+    current_policy = None
+    in_policies = False
+    for line in lines:
+        indent = len(line) - len(line.lstrip(" "))
+        stripped = line.strip()
+        if indent == 0 and stripped.startswith("- "):
+            current = {}
+            instances.append(current)
+            current_policy = None
+            in_policies = False
+            item = stripped[2:].strip()
+            if item:
+                parsed = parse_key_value(item)
+                if parsed:
+                    current[parsed[0]] = parsed[1]
+            continue
+        if current is None:
+            continue
+        if stripped == "program_policies:":
+            current.setdefault("program_policies", [])
+            current_policy = None
+            in_policies = True
+            continue
+        if in_policies and stripped.startswith("- "):
+            current_policy = {}
+            current.setdefault("program_policies", []).append(current_policy)
+            item = stripped[2:].strip()
+            if item:
+                parsed = parse_key_value(item)
+                if parsed:
+                    current_policy[parsed[0]] = parsed[1]
+            continue
+        parsed = parse_key_value(stripped)
+        if not parsed:
+            continue
+        key, value = parsed
+        if in_policies and current_policy is not None and indent >= 4:
+            current_policy[key] = value
+        else:
+            in_policies = False
+            current[key] = value
+    return [entry for entry in instances if entry.get("id") or entry.get("name") or entry.get("power_sensor")]
+
+
 def entity_list(raw: object) -> list[str]:
     if raw is None:
         return []
@@ -541,6 +634,15 @@ def running_instances(database: dict, configs: list[dict]) -> list[dict]:
     return running
 
 
+def mark_interrupted_captures(database: dict, running: list[dict]) -> None:
+    instances = database.setdefault("instances", {})
+    for item in running:
+        instance = instances.get(str(item["instance_id"]))
+        if instance and instance.get("cycle_start"):
+            instance["capture_interrupted"] = True
+            instance["capture_interrupted_at"] = datetime.now(timezone.utc).isoformat()
+
+
 def publish_restart_warning(token: str, running: list[dict]) -> None:
     if not running:
         return
@@ -561,6 +663,13 @@ def publish_restart_warning(token: str, running: list[dict]) -> None:
 
 def instance_configs(options: dict | None = None) -> list[dict]:
     options = options if options is not None else load_options()
+    configured_instances_yaml = parse_instances_yaml(options.get("instances_yaml", ""))
+    if configured_instances_yaml:
+        return [
+            instance_config_from_entry(entry, index, options)
+            for index, entry in enumerate(configured_instances_yaml, start=1)
+            if isinstance(entry, dict)
+        ]
     configured_instances = options.get("instances")
     if isinstance(configured_instances, list) and configured_instances:
         return [
@@ -699,10 +808,15 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 "power_profile": completed_profile,
                 "finish": finish.isoformat(),
             }
-            instance["last_cycle"] = last
-            update_program_model(instance, last)
-            instance["runs"] = int(instance.get("runs", 0)) + 1
-            for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold", "finish_candidate", "program"):
+            if instance.get("capture_interrupted"):
+                last["learning_excluded"] = True
+                last["exclusion_reason"] = "app_restarted_during_cycle"
+                instance["last_discarded_cycle"] = last
+            else:
+                instance["last_cycle"] = last
+                update_program_model(instance, last)
+                instance["runs"] = int(instance.get("runs", 0)) + 1
+            for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold", "finish_candidate", "program", "capture_interrupted", "capture_interrupted_at"):
                 instance.pop(key, None)
     if instance.get("cycle_start") and program not in ("unknown", "unavailable", ""):
         instance["program"] = program
@@ -831,6 +945,18 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "samples": [[sample["offset_seconds"], sample.get("power_w")] for sample in profile],
         "sample_format": ["offset_seconds", "power_w"],
     })
+    discarded = instance.get("last_discarded_cycle", {})
+    publish_entity(token, f"{prefix}_last_discarded_cycle", "ready" if discarded else "none", {
+        "friendly_name": f"{name} Last Discarded Cycle",
+        "icon": "mdi:delete-clock",
+        "program": normalise_program(discarded.get("program")),
+        "finish": discarded.get("finish"),
+        "runtime_minutes": discarded.get("runtime_minutes"),
+        "energy_kwh": discarded.get("energy_kwh"),
+        "sample_count": discarded.get("sample_count"),
+        "learning_excluded": discarded.get("learning_excluded", False),
+        "exclusion_reason": discarded.get("exclusion_reason"),
+    })
     for suffix, value, attrs in (
         ("last_program", normalise_program(last.get("program")), {"icon": "mdi:format-list-bulleted"}),
         ("last_runtime", last.get("runtime_minutes", 0), {"unit_of_measurement": "min", "device_class": "duration"}),
@@ -892,6 +1018,7 @@ def main() -> None:
     bootstrap_program_models(state)
     configs = instance_configs(options)
     startup_running = running_instances(state, configs)
+    mark_interrupted_captures(state, startup_running)
     save_state(state)
     health_server = run_health_server()
 

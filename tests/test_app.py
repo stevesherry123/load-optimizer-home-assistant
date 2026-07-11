@@ -12,9 +12,11 @@ from load_optimizer.app.main import (
     instance_configs,
     load_state,
     load_options,
+    mark_interrupted_captures,
     normalise_profile,
     normalise_program,
     normalise_program_policy,
+    parse_instances_yaml,
     profile_energy_kwh,
     profile_sample,
     program_summary,
@@ -469,6 +471,38 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(instance["profile"][-2]["power_w"], 0.0)
         self.assertEqual(instance["profile"][-1]["power_w"], 20.0)
 
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.source_state")
+    def test_interrupted_cycle_is_discarded_from_learning(self, source, _publish):
+        self.config["finish_delay"] = 1
+        readings = {"power": "0", "energy": "4.2", "program": "Eco"}
+        source.side_effect = lambda _token, entity_id: {
+            "sensor.test_power": {"state": readings["power"]},
+            "sensor.test_energy": {"state": readings["energy"]},
+            "sensor.test_program": {"state": readings["program"]},
+        }.get(entity_id)
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        database = {"schema_version": 1, "instances": {"1": {
+            "cycle_start": start.isoformat(), "start_energy": 3.5,
+            "peak_power": 1200, "samples": 10,
+            "profile": [{"offset_seconds": minute * 60, "power_w": 1200} for minute in range(10)],
+            "below_threshold": 0,
+            "program": "Eco",
+            "program_models": {"Eco": {"runs": 3}},
+            "runs": 3,
+        }}}
+        mark_interrupted_captures(database, [{"instance_id": "1", "name": "Dishwasher 1", "cycle_start": start.isoformat()}])
+
+        update_instance("token", database, self.config, start + timedelta(minutes=60))
+
+        instance = database["instances"]["1"]
+        self.assertNotIn("cycle_start", instance)
+        self.assertEqual(instance["runs"], 3)
+        self.assertEqual(instance["program_models"]["Eco"]["runs"], 3)
+        self.assertNotIn("last_cycle", instance)
+        self.assertTrue(instance["last_discarded_cycle"]["learning_excluded"])
+        self.assertEqual(instance["last_discarded_cycle"]["exclusion_reason"], "app_restarted_during_cycle")
+
 
 class ProgramLearningTests(unittest.TestCase):
     def cycle(self, runtime, energy, peak):
@@ -634,6 +668,42 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(configs[2]["finish_delay"], 3)
         self.assertEqual(configs[2]["program_policies"][0]["program"], "Default")
         self.assertEqual(configs[2]["tariff_entities"], ["event.current", "event.next"])
+
+    def test_instances_yaml_drives_dynamic_instance_config(self):
+        options = {
+            "instances_yaml": """
+- id: 1
+  name: Dishwasher 1
+  power_sensor: sensor.dishwasher_power
+- id: 3
+  name: Tumble Dryer 1
+  power_sensor: sensor.dryer_power
+  active_power_threshold: 25
+  finish_delay: 3
+  program_policies:
+    - program: Default
+      classification: preferred
+      allow_normal_recommendation: true
+""",
+            "instance_ids": "1,2",
+            "instance_2_name": "Legacy Washer",
+        }
+
+        configs = instance_configs(options)
+
+        self.assertEqual([config["instance_id"] for config in configs], ["1", "3"])
+        self.assertEqual(configs[1]["name"], "Tumble Dryer 1")
+        self.assertEqual(configs[1]["power_sensor"], "sensor.dryer_power")
+        self.assertEqual(configs[1]["active_power_threshold"], 25)
+        self.assertEqual(configs[1]["finish_delay"], 3)
+        self.assertEqual(configs[1]["program_policies"][0]["program"], "Default")
+        self.assertTrue(configs[1]["program_policies"][0]["allow_normal_recommendation"])
+
+    def test_instances_yaml_accepts_json_list(self):
+        parsed = parse_instances_yaml('[{"id": "4", "name": "EV 1", "power_sensor": "sensor.ev_power"}]')
+
+        self.assertEqual(parsed[0]["id"], "4")
+        self.assertEqual(parsed[0]["name"], "EV 1")
 
     def test_configured_instance_ids_default_to_first_instance(self):
         self.assertEqual(configured_instance_ids({}), ["1"])

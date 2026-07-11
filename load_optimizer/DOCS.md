@@ -7,11 +7,12 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 
 - **Log level** controls diagnostic detail.
 - **Scan interval** controls how often the app refreshes its Home Assistant state.
-- **Appliance instances** is the preferred scalable configuration model. Add one
-  list item per appliance and give each item a stable numeric `id`.
+- **Scalable appliance instances** is an optional YAML or JSON text field for
+  expandable installs. Add one list item per appliance and give each item a
+  stable numeric `id`.
 - Older `instance_ids` and `instance_N_*` options are still supported for
   compatibility. Existing installs can continue using them while migrating
-  carefully to `instances`.
+  carefully to `instances_yaml`.
 - **Reset instance IDs** is normally blank. Set it to a comma-separated list
   such as `2` to clear selected learned instance data on the next app start.
   The request is one-shot while the same value remains configured, and
@@ -69,15 +70,21 @@ published through `sensor.load_optimizer_N_program_policies`.
 
 ### Example configuration
 
-The preferred configuration uses a repeatable `instances` list. The following
-example configures a dishwasher as instance `1`, a washing machine as instance
-`2`, and leaves room to add future appliances without new app fields:
+For existing one or two appliance installs, the legacy `instance_ids` and
+`instance_N_*` fields remain supported. For three or more appliances, use the
+`instances_yaml` text field. Home Assistant's add-on options UI does not provide
+reliable unlimited dynamic rows, so the app treats this field as the scalable
+source of truth when it is populated.
+
+The following example configures a dishwasher as instance `1`, a washing
+machine as instance `2`, and leaves room to add future appliances without new
+app fields:
 
 ```yaml
 log_level: info
 scan_interval: 60
 reset_instance_ids: ""
-instances:
+instances_yaml: |
   - id: "1"
     name: Dishwasher 1
     power_sensor: sensor.your_appliance_power
@@ -113,7 +120,7 @@ Home Assistant installation. Do not publish private device-specific entity IDs
 when sharing configuration publicly.
 
 If you previously used `instance_ids`, `instance_1_*`, or `instance_2_*`
-settings, copy each appliance into one `instances` list item using the same
+settings, copy each appliance into one `instances_yaml` list item using the same
 numeric `id`. For example, old `instance_1_name` becomes the `name` field on the
 list item with `id: "1"`.
 
@@ -129,13 +136,16 @@ optional and use the conservative defaults published in the
 
 If the app starts while an instance already has an active cycle capture, Home
 Assistant receives a persistent notification. This can happen during manual
-restarts, host restarts, or public auto-updates. The app does not automatically
-discard or repair that capture because doing so could lose useful data; it
-instead makes the interruption visible so the user can decide whether to keep or
-reset the affected instance.
+restarts, host restarts, or public auto-updates. The app marks that active
+capture as interrupted. When it later finishes, the cycle is published as a
+discarded cycle and is not loaded into the learned programme model.
 
 The main status entity also exposes `active_capture_instances` so dashboards and
 debugging views can show whether any appliance was mid-cycle at the last update.
+
+Discarded interrupted cycles are visible through
+`sensor.load_optimizer_N_last_discarded_cycle`, including the programme, finish
+time, runtime, energy, sample count, and exclusion reason.
 
 To clear contaminated learning data for a single instance, set
 `reset_instance_ids` and restart the app:
