@@ -5,28 +5,9 @@ configuration:
   scan_interval:
     name: Scan interval
     description: Number of seconds between Home Assistant updates.
-  instances:
-    name: Appliance instances
-    description: Repeatable appliance configuration. Use this for three or more appliances, or for a cleaner scalable setup.
-    fields:
-      id:
-        name: Instance ID
-      name:
-        name: Name
-      power_sensor:
-        name: Power sensor
-      energy_sensor:
-        name: Energy sensor
-      program_sensor:
-        name: Program sensor
-      state_sensor:
-        name: State sensor
-      active_power_threshold:
-        name: Active power threshold
-      finish_delay:
-        name: Finish delay
-      program_policies:
-        name: Program policies
+  instances_yaml:
+    name: Scalable appliance instances
+    description: Optional YAML or JSON list for three or more appliances. When populated, this overrides the legacy instance_ids and instance_N fields.
   reset_instance_ids:
     name: Reset instance IDs
     description: Optional comma-separated instance numbers to clear from app storage on next start. Clear this after use.
