@@ -602,6 +602,39 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual([config["instance_id"] for config in configs], ["1", "2"])
         self.assertEqual(configs[1]["name"], "Washer")
 
+    def test_empty_repeatable_instances_list_falls_back_to_legacy_fields(self):
+        configs = instance_configs({"instances": [], "instance_ids": "1", "instance_1_name": "Dishwasher 1"})
+
+        self.assertEqual([config["instance_id"] for config in configs], ["1"])
+        self.assertEqual(configs[0]["name"], "Dishwasher 1")
+
+    def test_repeatable_instances_list_drives_dynamic_instance_config(self):
+        options = {
+            "instances": [
+                {"id": "1", "name": "Dishwasher 1", "power_sensor": "sensor.dishwasher_power"},
+                {"id": "2", "name": "Washing Machine 1", "power_sensor": "sensor.washer_power"},
+                {
+                    "id": "3",
+                    "name": "Tumble Dryer 1",
+                    "power_sensor": "sensor.dryer_power",
+                    "active_power_threshold": 25,
+                    "finish_delay": 3,
+                    "program_policies": [{"program": "Default", "classification": "preferred"}],
+                },
+            ],
+            "tariff_entities": "event.current,event.next",
+        }
+
+        configs = instance_configs(options)
+
+        self.assertEqual([config["instance_id"] for config in configs], ["1", "2", "3"])
+        self.assertEqual(configs[2]["name"], "Tumble Dryer 1")
+        self.assertEqual(configs[2]["power_sensor"], "sensor.dryer_power")
+        self.assertEqual(configs[2]["active_power_threshold"], 25)
+        self.assertEqual(configs[2]["finish_delay"], 3)
+        self.assertEqual(configs[2]["program_policies"][0]["program"], "Default")
+        self.assertEqual(configs[2]["tariff_entities"], ["event.current", "event.next"])
+
     def test_configured_instance_ids_default_to_first_instance(self):
         self.assertEqual(configured_instance_ids({}), ["1"])
 

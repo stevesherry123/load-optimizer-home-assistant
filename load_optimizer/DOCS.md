@@ -7,8 +7,11 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 
 - **Log level** controls diagnostic detail.
 - **Scan interval** controls how often the app refreshes its Home Assistant state.
-- **Instance IDs** is a comma-separated list of appliance instances to monitor,
-  such as `1` or `1,2`. Quotes are recommended in YAML examples for clarity.
+- **Appliance instances** is the preferred scalable configuration model. Add one
+  list item per appliance and give each item a stable numeric `id`.
+- Older `instance_ids` and `instance_N_*` options are still supported for
+  compatibility. Existing installs can continue using them while migrating
+  carefully to `instances`.
 - **Reset instance IDs** is normally blank. Set it to a comma-separated list
   such as `2` to clear selected learned instance data on the next app start.
   The request is one-shot while the same value remains configured, and
@@ -66,46 +69,53 @@ published through `sensor.load_optimizer_N_program_policies`.
 
 ### Example configuration
 
-The following example configures a dishwasher as instance `1` and a washing
-machine as instance `2`. The dishwasher `PreRinse` program is classified as an
-alternative that will not be selected automatically:
+The preferred configuration uses a repeatable `instances` list. The following
+example configures a dishwasher as instance `1`, a washing machine as instance
+`2`, and leaves room to add future appliances without new app fields:
 
 ```yaml
 log_level: info
 scan_interval: 60
-instance_ids: "1,2"
 reset_instance_ids: ""
-instance_1_name: Dishwasher 1
-instance_1_power_sensor: sensor.your_appliance_power
-instance_1_energy_sensor: sensor.your_appliance_energy
-instance_1_program_sensor: sensor.your_appliance_active_program
-instance_1_state_sensor: sensor.your_appliance_operation_state
-instance_1_active_power_threshold: 10
-instance_1_finish_delay: 5
-instance_1_program_policies:
-  - program: PreRinse
-    classification: alternative
-    enabled: true
-    preference_rank: 50
-    allow_normal_recommendation: false
-    allow_negative_price_run: false
-    minimum_days_between_runs: 0
-    maximum_runs_per_window: 1
-    estimated_overhead_cost_pence: 0
+instances:
+  - id: "1"
+    name: Dishwasher 1
+    power_sensor: sensor.your_appliance_power
+    energy_sensor: sensor.your_appliance_energy
+    program_sensor: sensor.your_appliance_active_program
+    state_sensor: sensor.your_appliance_operation_state
+    active_power_threshold: 10
+    finish_delay: 5
+    program_policies:
+      - program: PreRinse
+        classification: alternative
+        enabled: true
+        preference_rank: 50
+        allow_normal_recommendation: false
+        allow_negative_price_run: false
+        minimum_days_between_runs: 0
+        maximum_runs_per_window: 1
+        estimated_overhead_cost_pence: 0
 
-instance_2_name: Washing Machine 1
-instance_2_power_sensor: sensor.your_washing_machine_power
-instance_2_energy_sensor: sensor.your_washing_machine_energy
-instance_2_program_sensor: sensor.your_washing_machine_active_program
-instance_2_state_sensor: sensor.your_washing_machine_operation_state
-instance_2_active_power_threshold: 10
-instance_2_finish_delay: 5
-instance_2_program_policies: []
+  - id: "2"
+    name: Washing Machine 1
+    power_sensor: sensor.your_washing_machine_power
+    energy_sensor: sensor.your_washing_machine_energy
+    program_sensor: ""
+    state_sensor: ""
+    active_power_threshold: 5
+    finish_delay: 2
+    program_policies: []
 ```
 
 Replace the four `sensor.your_appliance_*` values with entities from the local
 Home Assistant installation. Do not publish private device-specific entity IDs
 when sharing configuration publicly.
+
+If you previously used `instance_ids`, `instance_1_*`, or `instance_2_*`
+settings, copy each appliance into one `instances` list item using the same
+numeric `id`. For example, old `instance_1_name` becomes the `name` field on the
+list item with `id: "1"`.
 
 The two recommendation flags default to `false` when omitted. Setting a
 classification alone never grants permission for the scheduler to use a program.

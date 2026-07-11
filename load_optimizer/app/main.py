@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.7.10"
+APP_VERSION = "0.8.0"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -398,6 +398,33 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
     }
 
 
+def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
+    instance_id = str(entry.get("id") or entry.get("instance_id") or index).strip()
+    if not instance_id.isdigit() or int(instance_id) <= 0:
+        instance_id = str(index)
+    tariff_entities = entity_list(options.get("tariff_entities", ""))
+    single_tariff_entity = str(options.get("tariff_entity", "")).strip()
+    if single_tariff_entity and single_tariff_entity not in tariff_entities:
+        tariff_entities.append(single_tariff_entity)
+    return {
+        "instance_id": instance_id,
+        "name": str(entry.get("name") or f"Appliance {instance_id}"),
+        "power_sensor": str(entry.get("power_sensor", "")).strip(),
+        "energy_sensor": str(entry.get("energy_sensor", "")).strip(),
+        "program_sensor": str(entry.get("program_sensor", "")).strip(),
+        "state_sensor": str(entry.get("state_sensor", "")).strip(),
+        "active_power_threshold": float(entry.get("active_power_threshold", 10)),
+        "finish_delay": int(entry.get("finish_delay", 5)),
+        "program_policies": entry.get("program_policies", []),
+        "tariff_entity": str(options.get("tariff_entity", "")).strip(),
+        "tariff_entities": tariff_entities,
+        "tariff_timezone": str(options.get("tariff_timezone", "Europe/London")).strip(),
+        "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
+        "cost_search_hours": int(options.get("cost_search_hours", 24)),
+        "cost_candidate_interval": int(options.get("cost_candidate_interval", 5)),
+    }
+
+
 def entity_list(raw: object) -> list[str]:
     if raw is None:
         return []
@@ -534,6 +561,13 @@ def publish_restart_warning(token: str, running: list[dict]) -> None:
 
 def instance_configs(options: dict | None = None) -> list[dict]:
     options = options if options is not None else load_options()
+    configured_instances = options.get("instances")
+    if isinstance(configured_instances, list) and configured_instances:
+        return [
+            instance_config_from_entry(entry, index, options)
+            for index, entry in enumerate(configured_instances, start=1)
+            if isinstance(entry, dict)
+        ]
     return [instance_config(instance_id, options) for instance_id in configured_instance_ids(options)]
 
 
