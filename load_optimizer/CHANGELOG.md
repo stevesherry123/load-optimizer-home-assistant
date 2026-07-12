@@ -4,6 +4,13 @@
 
 - No unreleased changes.
 
+## 0.8.4
+
+- Add advisory scheduling entities for recommended start time, estimated
+  scheduled cost, schedule status, and a read-only good-to-start signal.
+- Add conservative schedule gating based on confidence and start-time tolerance.
+- Keep scheduling read-only; this release does not trigger or start appliances.
+
 ## 0.8.3
 
 - Add learning quality gates so suspiciously short, low-sample, or near-zero

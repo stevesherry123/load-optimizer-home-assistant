@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.3"
+APP_VERSION = "0.8.4"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -475,6 +475,8 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "learning_min_runtime_minutes": float(_option_or_env(options, f"{prefix}_learning_min_runtime_minutes", 5)),
         "learning_min_samples": int(_option_or_env(options, f"{prefix}_learning_min_samples", 3)),
         "learning_min_energy_kwh": float(_option_or_env(options, f"{prefix}_learning_min_energy_kwh", 0.001)),
+        "schedule_confidence_threshold": int(_option_or_env(options, f"{prefix}_schedule_confidence_threshold", 20)),
+        "schedule_start_tolerance_minutes": int(_option_or_env(options, f"{prefix}_schedule_start_tolerance_minutes", 5)),
         "program_policies": options.get(f"{prefix}_program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_entities": tariff_entities,
@@ -505,6 +507,8 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "learning_min_runtime_minutes": float(entry.get("learning_min_runtime_minutes", 5)),
         "learning_min_samples": int(entry.get("learning_min_samples", 3)),
         "learning_min_energy_kwh": float(entry.get("learning_min_energy_kwh", 0.001)),
+        "schedule_confidence_threshold": int(entry.get("schedule_confidence_threshold", 20)),
+        "schedule_start_tolerance_minutes": int(entry.get("schedule_start_tolerance_minutes", 5)),
         "program_policies": entry.get("program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_entities": tariff_entities,
@@ -770,6 +774,50 @@ def instance_configs(options: dict | None = None) -> list[dict]:
     return [instance_config(instance_id, options) for instance_id in configured_instance_ids(options)]
 
 
+def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
+    if result.get("status") != "ready" or not result.get("start"):
+        return {
+            "status": result.get("status", "not_ready"),
+            "program": "none",
+            "recommended_start": "unknown",
+            "good_to_start": False,
+            "automation_ready": False,
+            "reason": result.get("reason") or result.get("status", "not_ready"),
+        }
+    start = result["start"].astimezone(timezone.utc)
+    now = now.astimezone(timezone.utc)
+    confidence = int(result.get("confidence") or 0)
+    confidence_threshold = int(config.get("schedule_confidence_threshold", 20))
+    tolerance_minutes = int(config.get("schedule_start_tolerance_minutes", 5))
+    seconds_until_start = round((start - now).total_seconds())
+    good_to_start = abs(seconds_until_start) <= tolerance_minutes * 60
+    automation_ready = good_to_start and confidence >= confidence_threshold
+    if confidence < confidence_threshold:
+        reason = f"confidence_below_{confidence_threshold}"
+    elif seconds_until_start > tolerance_minutes * 60:
+        reason = "recommended_start_in_future"
+    elif seconds_until_start < -tolerance_minutes * 60:
+        reason = "recommended_start_passed"
+    else:
+        reason = "ready"
+    return {
+        "status": "ready",
+        "program": result.get("program", "none"),
+        "recommended_start": start.isoformat(),
+        "seconds_until_start": seconds_until_start,
+        "good_to_start": good_to_start,
+        "automation_ready": automation_ready,
+        "reason": reason,
+        "confidence": confidence,
+        "confidence_threshold": confidence_threshold,
+        "start_tolerance_minutes": tolerance_minutes,
+        "estimated_cost_pence": result.get("total_cost_pence"),
+        "cost_if_started_now_pence": result.get("cost_if_started_now_pence"),
+        "potential_saving_pence": result.get("potential_saving_pence"),
+        "negative_price_run": result.get("negative_price_run", False),
+    }
+
+
 def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> None:
     status = result.get("status", "error")
     common = {
@@ -822,6 +870,47 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                 attributes["cost_breakdown"] = result.get("cost_if_started_now_breakdown", [])
                 attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
         publish_entity(token, f"{prefix}_{suffix}", value if value is not None else "unknown", attributes)
+
+
+def publish_schedule_entities(token: str, prefix: str, name: str, advice: dict) -> None:
+    common = {
+        "program": advice.get("program"),
+        "recommended_start": advice.get("recommended_start"),
+        "seconds_until_start": advice.get("seconds_until_start"),
+        "good_to_start": advice.get("good_to_start"),
+        "automation_ready": advice.get("automation_ready"),
+        "reason": advice.get("reason"),
+        "confidence": advice.get("confidence"),
+        "confidence_threshold": advice.get("confidence_threshold"),
+        "start_tolerance_minutes": advice.get("start_tolerance_minutes"),
+        "estimated_cost_pence": advice.get("estimated_cost_pence"),
+        "cost_if_started_now_pence": advice.get("cost_if_started_now_pence"),
+        "potential_saving_pence": advice.get("potential_saving_pence"),
+        "negative_price_run": advice.get("negative_price_run"),
+    }
+    publish_entity(token, f"{prefix}_schedule_status", advice.get("status", "not_ready"), {
+        "friendly_name": f"{name} Schedule Status",
+        "icon": "mdi:calendar-clock",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_recommended_start", advice.get("recommended_start", "unknown"), {
+        "friendly_name": f"{name} Recommended Start",
+        "device_class": "timestamp",
+        "icon": "mdi:clock-start",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_estimated_scheduled_cost", advice.get("estimated_cost_pence", "unknown"), {
+        "friendly_name": f"{name} Estimated Scheduled Cost",
+        "unit_of_measurement": "p",
+        "icon": "mdi:cash-fast",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_good_to_start", "on" if advice.get("good_to_start") else "off", {
+        "friendly_name": f"{name} Good To Start",
+        "device_class": "running",
+        "icon": "mdi:play-circle",
+        **common,
+    })
 
 
 def update_instance(token: str, database: dict, config: dict, now: datetime | None = None) -> None:
@@ -1021,6 +1110,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "reason": str(error),
                 }
     publish_cost_entities(token, prefix, name, cost_result)
+    publish_schedule_entities(token, prefix, name, schedule_advice(cost_result, config, now))
     latest_program = normalise_program(last.get("program"))
     selected_program = latest_program if latest_program in models else (next(iter(sorted(models)), None))
     selected_summary = program_summary(selected_program, models[selected_program]) if selected_program else {}
