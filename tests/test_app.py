@@ -27,6 +27,7 @@ from load_optimizer.app.main import (
     reset_request_status,
     resolve_program_policies,
     running_instances,
+    schedule_advice,
     tariff_entity_diagnostic,
     tariff_state_from_entity,
     update_instance,
@@ -771,6 +772,62 @@ class ProgramPolicyTests(unittest.TestCase):
 
     def test_configured_instance_ids_default_to_first_instance(self):
         self.assertEqual(configured_instance_ids({}), ["1"])
+
+
+class ScheduleAdviceTests(unittest.TestCase):
+    def test_ready_recommendation_is_good_to_start_inside_tolerance(self):
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        advice = schedule_advice({
+            "status": "ready",
+            "program": "Quick65",
+            "start": now + timedelta(minutes=3),
+            "confidence": 26,
+            "total_cost_pence": 4.2,
+            "cost_if_started_now_pence": 6.1,
+            "potential_saving_pence": 1.9,
+        }, {
+            "schedule_confidence_threshold": 20,
+            "schedule_start_tolerance_minutes": 5,
+        }, now)
+
+        self.assertTrue(advice["good_to_start"])
+        self.assertTrue(advice["automation_ready"])
+        self.assertEqual(advice["reason"], "ready")
+        self.assertEqual(advice["program"], "Quick65")
+
+    def test_low_confidence_blocks_automation_ready(self):
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        advice = schedule_advice({
+            "status": "ready",
+            "program": "Quick65",
+            "start": now,
+            "confidence": 10,
+            "total_cost_pence": 4.2,
+        }, {
+            "schedule_confidence_threshold": 20,
+            "schedule_start_tolerance_minutes": 5,
+        }, now)
+
+        self.assertTrue(advice["good_to_start"])
+        self.assertFalse(advice["automation_ready"])
+        self.assertEqual(advice["reason"], "confidence_below_20")
+
+    def test_future_recommendation_is_not_good_to_start_yet(self):
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        advice = schedule_advice({
+            "status": "ready",
+            "program": "Quick65",
+            "start": now + timedelta(minutes=30),
+            "confidence": 50,
+            "total_cost_pence": 4.2,
+        }, {
+            "schedule_confidence_threshold": 20,
+            "schedule_start_tolerance_minutes": 5,
+        }, now)
+
+        self.assertFalse(advice["good_to_start"])
+        self.assertFalse(advice["automation_ready"])
+        self.assertEqual(advice["reason"], "recommended_start_in_future")
 
 
 if __name__ == "__main__":

@@ -230,6 +230,26 @@ and publishes recommendations only; it never starts an appliance.
 - `sensor.load_optimizer_N_cost_confidence`
 - `sensor.load_optimizer_N_recommended_program`
 
+The scheduling layer is advisory-only. It republishes the current recommendation
+as explicit start guidance and a safe automation signal, but it does not call any
+service or start an appliance.
+
+- `sensor.load_optimizer_N_schedule_status`
+- `sensor.load_optimizer_N_recommended_start`
+- `sensor.load_optimizer_N_estimated_scheduled_cost`
+- `sensor.load_optimizer_N_good_to_start`
+
+`good_to_start` turns `on` only when the recommended start is within the
+configured tolerance window. The `automation_ready` attribute is stricter: it
+also requires the recommendation confidence to meet the configured threshold.
+Defaults are conservative: confidence at least `20` and start within `5`
+minutes. Advanced users can override these per appliance in `instances_yaml`:
+
+```yaml
+schedule_confidence_threshold: 20
+schedule_start_tolerance_minutes: 5
+```
+
 Ready cost entities include a `cost_breakdown` attribute where applicable. Each
 entry shows the tariff period start/end, the price in pence per kWh, the learned
 cycle energy allocated to that period, and the resulting cost. This is important
