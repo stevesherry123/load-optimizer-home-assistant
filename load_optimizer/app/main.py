@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.2"
+APP_VERSION = "0.8.3"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -244,6 +244,90 @@ def stat_summary(model: dict, name: str, digits: int) -> tuple[float | None, flo
     return round(stat["mean"], digits), round(math.sqrt(max(0.0, variance)), digits)
 
 
+def cycle_quality_issue(config: dict, cycle: dict) -> str | None:
+    min_runtime = float(config.get("learning_min_runtime_minutes", 5))
+    min_samples = int(config.get("learning_min_samples", 3))
+    min_energy = float(config.get("learning_min_energy_kwh", 0.001))
+    runtime = cycle.get("runtime_minutes")
+    samples = cycle.get("sample_count")
+    energy = cycle.get("energy_kwh")
+    if runtime is not None and float(runtime) < min_runtime:
+        return f"runtime_below_{min_runtime:g}_minutes"
+    if samples is not None and int(samples) < min_samples:
+        return f"samples_below_{min_samples}"
+    if energy is not None and float(energy) < min_energy:
+        return f"energy_below_{min_energy:g}_kwh"
+    return None
+
+
+def rebuild_model_from_recent_cycles(model: dict, valid_cycles: list[dict]) -> None:
+    existing_profile = model.get("representative_profile_w", [])
+    model.clear()
+    model["runs"] = 0
+    model["recent_cycles"] = []
+    if existing_profile:
+        model["representative_profile_cleared_reason"] = "quality_repair_removed_suspicious_cycles"
+    for cycle in valid_cycles:
+        model["runs"] += 1
+        finish = cycle.get("finish")
+        if finish and not model.get("first_seen"):
+            model["first_seen"] = finish
+        if finish:
+            model["last_seen"] = finish
+            model["last_updated"] = finish
+        update_running_stat(model, "runtime_minutes", cycle.get("runtime_minutes"))
+        update_running_stat(model, "energy_kwh", cycle.get("energy_kwh"))
+        update_running_stat(model, "peak_power_w", cycle.get("peak_power_w"))
+        model.setdefault("recent_cycles", []).append(cycle)
+    del model["recent_cycles"][:-10]
+    model["representative_profile_w"] = []
+    model["profile_count"] = 0
+
+
+def repair_learning_quality(database: dict, configs: list[dict]) -> None:
+    config_by_id = {str(config["instance_id"]): config for config in configs}
+    for instance_id, instance in database.get("instances", {}).items():
+        config = config_by_id.get(str(instance_id))
+        if not config:
+            continue
+        excluded = None
+        repaired = False
+        for program, model in list(instance.get("program_models", {}).items()):
+            recent_cycles = model.get("recent_cycles", [])
+            if not recent_cycles:
+                continue
+            valid_cycles = []
+            removed_cycles = []
+            for cycle in recent_cycles:
+                reason = cycle_quality_issue(config, cycle)
+                if reason:
+                    removed = dict(cycle)
+                    removed.update({
+                        "program": program,
+                        "learning_excluded": True,
+                        "exclusion_reason": reason,
+                    })
+                    removed_cycles.append(removed)
+                else:
+                    valid_cycles.append(cycle)
+            if not removed_cycles:
+                continue
+            repaired = True
+            excluded = instance.setdefault("quality_excluded_cycles", [])
+            excluded.extend(removed_cycles)
+            instance["last_discarded_cycle"] = removed_cycles[-1]
+            if valid_cycles:
+                rebuild_model_from_recent_cycles(model, valid_cycles)
+            else:
+                instance["program_models"].pop(program, None)
+        if repaired:
+            del instance["quality_excluded_cycles"][:-20]
+            instance["runs"] = sum(
+                int(model.get("runs", 0))
+                for model in instance.get("program_models", {}).values()
+            )
+
+
 def program_summary(program: str, model: dict) -> dict:
     runtime, runtime_stddev = stat_summary(model, "runtime_minutes", 1)
     energy, energy_stddev = stat_summary(model, "energy_kwh", 4)
@@ -388,6 +472,9 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "state_sensor": str(_option_or_env(options, f"{prefix}_state_sensor", "")).strip(),
         "active_power_threshold": float(_option_or_env(options, f"{prefix}_active_power_threshold", 10)),
         "finish_delay": int(_option_or_env(options, f"{prefix}_finish_delay", 5)),
+        "learning_min_runtime_minutes": float(_option_or_env(options, f"{prefix}_learning_min_runtime_minutes", 5)),
+        "learning_min_samples": int(_option_or_env(options, f"{prefix}_learning_min_samples", 3)),
+        "learning_min_energy_kwh": float(_option_or_env(options, f"{prefix}_learning_min_energy_kwh", 0.001)),
         "program_policies": options.get(f"{prefix}_program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_entities": tariff_entities,
@@ -415,6 +502,9 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "state_sensor": str(entry.get("state_sensor", "")).strip(),
         "active_power_threshold": float(entry.get("active_power_threshold", 10)),
         "finish_delay": int(entry.get("finish_delay", 5)),
+        "learning_min_runtime_minutes": float(entry.get("learning_min_runtime_minutes", 5)),
+        "learning_min_samples": int(entry.get("learning_min_samples", 3)),
+        "learning_min_energy_kwh": float(entry.get("learning_min_energy_kwh", 0.001)),
         "program_policies": entry.get("program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_entities": tariff_entities,
@@ -812,6 +902,23 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 last["learning_excluded"] = True
                 last["exclusion_reason"] = "app_restarted_during_cycle"
                 instance["last_discarded_cycle"] = last
+            elif quality_issue := cycle_quality_issue(config, last):
+                last["learning_excluded"] = True
+                last["exclusion_reason"] = quality_issue
+                instance["last_discarded_cycle"] = last
+                excluded = instance.setdefault("quality_excluded_cycles", [])
+                excluded.append({
+                    "program": normalise_program(last.get("program")),
+                    "finish": last.get("finish"),
+                    "runtime_minutes": last.get("runtime_minutes"),
+                    "energy_kwh": last.get("energy_kwh"),
+                    "peak_power_w": last.get("peak_power"),
+                    "sample_count": last.get("sample_count"),
+                    "energy_source": last.get("energy_source"),
+                    "learning_excluded": True,
+                    "exclusion_reason": quality_issue,
+                })
+                del excluded[:-20]
             else:
                 instance["last_cycle"] = last
                 update_program_model(instance, last)
@@ -954,8 +1061,10 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "runtime_minutes": discarded.get("runtime_minutes"),
         "energy_kwh": discarded.get("energy_kwh"),
         "sample_count": discarded.get("sample_count"),
+        "peak_power_w": discarded.get("peak_power_w", discarded.get("peak_power")),
         "learning_excluded": discarded.get("learning_excluded", False),
         "exclusion_reason": discarded.get("exclusion_reason"),
+        "quality_excluded_cycles": instance.get("quality_excluded_cycles", []),
     })
     for suffix, value, attrs in (
         ("last_program", normalise_program(last.get("program")), {"icon": "mdi:format-list-bulleted"}),
@@ -1015,8 +1124,9 @@ def main() -> None:
     options = load_options()
     state = load_state()
     reset_configured_instances(state, options)
-    bootstrap_program_models(state)
     configs = instance_configs(options)
+    bootstrap_program_models(state)
+    repair_learning_quality(state, configs)
     startup_running = running_instances(state, configs)
     mark_interrupted_captures(state, startup_running)
     save_state(state)

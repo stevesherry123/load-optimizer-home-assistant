@@ -21,6 +21,7 @@ from load_optimizer.app.main import (
     profile_sample,
     program_summary,
     publish_restart_warning,
+    repair_learning_quality,
     save_state,
     reset_configured_instances,
     reset_request_status,
@@ -503,6 +504,39 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertTrue(instance["last_discarded_cycle"]["learning_excluded"])
         self.assertEqual(instance["last_discarded_cycle"]["exclusion_reason"], "app_restarted_during_cycle")
 
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.source_state")
+    def test_suspicious_completed_cycle_is_discarded_from_learning(self, source, _publish):
+        self.config["finish_delay"] = 1
+        readings = {"power": "0", "energy": "4.2", "program": "Eco"}
+        source.side_effect = lambda _token, entity_id: {
+            "sensor.test_power": {"state": readings["power"]},
+            "sensor.test_energy": {"state": readings["energy"]},
+            "sensor.test_program": {"state": readings["program"]},
+        }.get(entity_id)
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        database = {"schema_version": 1, "instances": {"1": {
+            "cycle_start": start.isoformat(), "start_energy": 4.1999,
+            "peak_power": 10.8, "samples": 2,
+            "profile": [
+                {"offset_seconds": 0, "power_w": 10.8},
+                {"offset_seconds": 60, "power_w": 0.0},
+            ],
+            "below_threshold": 0,
+            "program": "Eco",
+            "program_models": {"Eco": {"runs": 3}},
+            "runs": 3,
+        }}}
+
+        update_instance("token", database, self.config, start + timedelta(minutes=1))
+
+        instance = database["instances"]["1"]
+        self.assertEqual(instance["runs"], 3)
+        self.assertEqual(instance["program_models"]["Eco"]["runs"], 3)
+        self.assertNotIn("last_cycle", instance)
+        self.assertTrue(instance["last_discarded_cycle"]["learning_excluded"])
+        self.assertEqual(instance["last_discarded_cycle"]["exclusion_reason"], "runtime_below_5_minutes")
+
 
 class ProgramLearningTests(unittest.TestCase):
     def cycle(self, runtime, energy, peak):
@@ -556,6 +590,36 @@ class ProgramLearningTests(unittest.TestCase):
         model = database["instances"]["1"]["program_models"]["Eco"]
         self.assertEqual(model["runs"], 1)
         self.assertEqual(program_summary("Eco", model)["confidence"], 20)
+
+    def test_repair_learning_quality_removes_suspicious_recent_cycles(self):
+        database = {"instances": {"1": {
+            "runs": 4,
+            "program_models": {"Quick65": {
+                "runs": 4,
+                "first_seen": "2026-01-01T01:00:00+00:00",
+                "last_seen": "2026-01-01T04:00:00+00:00",
+                "profile_count": 4,
+                "representative_profile_w": [10.0, 1000.0, 10.0],
+                "recent_cycles": [
+                    {"finish": "2026-01-01T01:00:00+00:00", "runtime_minutes": 49.7, "energy_kwh": 1.0253, "peak_power_w": 2458.4, "sample_count": 49, "energy_source": "power_profile"},
+                    {"finish": "2026-01-01T02:00:00+00:00", "runtime_minutes": 43.4, "energy_kwh": 1.1099, "peak_power_w": 2519.2, "sample_count": 42, "energy_source": "power_profile"},
+                    {"finish": "2026-01-01T03:00:00+00:00", "runtime_minutes": 1.1, "energy_kwh": 0.0001, "peak_power_w": 10.8, "sample_count": 2, "energy_source": "power_profile"},
+                    {"finish": "2026-01-01T04:00:00+00:00", "runtime_minutes": 42.1, "energy_kwh": 0.9158, "peak_power_w": 2159.6, "sample_count": 41, "energy_source": "power_profile"},
+                ],
+            }},
+        }}}
+
+        repair_learning_quality(database, [{"instance_id": "1", "learning_min_runtime_minutes": 5, "learning_min_samples": 3, "learning_min_energy_kwh": 0.001}])
+
+        instance = database["instances"]["1"]
+        model = instance["program_models"]["Quick65"]
+        self.assertEqual(instance["runs"], 3)
+        self.assertEqual(model["runs"], 3)
+        self.assertEqual(len(model["recent_cycles"]), 3)
+        self.assertEqual(program_summary("Quick65", model)["expected_runtime_minutes"], 45.1)
+        self.assertEqual(model["representative_profile_w"], [])
+        self.assertEqual(instance["last_discarded_cycle"]["finish"], "2026-01-01T03:00:00+00:00")
+        self.assertEqual(instance["last_discarded_cycle"]["exclusion_reason"], "runtime_below_5_minutes")
 
 
 class ProgramPolicyTests(unittest.TestCase):
