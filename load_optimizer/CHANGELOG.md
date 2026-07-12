@@ -4,6 +4,16 @@
 
 - No unreleased changes.
 
+## 0.8.3
+
+- Add learning quality gates so suspiciously short, low-sample, or near-zero
+  energy captures are discarded instead of being loaded into program models.
+- Repair existing recent-cycle learning on startup by removing cycles that fail
+  the same quality gates, reducing affected run counts, and clearing
+  representative profiles that may already have absorbed bad data.
+- Publish quality-excluded cycles through
+  `sensor.load_optimizer_N_last_discarded_cycle`.
+
 ## 0.8.2
 
 - Replace the unsupported repeatable add-on schema with a persisted

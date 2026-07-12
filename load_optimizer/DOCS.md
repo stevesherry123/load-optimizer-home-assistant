@@ -147,6 +147,23 @@ Discarded interrupted cycles are visible through
 `sensor.load_optimizer_N_last_discarded_cycle`, including the programme, finish
 time, runtime, energy, sample count, and exclusion reason.
 
+The app also applies learning quality gates before accepting a completed cycle.
+By default, a cycle is excluded if it is shorter than 5 minutes, has fewer than
+3 samples, or uses less than 0.001 kWh. These conservative defaults prevent
+brief threshold blips, partial captures, and restart artefacts from poisoning the
+learned program model. If a recent-cycle model already contains a suspicious
+entry, the app removes that entry during startup, reduces the affected run
+counts, and clears any representative profile that may have absorbed the bad
+shape data. Future valid cycles rebuild the profile.
+
+Advanced users can override these thresholds per appliance in `instances_yaml`:
+
+```yaml
+learning_min_runtime_minutes: 5
+learning_min_samples: 3
+learning_min_energy_kwh: 0.001
+```
+
 To clear contaminated learning data for a single instance, set
 `reset_instance_ids` and restart the app:
 
