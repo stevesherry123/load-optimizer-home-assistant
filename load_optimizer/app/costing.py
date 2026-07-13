@@ -300,6 +300,22 @@ def summarize_window_candidate(candidate: dict | None, now_cost: float | None) -
     }
 
 
+def summarize_forecast_candidates(candidates: list[dict], limit: int = 300) -> list[dict]:
+    forecast = []
+    for candidate in sorted(candidates, key=lambda item: (item["program"], item["start"]))[:limit]:
+        forecast.append({
+            "program": candidate.get("program"),
+            "start": candidate.get("start").isoformat() if candidate.get("start") else None,
+            "finish": candidate.get("finish").isoformat() if candidate.get("finish") else None,
+            "cost_pence": candidate.get("total_cost_pence"),
+            "energy_kwh": candidate.get("energy_kwh"),
+            "confidence": candidate.get("confidence"),
+            "is_overnight_start": candidate.get("is_overnight_start"),
+            "is_daytime_start": candidate.get("is_daytime_start"),
+        })
+    return forecast
+
+
 def recommend_cycle(
     models: list[dict],
     policies: list[dict],
@@ -314,6 +330,8 @@ def recommend_cycle(
     overnight_start: str = "20:00",
     overnight_end: str = "08:00",
     schedule_timezone: str = "Europe/London",
+    forecast_hours: int = 12,
+    forecast_limit: int = 300,
 ) -> dict:
     """Find the least-cost policy-eligible program and start time."""
     if schedule_strategy not in SCHEDULE_STRATEGIES:
@@ -326,6 +344,7 @@ def recommend_cycle(
     comparison_candidates = []
     rejected_profiles = 0
     search_end = reference_utc + timedelta(hours=search_hours)
+    forecast_end = reference_utc + timedelta(hours=max(0, forecast_hours))
     first_start = _next_candidate(reference_utc, candidate_interval_minutes)
     for model in models:
         policy = policy_by_program.get(model["program"])
@@ -401,6 +420,10 @@ def recommend_cycle(
         now_breakdown = []
     best_overnight = best_window_candidate(comparison_candidates, overnight=True)
     best_daytime = best_window_candidate(comparison_candidates, overnight=False)
+    forecast_candidates = [
+        candidate for candidate in comparison_candidates
+        if candidate["start"] <= forecast_end
+    ]
     return {
         "status": "ready",
         **cheapest,
@@ -409,6 +432,8 @@ def recommend_cycle(
         "potential_saving_pence": round(max(0.0, now_cost - cheapest["total_cost_pence"]), 4) if now_cost is not None else None,
         "overnight_comparison": summarize_window_candidate(best_overnight, now_cost),
         "daytime_comparison": summarize_window_candidate(best_daytime, now_cost),
+        "cost_forecast": summarize_forecast_candidates(forecast_candidates, forecast_limit),
+        "forecast_hours": forecast_hours,
         "candidate_count": len(candidates),
         "comparison_candidate_count": len(comparison_candidates),
         "schedule_strategy": schedule_strategy,
