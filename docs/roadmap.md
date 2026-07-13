@@ -8,6 +8,9 @@ implementation architecture in `docs/architecture.md`.
 
 - improve profile-weighted tariff cost estimation across half-hour slots
 - add per-instance earliest start and latest finish constraints
+- add helper-driven deadline support for calendar and travel-aware scheduling
+- add selectable scheduling strategies such as `cheapest_soonest` and
+  `cheapest_latest_finish`
 - expose clear recommended start and finish sensors
 - expose a recommended-window active state for dashboards and automations
 - add a manual recalculation service for tariff, policy, or test changes
@@ -23,6 +26,11 @@ or rely only on fixed-duration appliance assumptions.
 Planned scheduling features:
 
 - per-instance earliest start and latest finish constraints
+- helper-driven deadline support, initially via Home Assistant input helpers
+- optional calendar integration, with TripIt recommended for travel-aware
+  scheduling where users already expose TripIt to Home Assistant
+- scheduling strategies that are separate from constraints:
+  `cheapest_soonest`, `cheapest_latest_finish`, and later `cheapest_absolute`
 - clear recommended start and finish sensors
 - a recommended-window active state for dashboards and automations
 - a manual recalculation service for tariff, policy, or test changes
@@ -42,6 +50,18 @@ Per-instance constraints should support common real-world rules such as:
 - avoid noisy spin phases late at night
 - allow opportunistic operation during negative-price windows
 - reserve maintenance or high-consumption cycles for special conditions
+
+Scheduling strategies should rank only the candidates left after constraints are
+applied. A deadline answers "what is allowed"; a strategy answers "which allowed
+slot is preferred." For example, a dishwasher before work travel may use a
+calendar-derived deadline with `cheapest_soonest`, while an EV may use a
+departure deadline with `cheapest_latest_finish`.
+
+Calendar integration should be optional for basic operation but recommended for
+full automation. The first implementation should prefer a helper contract such
+as an enabled flag plus a must-finish-by datetime, so TripIt, Google Calendar,
+Outlook, or manual Home Assistant automations can all drive the same scheduler.
+Direct calendar polling can be added later as a convenience layer.
 
 The project may expose binary sensors later, but the core model should first
 publish enough state for either binary sensors or ordinary sensors to be built

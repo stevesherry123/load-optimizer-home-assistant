@@ -250,6 +250,17 @@ schedule_confidence_threshold: 20
 schedule_start_tolerance_minutes: 5
 ```
 
+Future scheduling work will separate constraints from strategy. Constraints
+define what is allowed, such as a latest finish deadline. Strategy decides which
+allowed slot to prefer, such as `cheapest_soonest` for dishwashers or
+`cheapest_latest_finish` for EV-style loads.
+
+Calendar integration is recommended for the full automation experience because
+it lets the scheduler understand travel, household deadlines, and avoid windows.
+TripIt is a good travel-calendar source because it can automatically populate a
+Home Assistant calendar from itinerary emails, but basic learning and cost
+recommendations do not require TripIt or any calendar.
+
 Ready cost entities include a `cost_breakdown` attribute where applicable. Each
 entry shows the tariff period start/end, the price in pence per kWh, the learned
 cycle energy allocated to that period, and the resulting cost. This is important

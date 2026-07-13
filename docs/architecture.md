@@ -104,6 +104,76 @@ Energy sensors can still be exposed and retained as diagnostic metadata, but the
 learned model should prefer profile-integrated energy so the same approach works
 across dishwashers, washing machines, EVs, and other future load types.
 
+## Scheduling Model
+
+Status: Active design principle
+
+Scheduling should be split into two separate concepts:
+
+- **Constraints** define which candidate starts are allowed.
+- **Strategies** decide which allowed candidate is preferred.
+
+This distinction keeps the app device-agnostic and avoids mixing user intent
+with safety rules.
+
+Examples of constraints:
+
+- earliest allowed start
+- latest allowed finish
+- must finish before a deadline
+- avoid a calendar window
+- only allow selected programs
+
+Examples of strategies:
+
+- `cheapest_soonest`: choose the cheapest acceptable slot, but prefer the
+  earliest start among near-equivalent candidates
+- `cheapest_latest_finish`: choose the cheapest acceptable slot, but prefer the
+  latest finish among near-equivalent candidates
+- `cheapest_absolute`: choose the mathematically cheapest candidate even if it
+  delays the run for a very small saving
+
+A deadline is therefore not the same as a strategy. A deadline narrows the valid
+window; a strategy ranks the remaining valid options. For a dishwasher before
+travel, the likely model is a deadline constraint plus `cheapest_soonest`. For a
+future EV or battery use case, the likely model is a departure deadline plus
+`cheapest_latest_finish`.
+
+The current App runtime exposes advisory scheduling entities only. It should not
+start appliances until constraints, confidence thresholds, and user permissions
+have been proven through read-only operation.
+
+## Calendar And Deadline Context
+
+Status: Recommended full-automation direction
+
+Calendar integration is not required for core learning, cost estimation, or
+basic cheapest-start recommendations. It is recommended for the full scheduling
+experience because real households have deadlines and availability windows that
+cannot be inferred from tariff data alone.
+
+Calendar or helper-driven deadlines should allow the app to answer questions
+such as:
+
+- must the cycle finish before travel?
+- is there a household deadline tomorrow morning?
+- should an appliance avoid running while the user is away?
+- is a cheap slot still useful if it finishes after the user needs the appliance?
+
+TripIt is a recommended travel-calendar source because it can automatically
+convert flights, rail, hotels, and itinerary emails into calendar events exposed
+to Home Assistant. Other Home Assistant calendar entities should also be
+supported where they provide reliable upcoming events.
+
+The preferred implementation path is:
+
+1. Add Home Assistant helper-based deadline inputs as the stable app contract.
+2. Let user automations, including TripIt automations, populate those helpers.
+3. Later add direct calendar polling as a convenience layer.
+
+This keeps the app useful for people who do not use TripIt while still providing
+a clear recommended setup for travel-aware scheduling.
+
 ## Roadmap Boundaries
 
 Planned work, backlog items, and future feature ideas live in
