@@ -247,7 +247,12 @@ daytime. By default the forecast covers the next 12 hours:
 
 ```yaml
 cost_forecast_hours: 12
+cost_forecast_interval: 30
 ```
+
+`cost_forecast_interval` controls chart granularity only. The optimiser can keep
+using a smaller `cost_candidate_interval` for precise recommendations while the
+forecast chart shows cleaner half-hourly points.
 
 The scheduling layer is advisory-only. It republishes the current recommendation
 as explicit start guidance and a safe automation signal, but it does not call any

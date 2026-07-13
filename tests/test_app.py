@@ -757,6 +757,7 @@ class ProgramPolicyTests(unittest.TestCase):
 """,
             "instance_ids": "1,2",
             "instance_2_name": "Legacy Washer",
+            "cost_forecast_interval": 30,
         }
 
         configs = instance_configs(options)
@@ -771,6 +772,7 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(configs[1]["schedule_window_preference"], "prefer_overnight")
         self.assertEqual(configs[1]["schedule_overnight_start"], "20:00")
         self.assertEqual(configs[1]["schedule_overnight_end"], "08:00")
+        self.assertEqual(configs[1]["cost_forecast_interval"], 30)
         self.assertEqual(configs[1]["program_policies"][0]["program"], "Default")
         self.assertTrue(configs[1]["program_policies"][0]["allow_normal_recommendation"])
 

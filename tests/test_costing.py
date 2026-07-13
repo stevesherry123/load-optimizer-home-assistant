@@ -392,14 +392,17 @@ class CostEstimationTests(unittest.TestCase):
             periods,
             reference_utc=self.start,
             search_hours=2,
-            candidate_interval_minutes=30,
+            candidate_interval_minutes=5,
             forecast_hours=1,
+            forecast_interval_minutes=30,
         )
 
         self.assertEqual(result["forecast_hours"], 1)
+        self.assertEqual(result["forecast_interval_minutes"], 30)
         self.assertEqual(len(result["cost_forecast"]), 3)
         self.assertEqual(result["cost_forecast"][0]["program"], "Eco")
         self.assertEqual(result["cost_forecast"][0]["cost_pence"], 20.0)
+        self.assertEqual(result["cost_forecast"][1]["start"], "2026-07-06T00:30:00+00:00")
 
 
 if __name__ == "__main__":
