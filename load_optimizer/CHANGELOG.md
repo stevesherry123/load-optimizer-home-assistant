@@ -4,6 +4,12 @@
 
 - No unreleased changes.
 
+## 0.8.9
+
+- Publish a per-instance cost forecast entity for charting estimated cycle cost
+  by candidate start time and learned program.
+- Add configurable `cost_forecast_hours`, defaulting to 12 hours.
+
 ## 0.8.8
 
 - Round published pence-based cost and saving sensor states to 2 decimal

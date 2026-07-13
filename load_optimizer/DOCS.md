@@ -233,11 +233,21 @@ and publishes recommendations only; it never starts an appliance.
 - `sensor.load_optimizer_N_daytime_saving`
 - `sensor.load_optimizer_N_cost_confidence`
 - `sensor.load_optimizer_N_recommended_program`
+- `sensor.load_optimizer_N_cost_forecast`
 
 The overnight and daytime comparison entities show the best eligible option in
 each start window, independent of which option is selected as the current
 recommendation. This makes dashboards clearer: users can compare overnight
 cost, daytime cost, cost if started now, and the saving for each option.
+
+The cost forecast entity publishes chart-ready forecast data in its `forecast`
+attribute. Each row contains the learned program, candidate start and finish,
+estimated cost, learned energy, confidence, and whether the start is overnight or
+daytime. By default the forecast covers the next 12 hours:
+
+```yaml
+cost_forecast_hours: 12
+```
 
 The scheduling layer is advisory-only. It republishes the current recommendation
 as explicit start guidance and a safe automation signal, but it does not call any

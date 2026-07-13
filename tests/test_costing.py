@@ -370,6 +370,37 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["daytime_comparison"]["saving_vs_now_pence"], 15.0)
         self.assertEqual(result["comparison_candidate_count"], 2)
 
+    def test_recommendation_includes_cost_forecast(self):
+        model = {**self.model, "expected_runtime_minutes": 30}
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        periods = [
+            self.period(0, 30, 20),
+            self.period(30, 60, 10),
+            self.period(60, 90, 5),
+        ]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=2,
+            candidate_interval_minutes=30,
+            forecast_hours=1,
+        )
+
+        self.assertEqual(result["forecast_hours"], 1)
+        self.assertEqual(len(result["cost_forecast"]), 3)
+        self.assertEqual(result["cost_forecast"][0]["program"], "Eco")
+        self.assertEqual(result["cost_forecast"][0]["cost_pence"], 20.0)
+
 
 if __name__ == "__main__":
     unittest.main()
