@@ -4,6 +4,11 @@
 
 - No unreleased changes.
 
+## 0.8.8
+
+- Round published pence-based cost and saving sensor states to 2 decimal
+  places for cleaner dashboard cards.
+
 ## 0.8.7
 
 - Publish separate best overnight and daytime cost comparison entities.
