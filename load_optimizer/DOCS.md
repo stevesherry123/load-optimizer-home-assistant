@@ -268,6 +268,23 @@ schedule_strategy: cheapest_earliest_finish
 schedule_equivalent_cost_tolerance_pence: 1.0
 ```
 
+Schedule windows can be used to restrict or prefer daytime and overnight starts.
+By default, overnight is 20:00-08:00 in the configured tariff timezone.
+
+Supported values:
+
+- `any`: no window preference
+- `overnight_only`: only recommend starts in the overnight window
+- `daytime_only`: only recommend starts outside the overnight window
+- `prefer_overnight`: prefer overnight starts when cost is near-equivalent
+- `prefer_daytime`: prefer daytime starts when cost is near-equivalent
+
+```yaml
+schedule_window_preference: prefer_overnight
+schedule_overnight_start: "20:00"
+schedule_overnight_end: "08:00"
+```
+
 Calendar integration is recommended for the full automation experience because
 it lets the scheduler understand travel, household deadlines, and avoid windows.
 TripIt is a good travel-calendar source because it can automatically populate a

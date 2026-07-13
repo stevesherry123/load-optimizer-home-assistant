@@ -747,6 +747,9 @@ class ProgramPolicyTests(unittest.TestCase):
   finish_delay: 3
   schedule_strategy: cheapest_latest_finish
   schedule_equivalent_cost_tolerance_pence: 1.5
+  schedule_window_preference: prefer_overnight
+  schedule_overnight_start: "20:00"
+  schedule_overnight_end: "08:00"
   program_policies:
     - program: Default
       classification: preferred
@@ -765,6 +768,9 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(configs[1]["finish_delay"], 3)
         self.assertEqual(configs[1]["schedule_strategy"], "cheapest_latest_finish")
         self.assertEqual(configs[1]["schedule_equivalent_cost_tolerance_pence"], 1.5)
+        self.assertEqual(configs[1]["schedule_window_preference"], "prefer_overnight")
+        self.assertEqual(configs[1]["schedule_overnight_start"], "20:00")
+        self.assertEqual(configs[1]["schedule_overnight_end"], "08:00")
         self.assertEqual(configs[1]["program_policies"][0]["program"], "Default")
         self.assertTrue(configs[1]["program_policies"][0]["allow_normal_recommendation"])
 

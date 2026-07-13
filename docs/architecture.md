@@ -122,6 +122,7 @@ Examples of constraints:
 - latest allowed finish
 - must finish before a deadline
 - avoid a calendar window
+- only start during an overnight or daytime window
 - only allow selected programs
 
 Examples of strategies:

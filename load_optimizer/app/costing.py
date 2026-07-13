@@ -15,6 +15,7 @@ FEED_ENTRY = re.compile(
 )
 STRUCTURED_RATE_KEYS = ("rates", "prices", "forecast", "all_rates")
 SCHEDULE_STRATEGIES = {"cheapest_absolute", "cheapest_earliest_finish", "cheapest_latest_finish"}
+WINDOW_PREFERENCES = {"any", "overnight_only", "daytime_only", "prefer_overnight", "prefer_daytime"}
 
 
 def _nearest_year(day: int, month: int, reference_local: datetime) -> int:
@@ -234,6 +235,44 @@ def _next_candidate(reference: datetime, interval_minutes: int) -> datetime:
     return datetime.fromtimestamp(rounded, timezone.utc)
 
 
+def parse_clock(value: str) -> tuple[int, int]:
+    try:
+        hour, minute = str(value).split(":", 1)
+        hour = int(hour)
+        minute = int(minute)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid clock time: {value}") from None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ValueError(f"Invalid clock time: {value}")
+    return hour, minute
+
+
+def in_time_window(value: datetime, start: str, end: str, timezone_name: str) -> bool:
+    try:
+        local_timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError(f"Unknown schedule timezone: {timezone_name}") from error
+    local = value.astimezone(local_timezone)
+    start_hour, start_minute = parse_clock(start)
+    end_hour, end_minute = parse_clock(end)
+    current_minutes = local.hour * 60 + local.minute
+    start_minutes = start_hour * 60 + start_minute
+    end_minutes = end_hour * 60 + end_minute
+    if start_minutes == end_minutes:
+        return True
+    if start_minutes < end_minutes:
+        return start_minutes <= current_minutes < end_minutes
+    return current_minutes >= start_minutes or current_minutes < end_minutes
+
+
+def candidate_window_score(candidate: dict, preference: str) -> int:
+    if preference == "prefer_overnight":
+        return 0 if candidate.get("is_overnight_start") else 1
+    if preference == "prefer_daytime":
+        return 0 if candidate.get("is_daytime_start") else 1
+    return 0
+
+
 def recommend_cycle(
     models: list[dict],
     policies: list[dict],
@@ -244,10 +283,16 @@ def recommend_cycle(
     candidate_interval_minutes: int,
     schedule_strategy: str = "cheapest_absolute",
     equivalent_cost_tolerance_pence: float = 0.0,
+    window_preference: str = "any",
+    overnight_start: str = "20:00",
+    overnight_end: str = "08:00",
+    schedule_timezone: str = "Europe/London",
 ) -> dict:
     """Find the least-cost policy-eligible program and start time."""
     if schedule_strategy not in SCHEDULE_STRATEGIES:
         raise ValueError(f"Unsupported schedule strategy: {schedule_strategy}")
+    if window_preference not in WINDOW_PREFERENCES:
+        raise ValueError(f"Unsupported window preference: {window_preference}")
     equivalent_cost_tolerance_pence = max(0.0, float(equivalent_cost_tolerance_pence))
     policy_by_program = {policy["program"]: policy for policy in policies}
     candidates = []
@@ -267,6 +312,14 @@ def recommend_cycle(
             continue
         start = first_start
         while start <= search_end:
+            is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
+            is_daytime = not is_overnight
+            if window_preference == "overnight_only" and not is_overnight:
+                start += timedelta(minutes=candidate_interval_minutes)
+                continue
+            if window_preference == "daytime_only" and not is_daytime:
+                start += timedelta(minutes=candidate_interval_minutes)
+                continue
             try:
                 estimate = estimate_cycle_cost(start, model, periods)
             except ValueError:
@@ -287,6 +340,8 @@ def recommend_cycle(
                     "confidence": model.get("confidence", 0),
                     "preference_rank": policy["preference_rank"],
                     "negative_price_run": negative,
+                    "is_overnight_start": is_overnight,
+                    "is_daytime_start": is_daytime,
                 })
             start += timedelta(minutes=candidate_interval_minutes)
     if not candidates:
@@ -300,11 +355,11 @@ def recommend_cycle(
         if item["total_cost_pence"] <= cheapest_cost + equivalent_cost_tolerance_pence
     ]
     if schedule_strategy == "cheapest_earliest_finish":
-        cheapest = min(equivalent_candidates, key=lambda item: (item["finish"], item["total_cost_pence"], item["preference_rank"]))
+        cheapest = min(equivalent_candidates, key=lambda item: (candidate_window_score(item, window_preference), item["finish"], item["total_cost_pence"], item["preference_rank"]))
     elif schedule_strategy == "cheapest_latest_finish":
-        cheapest = min(equivalent_candidates, key=lambda item: (-item["finish"].timestamp(), item["total_cost_pence"], item["preference_rank"]))
+        cheapest = min(equivalent_candidates, key=lambda item: (candidate_window_score(item, window_preference), -item["finish"].timestamp(), item["total_cost_pence"], item["preference_rank"]))
     else:
-        cheapest = min(candidates, key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]))
+        cheapest = min(candidates, key=lambda item: (item["total_cost_pence"], candidate_window_score(item, window_preference), item["preference_rank"], item["finish"]))
     selected_model = next(model for model in models if model["program"] == cheapest["program"])
     try:
         now_estimate = estimate_cycle_cost(reference_utc, selected_model, periods)
@@ -323,4 +378,8 @@ def recommend_cycle(
         "candidate_count": len(candidates),
         "schedule_strategy": schedule_strategy,
         "equivalent_cost_tolerance_pence": equivalent_cost_tolerance_pence,
+        "window_preference": window_preference,
+        "overnight_start": overnight_start,
+        "overnight_end": overnight_end,
+        "schedule_timezone": schedule_timezone,
     }

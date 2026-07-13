@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.5"
+APP_VERSION = "0.8.6"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -479,6 +479,9 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "schedule_start_tolerance_minutes": int(_option_or_env(options, f"{prefix}_schedule_start_tolerance_minutes", 5)),
         "schedule_strategy": str(_option_or_env(options, f"{prefix}_schedule_strategy", "cheapest_absolute")),
         "schedule_equivalent_cost_tolerance_pence": float(_option_or_env(options, f"{prefix}_schedule_equivalent_cost_tolerance_pence", 0)),
+        "schedule_window_preference": str(_option_or_env(options, f"{prefix}_schedule_window_preference", "any")),
+        "schedule_overnight_start": str(_option_or_env(options, f"{prefix}_schedule_overnight_start", "20:00")),
+        "schedule_overnight_end": str(_option_or_env(options, f"{prefix}_schedule_overnight_end", "08:00")),
         "program_policies": options.get(f"{prefix}_program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_entities": tariff_entities,
@@ -513,6 +516,9 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "schedule_start_tolerance_minutes": int(entry.get("schedule_start_tolerance_minutes", 5)),
         "schedule_strategy": str(entry.get("schedule_strategy", "cheapest_absolute")),
         "schedule_equivalent_cost_tolerance_pence": float(entry.get("schedule_equivalent_cost_tolerance_pence", 0)),
+        "schedule_window_preference": str(entry.get("schedule_window_preference", "any")),
+        "schedule_overnight_start": str(entry.get("schedule_overnight_start", "20:00")),
+        "schedule_overnight_end": str(entry.get("schedule_overnight_end", "08:00")),
         "program_policies": entry.get("program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_entities": tariff_entities,
@@ -822,6 +828,14 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
         "negative_price_run": result.get("negative_price_run", False),
         "schedule_strategy": result.get("schedule_strategy"),
         "equivalent_cost_tolerance_pence": result.get("equivalent_cost_tolerance_pence"),
+        "window_preference": result.get("window_preference"),
+        "is_overnight_start": result.get("is_overnight_start"),
+        "is_daytime_start": result.get("is_daytime_start"),
+        "overnight_window": {
+            "start": result.get("overnight_start"),
+            "end": result.get("overnight_end"),
+            "timezone": result.get("schedule_timezone"),
+        },
     }
 
 
@@ -872,6 +886,14 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                 "recommended_finish": result.get("finish").isoformat() if result.get("finish") else None,
                 "schedule_strategy": result.get("schedule_strategy"),
                 "equivalent_cost_tolerance_pence": result.get("equivalent_cost_tolerance_pence"),
+                "window_preference": result.get("window_preference"),
+                "is_overnight_start": result.get("is_overnight_start"),
+                "is_daytime_start": result.get("is_daytime_start"),
+                "overnight_window": {
+                    "start": result.get("overnight_start"),
+                    "end": result.get("overnight_end"),
+                    "timezone": result.get("schedule_timezone"),
+                },
             })
             if suffix in {"cheapest_cost", "cheapest_start", "recommended_program"}:
                 attributes["cost_breakdown"] = result.get("cost_breakdown", [])
@@ -900,6 +922,10 @@ def publish_schedule_entities(token: str, prefix: str, name: str, advice: dict) 
         "recommended_finish": advice.get("recommended_finish"),
         "schedule_strategy": advice.get("schedule_strategy"),
         "equivalent_cost_tolerance_pence": advice.get("equivalent_cost_tolerance_pence"),
+        "window_preference": advice.get("window_preference"),
+        "is_overnight_start": advice.get("is_overnight_start"),
+        "is_daytime_start": advice.get("is_daytime_start"),
+        "overnight_window": advice.get("overnight_window"),
     }
     publish_entity(token, f"{prefix}_schedule_status", advice.get("status", "not_ready"), {
         "friendly_name": f"{name} Schedule Status",
@@ -1106,6 +1132,10 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     candidate_interval_minutes=config["cost_candidate_interval"],
                     schedule_strategy=config.get("schedule_strategy", "cheapest_absolute"),
                     equivalent_cost_tolerance_pence=config.get("schedule_equivalent_cost_tolerance_pence", 0),
+                    window_preference=config.get("schedule_window_preference", "any"),
+                    overnight_start=config.get("schedule_overnight_start", "20:00"),
+                    overnight_end=config.get("schedule_overnight_end", "08:00"),
+                    schedule_timezone=config.get("tariff_timezone", "Europe/London"),
                 )
                 cost_result.update({
                     "tariff_entity": ", ".join(tariff_entities),

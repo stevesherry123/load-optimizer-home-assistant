@@ -272,6 +272,71 @@ class CostEstimationTests(unittest.TestCase):
 
         self.assertEqual(result["start"], self.start + timedelta(hours=1))
 
+    def test_overnight_only_filters_daytime_candidates(self):
+        model = {**self.model, "expected_runtime_minutes": 30}
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        periods = [
+            self.period(0, 30, 10),
+            self.period(480, 510, 1),
+        ]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=8,
+            candidate_interval_minutes=30,
+            window_preference="overnight_only",
+            overnight_start="20:00",
+            overnight_end="08:00",
+            schedule_timezone="UTC",
+        )
+
+        self.assertEqual(result["start"], self.start)
+        self.assertTrue(result["is_overnight_start"])
+
+    def test_prefer_daytime_uses_daytime_slot_within_tolerance(self):
+        model = {**self.model, "expected_runtime_minutes": 30}
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        periods = [
+            self.period(0, 30, 10),
+            self.period(480, 510, 10.5),
+        ]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=8,
+            candidate_interval_minutes=30,
+            schedule_strategy="cheapest_earliest_finish",
+            equivalent_cost_tolerance_pence=1,
+            window_preference="prefer_daytime",
+            overnight_start="20:00",
+            overnight_end="08:00",
+            schedule_timezone="UTC",
+        )
+
+        self.assertEqual(result["start"], self.start + timedelta(hours=8))
+        self.assertTrue(result["is_daytime_start"])
+        self.assertEqual(result["window_preference"], "prefer_daytime")
+
 
 if __name__ == "__main__":
     unittest.main()
