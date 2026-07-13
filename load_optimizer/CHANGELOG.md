@@ -4,6 +4,14 @@
 
 - No unreleased changes.
 
+## 0.8.11
+
+- Publish forecast chart state using pence instead of forecast point count so
+  ApexCharts labels generated cost values correctly.
+- Keep forecast row count as the `forecast_points` attribute.
+- Round estimated scheduled cost sensor states to 2 decimal places.
+- Mark cheapest start sensors as timestamps for cleaner Home Assistant display.
+
 ## 0.8.10
 
 - Add separate `cost_forecast_interval`, defaulting to 30 minutes, so charts use

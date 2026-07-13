@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.10"
+APP_VERSION = "0.8.11"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -867,6 +867,8 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
     ready = status == "ready"
     overnight_comparison = result.get("overnight_comparison") or {}
     daytime_comparison = result.get("daytime_comparison") or {}
+    cost_forecast = result.get("cost_forecast", []) if ready else []
+
     def rounded_pence(value):
         if value is None or value == "unknown":
             return "unknown"
@@ -892,6 +894,8 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
         }
         if unit:
             attributes["unit_of_measurement"] = unit
+        if suffix == "cheapest_start":
+            attributes["device_class"] = "timestamp"
         if ready:
             attributes.update({
                 "program": result.get("program"),
@@ -928,14 +932,19 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                 attributes["cost_breakdown"] = result.get("cost_if_started_now_breakdown", [])
                 attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
         publish_entity(token, f"{prefix}_{suffix}", value if value is not None else "unknown", attributes)
-    publish_entity(token, f"{prefix}_cost_forecast", len(result.get("cost_forecast", [])) if ready else "unknown", {
+    forecast_costs = [
+        float(row["cost_pence"]) for row in cost_forecast
+        if row.get("cost_pence") is not None
+    ]
+    publish_entity(token, f"{prefix}_cost_forecast", rounded_pence(min(forecast_costs)) if forecast_costs else "unknown", {
         "friendly_name": f"{name} Cost Forecast",
         "icon": "mdi:chart-line",
-        "unit_of_measurement": "points",
+        "unit_of_measurement": "p",
         **common,
         "forecast_hours": result.get("forecast_hours") if ready else None,
         "forecast_interval_minutes": result.get("forecast_interval_minutes") if ready else None,
-        "forecast": result.get("cost_forecast", []) if ready else [],
+        "forecast_points": len(cost_forecast),
+        "forecast": cost_forecast,
         "forecast_format": "program, start, finish, cost_pence, energy_kwh, confidence, is_overnight_start, is_daytime_start",
     })
 
@@ -974,7 +983,12 @@ def publish_schedule_entities(token: str, prefix: str, name: str, advice: dict) 
         "icon": "mdi:clock-start",
         **common,
     })
-    publish_entity(token, f"{prefix}_estimated_scheduled_cost", advice.get("estimated_cost_pence", "unknown"), {
+    estimated_cost = advice.get("estimated_cost_pence")
+    try:
+        estimated_cost_state = round(float(estimated_cost), 2)
+    except (TypeError, ValueError):
+        estimated_cost_state = "unknown"
+    publish_entity(token, f"{prefix}_estimated_scheduled_cost", estimated_cost_state, {
         "friendly_name": f"{name} Estimated Scheduled Cost",
         "unit_of_measurement": "p",
         "icon": "mdi:cash-fast",
