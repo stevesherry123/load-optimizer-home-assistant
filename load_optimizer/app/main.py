@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.9"
+APP_VERSION = "0.8.10"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -489,6 +489,7 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
+        "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
         "cost_candidate_interval": int(options.get("cost_candidate_interval", 5)),
     }
 
@@ -527,6 +528,7 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
+        "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
         "cost_candidate_interval": int(options.get("cost_candidate_interval", 5)),
     }
 
@@ -913,6 +915,7 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                 "overnight_comparison": result.get("overnight_comparison"),
                 "daytime_comparison": result.get("daytime_comparison"),
                 "forecast_hours": result.get("forecast_hours"),
+                "forecast_interval_minutes": result.get("forecast_interval_minutes"),
             })
             if suffix.startswith("overnight_") and result.get("overnight_comparison"):
                 attributes.update(result["overnight_comparison"])
@@ -931,6 +934,7 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
         "unit_of_measurement": "points",
         **common,
         "forecast_hours": result.get("forecast_hours") if ready else None,
+        "forecast_interval_minutes": result.get("forecast_interval_minutes") if ready else None,
         "forecast": result.get("cost_forecast", []) if ready else [],
         "forecast_format": "program, start, finish, cost_pence, energy_kwh, confidence, is_overnight_start, is_daytime_start",
     })
@@ -1169,6 +1173,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     overnight_end=config.get("schedule_overnight_end", "08:00"),
                     schedule_timezone=config.get("tariff_timezone", "Europe/London"),
                     forecast_hours=config.get("cost_forecast_hours", 12),
+                    forecast_interval_minutes=config.get("cost_forecast_interval", 30),
                 )
                 cost_result.update({
                     "tariff_entity": ", ".join(tariff_entities),

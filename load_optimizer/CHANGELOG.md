@@ -4,6 +4,11 @@
 
 - No unreleased changes.
 
+## 0.8.10
+
+- Add separate `cost_forecast_interval`, defaulting to 30 minutes, so charts use
+  clean half-hour start times without reducing optimiser precision.
+
 ## 0.8.9
 
 - Publish a per-instance cost forecast entity for charting estimated cycle cost

@@ -316,6 +316,58 @@ def summarize_forecast_candidates(candidates: list[dict], limit: int = 300) -> l
     return forecast
 
 
+def forecast_cycle_costs(
+    models: list[dict],
+    policies: list[dict],
+    periods: list[dict],
+    *,
+    reference_utc: datetime,
+    forecast_hours: int,
+    forecast_interval_minutes: int,
+    overnight_start: str,
+    overnight_end: str,
+    schedule_timezone: str,
+    forecast_limit: int,
+) -> list[dict]:
+    policy_by_program = {policy["program"]: policy for policy in policies}
+    forecast_end = reference_utc + timedelta(hours=max(0, forecast_hours))
+    start_at = _next_candidate(reference_utc, forecast_interval_minutes)
+    candidates = []
+    for model in models:
+        policy = policy_by_program.get(model["program"])
+        if not policy or not policy["enabled"]:
+            continue
+        if not (policy["allow_normal_recommendation"] or policy["allow_negative_price_run"]):
+            continue
+        try:
+            _profile_segments(model)
+        except ValueError:
+            continue
+        start = start_at
+        while start <= forecast_end:
+            try:
+                estimate = estimate_cycle_cost(start, model, periods)
+            except ValueError:
+                start += timedelta(minutes=forecast_interval_minutes)
+                continue
+            negative = estimate["energy_cost_pence"] < 0
+            if policy["allow_normal_recommendation"] or (negative and policy["allow_negative_price_run"]):
+                total_cost = estimate["energy_cost_pence"] + policy["estimated_overhead_cost_pence"]
+                is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
+                candidates.append({
+                    "program": model["program"],
+                    "start": start,
+                    "finish": start + timedelta(minutes=float(model["expected_runtime_minutes"])),
+                    "total_cost_pence": round(total_cost, 4),
+                    "energy_kwh": estimate["energy_kwh"],
+                    "confidence": model.get("confidence", 0),
+                    "is_overnight_start": is_overnight,
+                    "is_daytime_start": not is_overnight,
+                })
+            start += timedelta(minutes=forecast_interval_minutes)
+    return summarize_forecast_candidates(candidates, forecast_limit)
+
+
 def recommend_cycle(
     models: list[dict],
     policies: list[dict],
@@ -331,6 +383,7 @@ def recommend_cycle(
     overnight_end: str = "08:00",
     schedule_timezone: str = "Europe/London",
     forecast_hours: int = 12,
+    forecast_interval_minutes: int = 30,
     forecast_limit: int = 300,
 ) -> dict:
     """Find the least-cost policy-eligible program and start time."""
@@ -344,7 +397,6 @@ def recommend_cycle(
     comparison_candidates = []
     rejected_profiles = 0
     search_end = reference_utc + timedelta(hours=search_hours)
-    forecast_end = reference_utc + timedelta(hours=max(0, forecast_hours))
     first_start = _next_candidate(reference_utc, candidate_interval_minutes)
     for model in models:
         policy = policy_by_program.get(model["program"])
@@ -420,10 +472,18 @@ def recommend_cycle(
         now_breakdown = []
     best_overnight = best_window_candidate(comparison_candidates, overnight=True)
     best_daytime = best_window_candidate(comparison_candidates, overnight=False)
-    forecast_candidates = [
-        candidate for candidate in comparison_candidates
-        if candidate["start"] <= forecast_end
-    ]
+    cost_forecast = forecast_cycle_costs(
+        models,
+        policies,
+        periods,
+        reference_utc=reference_utc,
+        forecast_hours=forecast_hours,
+        forecast_interval_minutes=forecast_interval_minutes,
+        overnight_start=overnight_start,
+        overnight_end=overnight_end,
+        schedule_timezone=schedule_timezone,
+        forecast_limit=forecast_limit,
+    )
     return {
         "status": "ready",
         **cheapest,
@@ -432,8 +492,9 @@ def recommend_cycle(
         "potential_saving_pence": round(max(0.0, now_cost - cheapest["total_cost_pence"]), 4) if now_cost is not None else None,
         "overnight_comparison": summarize_window_candidate(best_overnight, now_cost),
         "daytime_comparison": summarize_window_candidate(best_daytime, now_cost),
-        "cost_forecast": summarize_forecast_candidates(forecast_candidates, forecast_limit),
+        "cost_forecast": cost_forecast,
         "forecast_hours": forecast_hours,
+        "forecast_interval_minutes": forecast_interval_minutes,
         "candidate_count": len(candidates),
         "comparison_candidate_count": len(comparison_candidates),
         "schedule_strategy": schedule_strategy,
