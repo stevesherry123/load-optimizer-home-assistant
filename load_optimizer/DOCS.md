@@ -226,9 +226,18 @@ and publishes recommendations only; it never starts an appliance.
 - `sensor.load_optimizer_N_cost_if_started_now`
 - `sensor.load_optimizer_N_cheapest_start`
 - `sensor.load_optimizer_N_cheapest_cost`
+- `sensor.load_optimizer_N_overnight_cost`
+- `sensor.load_optimizer_N_daytime_cost`
 - `sensor.load_optimizer_N_potential_saving`
+- `sensor.load_optimizer_N_overnight_saving`
+- `sensor.load_optimizer_N_daytime_saving`
 - `sensor.load_optimizer_N_cost_confidence`
 - `sensor.load_optimizer_N_recommended_program`
+
+The overnight and daytime comparison entities show the best eligible option in
+each start window, independent of which option is selected as the current
+recommendation. This makes dashboards clearer: users can compare overnight
+cost, daytime cost, cost if started now, and the saving for each option.
 
 The scheduling layer is advisory-only. It republishes the current recommendation
 as explicit start guidance and a safe automation signal, but it does not call any

@@ -273,6 +273,33 @@ def candidate_window_score(candidate: dict, preference: str) -> int:
     return 0
 
 
+def best_window_candidate(candidates: list[dict], *, overnight: bool) -> dict | None:
+    matching = [
+        candidate for candidate in candidates
+        if bool(candidate.get("is_overnight_start")) is overnight
+    ]
+    if not matching:
+        return None
+    return min(matching, key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]))
+
+
+def summarize_window_candidate(candidate: dict | None, now_cost: float | None) -> dict | None:
+    if not candidate:
+        return None
+    saving = None
+    if now_cost is not None:
+        saving = round(max(0.0, now_cost - candidate["total_cost_pence"]), 4)
+    return {
+        "program": candidate.get("program"),
+        "start": candidate.get("start").isoformat() if candidate.get("start") else None,
+        "finish": candidate.get("finish").isoformat() if candidate.get("finish") else None,
+        "cost_pence": candidate.get("total_cost_pence"),
+        "saving_vs_now_pence": saving,
+        "energy_kwh": candidate.get("energy_kwh"),
+        "confidence": candidate.get("confidence"),
+    }
+
+
 def recommend_cycle(
     models: list[dict],
     policies: list[dict],
@@ -296,6 +323,7 @@ def recommend_cycle(
     equivalent_cost_tolerance_pence = max(0.0, float(equivalent_cost_tolerance_pence))
     policy_by_program = {policy["program"]: policy for policy in policies}
     candidates = []
+    comparison_candidates = []
     rejected_profiles = 0
     search_end = reference_utc + timedelta(hours=search_hours)
     first_start = _next_candidate(reference_utc, candidate_interval_minutes)
@@ -314,12 +342,6 @@ def recommend_cycle(
         while start <= search_end:
             is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
             is_daytime = not is_overnight
-            if window_preference == "overnight_only" and not is_overnight:
-                start += timedelta(minutes=candidate_interval_minutes)
-                continue
-            if window_preference == "daytime_only" and not is_daytime:
-                start += timedelta(minutes=candidate_interval_minutes)
-                continue
             try:
                 estimate = estimate_cycle_cost(start, model, periods)
             except ValueError:
@@ -328,7 +350,7 @@ def recommend_cycle(
             negative = estimate["energy_cost_pence"] < 0
             if policy["allow_normal_recommendation"] or (negative and policy["allow_negative_price_run"]):
                 total_cost = estimate["energy_cost_pence"] + policy["estimated_overhead_cost_pence"]
-                candidates.append({
+                candidate = {
                     "program": model["program"],
                     "start": start,
                     "finish": start + timedelta(minutes=float(model["expected_runtime_minutes"])),
@@ -342,7 +364,15 @@ def recommend_cycle(
                     "negative_price_run": negative,
                     "is_overnight_start": is_overnight,
                     "is_daytime_start": is_daytime,
-                })
+                }
+                comparison_candidates.append(candidate)
+                if window_preference == "overnight_only" and not is_overnight:
+                    start += timedelta(minutes=candidate_interval_minutes)
+                    continue
+                if window_preference == "daytime_only" and not is_daytime:
+                    start += timedelta(minutes=candidate_interval_minutes)
+                    continue
+                candidates.append(candidate)
             start += timedelta(minutes=candidate_interval_minutes)
     if not candidates:
         return {
@@ -369,13 +399,18 @@ def recommend_cycle(
     except ValueError:
         now_cost = None
         now_breakdown = []
+    best_overnight = best_window_candidate(comparison_candidates, overnight=True)
+    best_daytime = best_window_candidate(comparison_candidates, overnight=False)
     return {
         "status": "ready",
         **cheapest,
         "cost_if_started_now_pence": now_cost,
         "cost_if_started_now_breakdown": now_breakdown,
         "potential_saving_pence": round(max(0.0, now_cost - cheapest["total_cost_pence"]), 4) if now_cost is not None else None,
+        "overnight_comparison": summarize_window_candidate(best_overnight, now_cost),
+        "daytime_comparison": summarize_window_candidate(best_daytime, now_cost),
         "candidate_count": len(candidates),
+        "comparison_candidate_count": len(comparison_candidates),
         "schedule_strategy": schedule_strategy,
         "equivalent_cost_tolerance_pence": equivalent_cost_tolerance_pence,
         "window_preference": window_preference,

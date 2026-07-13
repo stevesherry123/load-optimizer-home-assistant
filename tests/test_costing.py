@@ -337,6 +337,39 @@ class CostEstimationTests(unittest.TestCase):
         self.assertTrue(result["is_daytime_start"])
         self.assertEqual(result["window_preference"], "prefer_daytime")
 
+    def test_recommendation_includes_daytime_and_overnight_comparisons(self):
+        model = {**self.model, "expected_runtime_minutes": 30}
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        periods = [
+            self.period(0, 30, 20),
+            self.period(480, 510, 5),
+        ]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=8,
+            candidate_interval_minutes=30,
+            overnight_start="20:00",
+            overnight_end="08:00",
+            schedule_timezone="UTC",
+        )
+
+        self.assertEqual(result["overnight_comparison"]["cost_pence"], 20.0)
+        self.assertEqual(result["overnight_comparison"]["saving_vs_now_pence"], 0.0)
+        self.assertEqual(result["daytime_comparison"]["cost_pence"], 5.0)
+        self.assertEqual(result["daytime_comparison"]["saving_vs_now_pence"], 15.0)
+        self.assertEqual(result["comparison_candidate_count"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
