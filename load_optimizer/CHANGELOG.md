@@ -4,6 +4,13 @@
 
 - No unreleased changes.
 
+## 0.8.7
+
+- Publish separate best overnight and daytime cost comparison entities.
+- Publish separate overnight and daytime savings versus starting now.
+- Keep the selected recommendation logic unchanged while exposing clearer
+  dashboard comparison data.
+
 ## 0.8.6
 
 - Add schedule window preferences for `overnight_only`, `daytime_only`,

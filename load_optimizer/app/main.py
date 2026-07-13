@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.6"
+APP_VERSION = "0.8.7"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -825,6 +825,8 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
         "estimated_cost_pence": result.get("total_cost_pence"),
         "cost_if_started_now_pence": result.get("cost_if_started_now_pence"),
         "potential_saving_pence": result.get("potential_saving_pence"),
+        "overnight_comparison": result.get("overnight_comparison"),
+        "daytime_comparison": result.get("daytime_comparison"),
         "negative_price_run": result.get("negative_price_run", False),
         "schedule_strategy": result.get("schedule_strategy"),
         "equivalent_cost_tolerance_pence": result.get("equivalent_cost_tolerance_pence"),
@@ -859,11 +861,17 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
         **common,
     })
     ready = status == "ready"
+    overnight_comparison = result.get("overnight_comparison") or {}
+    daytime_comparison = result.get("daytime_comparison") or {}
     values = (
         ("cost_if_started_now", result.get("cost_if_started_now_pence") if ready else "unknown", "p", "mdi:cash-clock"),
         ("cheapest_start", result.get("start").isoformat() if ready else "unknown", None, "mdi:clock-start"),
         ("cheapest_cost", result.get("total_cost_pence") if ready else "unknown", "p", "mdi:cash-check"),
+        ("overnight_cost", overnight_comparison.get("cost_pence") if ready and overnight_comparison else "unknown", "p", "mdi:weather-night"),
+        ("daytime_cost", daytime_comparison.get("cost_pence") if ready and daytime_comparison else "unknown", "p", "mdi:white-balance-sunny"),
         ("potential_saving", result.get("potential_saving_pence") if ready else "unknown", "p", "mdi:piggy-bank"),
+        ("overnight_saving", overnight_comparison.get("saving_vs_now_pence") if ready and overnight_comparison else "unknown", "p", "mdi:weather-night"),
+        ("daytime_saving", daytime_comparison.get("saving_vs_now_pence") if ready and daytime_comparison else "unknown", "p", "mdi:white-balance-sunny"),
         ("cost_confidence", result.get("confidence") if ready else "unknown", "%", "mdi:gauge"),
         ("recommended_program", result.get("program") if ready else "none", None, "mdi:playlist-check"),
     )
@@ -883,6 +891,7 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                 "overhead_cost_pence": result.get("overhead_cost_pence"),
                 "negative_price_run": result.get("negative_price_run"),
                 "candidate_count": result.get("candidate_count"),
+                "comparison_candidate_count": result.get("comparison_candidate_count"),
                 "recommended_finish": result.get("finish").isoformat() if result.get("finish") else None,
                 "schedule_strategy": result.get("schedule_strategy"),
                 "equivalent_cost_tolerance_pence": result.get("equivalent_cost_tolerance_pence"),
@@ -894,7 +903,13 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                     "end": result.get("overnight_end"),
                     "timezone": result.get("schedule_timezone"),
                 },
+                "overnight_comparison": result.get("overnight_comparison"),
+                "daytime_comparison": result.get("daytime_comparison"),
             })
+            if suffix.startswith("overnight_") and result.get("overnight_comparison"):
+                attributes.update(result["overnight_comparison"])
+            if suffix.startswith("daytime_") and result.get("daytime_comparison"):
+                attributes.update(result["daytime_comparison"])
             if suffix in {"cheapest_cost", "cheapest_start", "recommended_program"}:
                 attributes["cost_breakdown"] = result.get("cost_breakdown", [])
                 attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
