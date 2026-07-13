@@ -252,8 +252,21 @@ schedule_start_tolerance_minutes: 5
 
 Future scheduling work will separate constraints from strategy. Constraints
 define what is allowed, such as a latest finish deadline. Strategy decides which
-allowed slot to prefer, such as `cheapest_soonest` for dishwashers or
+allowed slot to prefer, such as `cheapest_earliest_finish` for dishwashers or
 `cheapest_latest_finish` for EV-style loads.
+
+Supported strategy values are:
+
+- `cheapest_absolute`: choose the mathematically cheapest candidate.
+- `cheapest_earliest_finish`: among candidates within the configured cost
+  tolerance of the cheapest option, choose the one that finishes earliest.
+- `cheapest_latest_finish`: among candidates within the configured cost
+  tolerance of the cheapest option, choose the one that finishes latest.
+
+```yaml
+schedule_strategy: cheapest_earliest_finish
+schedule_equivalent_cost_tolerance_pence: 1.0
+```
 
 Calendar integration is recommended for the full automation experience because
 it lets the scheduler understand travel, household deadlines, and avoid windows.

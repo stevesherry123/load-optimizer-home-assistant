@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.4"
+APP_VERSION = "0.8.5"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -477,6 +477,8 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "learning_min_energy_kwh": float(_option_or_env(options, f"{prefix}_learning_min_energy_kwh", 0.001)),
         "schedule_confidence_threshold": int(_option_or_env(options, f"{prefix}_schedule_confidence_threshold", 20)),
         "schedule_start_tolerance_minutes": int(_option_or_env(options, f"{prefix}_schedule_start_tolerance_minutes", 5)),
+        "schedule_strategy": str(_option_or_env(options, f"{prefix}_schedule_strategy", "cheapest_absolute")),
+        "schedule_equivalent_cost_tolerance_pence": float(_option_or_env(options, f"{prefix}_schedule_equivalent_cost_tolerance_pence", 0)),
         "program_policies": options.get(f"{prefix}_program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_entities": tariff_entities,
@@ -509,6 +511,8 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "learning_min_energy_kwh": float(entry.get("learning_min_energy_kwh", 0.001)),
         "schedule_confidence_threshold": int(entry.get("schedule_confidence_threshold", 20)),
         "schedule_start_tolerance_minutes": int(entry.get("schedule_start_tolerance_minutes", 5)),
+        "schedule_strategy": str(entry.get("schedule_strategy", "cheapest_absolute")),
+        "schedule_equivalent_cost_tolerance_pence": float(entry.get("schedule_equivalent_cost_tolerance_pence", 0)),
         "program_policies": entry.get("program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_entities": tariff_entities,
@@ -804,6 +808,7 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
         "status": "ready",
         "program": result.get("program", "none"),
         "recommended_start": start.isoformat(),
+        "recommended_finish": result.get("finish").isoformat() if result.get("finish") else None,
         "seconds_until_start": seconds_until_start,
         "good_to_start": good_to_start,
         "automation_ready": automation_ready,
@@ -815,6 +820,8 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
         "cost_if_started_now_pence": result.get("cost_if_started_now_pence"),
         "potential_saving_pence": result.get("potential_saving_pence"),
         "negative_price_run": result.get("negative_price_run", False),
+        "schedule_strategy": result.get("schedule_strategy"),
+        "equivalent_cost_tolerance_pence": result.get("equivalent_cost_tolerance_pence"),
     }
 
 
@@ -862,6 +869,9 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                 "overhead_cost_pence": result.get("overhead_cost_pence"),
                 "negative_price_run": result.get("negative_price_run"),
                 "candidate_count": result.get("candidate_count"),
+                "recommended_finish": result.get("finish").isoformat() if result.get("finish") else None,
+                "schedule_strategy": result.get("schedule_strategy"),
+                "equivalent_cost_tolerance_pence": result.get("equivalent_cost_tolerance_pence"),
             })
             if suffix in {"cheapest_cost", "cheapest_start", "recommended_program"}:
                 attributes["cost_breakdown"] = result.get("cost_breakdown", [])
@@ -887,6 +897,9 @@ def publish_schedule_entities(token: str, prefix: str, name: str, advice: dict) 
         "cost_if_started_now_pence": advice.get("cost_if_started_now_pence"),
         "potential_saving_pence": advice.get("potential_saving_pence"),
         "negative_price_run": advice.get("negative_price_run"),
+        "recommended_finish": advice.get("recommended_finish"),
+        "schedule_strategy": advice.get("schedule_strategy"),
+        "equivalent_cost_tolerance_pence": advice.get("equivalent_cost_tolerance_pence"),
     }
     publish_entity(token, f"{prefix}_schedule_status", advice.get("status", "not_ready"), {
         "friendly_name": f"{name} Schedule Status",
@@ -1091,6 +1104,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     reference_utc=now,
                     search_hours=config["cost_search_hours"],
                     candidate_interval_minutes=config["cost_candidate_interval"],
+                    schedule_strategy=config.get("schedule_strategy", "cheapest_absolute"),
+                    equivalent_cost_tolerance_pence=config.get("schedule_equivalent_cost_tolerance_pence", 0),
                 )
                 cost_result.update({
                     "tariff_entity": ", ".join(tariff_entities),

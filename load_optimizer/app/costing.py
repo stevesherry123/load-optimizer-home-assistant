@@ -14,6 +14,7 @@ FEED_ENTRY = re.compile(
     re.IGNORECASE,
 )
 STRUCTURED_RATE_KEYS = ("rates", "prices", "forecast", "all_rates")
+SCHEDULE_STRATEGIES = {"cheapest_absolute", "cheapest_earliest_finish", "cheapest_latest_finish"}
 
 
 def _nearest_year(day: int, month: int, reference_local: datetime) -> int:
@@ -241,8 +242,13 @@ def recommend_cycle(
     reference_utc: datetime,
     search_hours: int,
     candidate_interval_minutes: int,
+    schedule_strategy: str = "cheapest_absolute",
+    equivalent_cost_tolerance_pence: float = 0.0,
 ) -> dict:
     """Find the least-cost policy-eligible program and start time."""
+    if schedule_strategy not in SCHEDULE_STRATEGIES:
+        raise ValueError(f"Unsupported schedule strategy: {schedule_strategy}")
+    equivalent_cost_tolerance_pence = max(0.0, float(equivalent_cost_tolerance_pence))
     policy_by_program = {policy["program"]: policy for policy in policies}
     candidates = []
     rejected_profiles = 0
@@ -272,6 +278,7 @@ def recommend_cycle(
                 candidates.append({
                     "program": model["program"],
                     "start": start,
+                    "finish": start + timedelta(minutes=float(model["expected_runtime_minutes"])),
                     "energy_cost_pence": estimate["energy_cost_pence"],
                     "energy_kwh": estimate["energy_kwh"],
                     "cost_breakdown": estimate["cost_breakdown"],
@@ -287,7 +294,17 @@ def recommend_cycle(
             "status": "insufficient_profile" if rejected_profiles else "no_eligible_programs",
             "rejected_profiles": rejected_profiles,
         }
-    cheapest = min(candidates, key=lambda item: (item["total_cost_pence"], item["preference_rank"]))
+    cheapest_cost = min(item["total_cost_pence"] for item in candidates)
+    equivalent_candidates = [
+        item for item in candidates
+        if item["total_cost_pence"] <= cheapest_cost + equivalent_cost_tolerance_pence
+    ]
+    if schedule_strategy == "cheapest_earliest_finish":
+        cheapest = min(equivalent_candidates, key=lambda item: (item["finish"], item["total_cost_pence"], item["preference_rank"]))
+    elif schedule_strategy == "cheapest_latest_finish":
+        cheapest = min(equivalent_candidates, key=lambda item: (-item["finish"].timestamp(), item["total_cost_pence"], item["preference_rank"]))
+    else:
+        cheapest = min(candidates, key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]))
     selected_model = next(model for model in models if model["program"] == cheapest["program"])
     try:
         now_estimate = estimate_cycle_cost(reference_utc, selected_model, periods)
@@ -304,4 +321,6 @@ def recommend_cycle(
         "cost_if_started_now_breakdown": now_breakdown,
         "potential_saving_pence": round(max(0.0, now_cost - cheapest["total_cost_pence"]), 4) if now_cost is not None else None,
         "candidate_count": len(candidates),
+        "schedule_strategy": schedule_strategy,
+        "equivalent_cost_tolerance_pence": equivalent_cost_tolerance_pence,
     }

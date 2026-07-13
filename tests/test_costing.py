@@ -185,6 +185,93 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["start"], self.start + timedelta(minutes=30))
         self.assertTrue(result["negative_price_run"])
 
+    def test_cheapest_earliest_finish_uses_first_near_equivalent_slot(self):
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        periods = [
+            self.period(0, 60, 10),
+            self.period(60, 120, 10.5),
+            self.period(120, 180, 10),
+        ]
+
+        result = recommend_cycle(
+            [self.model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=2,
+            candidate_interval_minutes=60,
+            schedule_strategy="cheapest_earliest_finish",
+            equivalent_cost_tolerance_pence=1,
+        )
+
+        self.assertEqual(result["start"], self.start)
+        self.assertEqual(result["finish"], self.start + timedelta(hours=1))
+        self.assertEqual(result["schedule_strategy"], "cheapest_earliest_finish")
+
+    def test_cheapest_latest_finish_uses_last_near_equivalent_slot(self):
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        periods = [
+            self.period(0, 60, 10),
+            self.period(60, 120, 10.5),
+            self.period(120, 180, 10),
+        ]
+
+        result = recommend_cycle(
+            [self.model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=2,
+            candidate_interval_minutes=60,
+            schedule_strategy="cheapest_latest_finish",
+            equivalent_cost_tolerance_pence=1,
+        )
+
+        self.assertEqual(result["start"], self.start + timedelta(hours=2))
+        self.assertEqual(result["finish"], self.start + timedelta(hours=3))
+        self.assertEqual(result["schedule_strategy"], "cheapest_latest_finish")
+
+    def test_cheapest_absolute_ignores_more_expensive_equivalent_slots(self):
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        periods = [
+            self.period(0, 60, 10.5),
+            self.period(60, 120, 10),
+        ]
+
+        result = recommend_cycle(
+            [self.model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=1,
+            candidate_interval_minutes=60,
+            schedule_strategy="cheapest_absolute",
+            equivalent_cost_tolerance_pence=1,
+        )
+
+        self.assertEqual(result["start"], self.start + timedelta(hours=1))
+
 
 if __name__ == "__main__":
     unittest.main()
