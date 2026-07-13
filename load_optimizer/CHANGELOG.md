@@ -4,6 +4,16 @@
 
 - No unreleased changes.
 
+## 0.8.5
+
+- Add per-instance scheduling strategies:
+  `cheapest_absolute`, `cheapest_earliest_finish`, and
+  `cheapest_latest_finish`.
+- Add a near-equivalent cost tolerance so earliest/latest finish strategies can
+  choose between slots that cost effectively the same.
+- Publish the selected strategy, cost tolerance, and recommended finish time on
+  scheduling and cost entities.
+
 ## 0.8.4
 
 - Add advisory scheduling entities for recommended start time, estimated

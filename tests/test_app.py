@@ -745,6 +745,8 @@ class ProgramPolicyTests(unittest.TestCase):
   power_sensor: sensor.dryer_power
   active_power_threshold: 25
   finish_delay: 3
+  schedule_strategy: cheapest_latest_finish
+  schedule_equivalent_cost_tolerance_pence: 1.5
   program_policies:
     - program: Default
       classification: preferred
@@ -761,6 +763,8 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(configs[1]["power_sensor"], "sensor.dryer_power")
         self.assertEqual(configs[1]["active_power_threshold"], 25)
         self.assertEqual(configs[1]["finish_delay"], 3)
+        self.assertEqual(configs[1]["schedule_strategy"], "cheapest_latest_finish")
+        self.assertEqual(configs[1]["schedule_equivalent_cost_tolerance_pence"], 1.5)
         self.assertEqual(configs[1]["program_policies"][0]["program"], "Default")
         self.assertTrue(configs[1]["program_policies"][0]["allow_normal_recommendation"])
 

@@ -126,8 +126,8 @@ Examples of constraints:
 
 Examples of strategies:
 
-- `cheapest_soonest`: choose the cheapest acceptable slot, but prefer the
-  earliest start among near-equivalent candidates
+- `cheapest_earliest_finish`: choose the cheapest acceptable slot, but prefer the
+  earliest finish among near-equivalent candidates
 - `cheapest_latest_finish`: choose the cheapest acceptable slot, but prefer the
   latest finish among near-equivalent candidates
 - `cheapest_absolute`: choose the mathematically cheapest candidate even if it
@@ -135,7 +135,7 @@ Examples of strategies:
 
 A deadline is therefore not the same as a strategy. A deadline narrows the valid
 window; a strategy ranks the remaining valid options. For a dishwasher before
-travel, the likely model is a deadline constraint plus `cheapest_soonest`. For a
+travel, the likely model is a deadline constraint plus `cheapest_earliest_finish`. For a
 future EV or battery use case, the likely model is a departure deadline plus
 `cheapest_latest_finish`.
 
