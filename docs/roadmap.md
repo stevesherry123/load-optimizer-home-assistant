@@ -11,6 +11,7 @@ implementation architecture in `docs/architecture.md`.
 - add helper-driven deadline support for calendar and travel-aware scheduling
 - add selectable scheduling strategies such as `cheapest_earliest_finish` and
   `cheapest_latest_finish`
+- continue refining daytime and overnight scheduling windows
 - expose clear recommended start and finish sensors
 - expose a recommended-window active state for dashboards and automations
 - add a manual recalculation service for tariff, policy, or test changes
@@ -31,6 +32,7 @@ Planned scheduling features:
   scheduling where users already expose TripIt to Home Assistant
 - scheduling strategies that are separate from constraints:
   `cheapest_earliest_finish`, `cheapest_latest_finish`, and later `cheapest_absolute`
+- schedule window preferences for overnight/daytime operation
 - clear recommended start and finish sensors
 - a recommended-window active state for dashboards and automations
 - a manual recalculation service for tariff, policy, or test changes

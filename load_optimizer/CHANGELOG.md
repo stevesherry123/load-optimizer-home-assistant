@@ -4,6 +4,14 @@
 
 - No unreleased changes.
 
+## 0.8.6
+
+- Add schedule window preferences for `overnight_only`, `daytime_only`,
+  `prefer_overnight`, and `prefer_daytime`.
+- Default the overnight window to 20:00-08:00 in the configured tariff timezone.
+- Publish selected window preference and whether the recommended start is
+  overnight/daytime on cost and schedule entities.
+
 ## 0.8.5
 
 - Add per-instance scheduling strategies:
