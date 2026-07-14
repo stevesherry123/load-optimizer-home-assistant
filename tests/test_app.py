@@ -617,9 +617,30 @@ class ProgramLearningTests(unittest.TestCase):
         self.assertEqual(model["runs"], 3)
         self.assertEqual(len(model["recent_cycles"]), 3)
         self.assertEqual(program_summary("Quick65", model)["expected_runtime_minutes"], 45.1)
-        self.assertEqual(model["representative_profile_w"], [])
+        self.assertEqual(model["representative_profile_w"], [10.0, 1000.0, 10.0])
         self.assertEqual(instance["last_discarded_cycle"]["finish"], "2026-01-01T03:00:00+00:00")
         self.assertEqual(instance["last_discarded_cycle"]["exclusion_reason"], "runtime_below_5_minutes")
+
+    def test_repair_learning_quality_restores_missing_profile_from_last_cycle(self):
+        database = {"instances": {"1": {
+            "last_cycle": self.cycle(45, 0.9, 2000),
+            "program_models": {"Eco": {
+                "runs": 5,
+                "profile_count": 0,
+                "representative_profile_w": [],
+                "statistics": {
+                    "runtime_minutes": {"count": 5, "mean": 45.0, "m2": 0.0},
+                    "energy_kwh": {"count": 5, "mean": 0.9, "m2": 0.0},
+                },
+            }},
+        }}}
+
+        repair_learning_quality(database, [{"instance_id": "1", "learning_min_runtime_minutes": 5, "learning_min_samples": 3, "learning_min_energy_kwh": 0.001}])
+
+        model = database["instances"]["1"]["program_models"]["Eco"]
+        self.assertEqual(len(model["representative_profile_w"]), 20)
+        self.assertEqual(model["profile_count"], 1)
+        self.assertEqual(model["representative_profile_repaired_from"], "last_cycle_power_profile")
 
 
 class ProgramPolicyTests(unittest.TestCase):

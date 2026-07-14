@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.12"
+APP_VERSION = "0.8.13"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -262,6 +262,12 @@ def cycle_quality_issue(config: dict, cycle: dict) -> str | None:
 
 def rebuild_model_from_recent_cycles(model: dict, valid_cycles: list[dict]) -> None:
     existing_profile = model.get("representative_profile_w", [])
+    valid_profiles = [
+        cycle["normalised_power_profile_w"]
+        for cycle in valid_cycles
+        if isinstance(cycle.get("normalised_power_profile_w"), list)
+        and len(cycle.get("normalised_power_profile_w", [])) >= 2
+    ]
     model.clear()
     model["runs"] = 0
     model["recent_cycles"] = []
@@ -280,8 +286,32 @@ def rebuild_model_from_recent_cycles(model: dict, valid_cycles: list[dict]) -> N
         update_running_stat(model, "peak_power_w", cycle.get("peak_power_w"))
         model.setdefault("recent_cycles", []).append(cycle)
     del model["recent_cycles"][:-10]
-    model["representative_profile_w"] = []
-    model["profile_count"] = 0
+    if valid_profiles:
+        profile_count = len(valid_profiles)
+        model["representative_profile_w"] = [
+            round(sum(profile[index] for profile in valid_profiles) / profile_count, 3)
+            for index in range(len(valid_profiles[0]))
+        ]
+        model["profile_count"] = profile_count
+    else:
+        model["representative_profile_w"] = existing_profile
+        model["profile_count"] = 1 if len(existing_profile) >= 2 else 0
+
+
+def repair_missing_profile_from_last_cycle(instance: dict) -> None:
+    last = instance.get("last_cycle", {})
+    program = normalise_program(last.get("program"))
+    if program == "unknown":
+        return
+    model = instance.get("program_models", {}).get(program)
+    if not model or len(model.get("representative_profile_w", [])) >= 2:
+        return
+    profile = normalise_profile(last.get("power_profile", []))
+    if len(profile) < 2:
+        return
+    model["representative_profile_w"] = profile
+    model["profile_count"] = max(1, int(model.get("profile_count", 0)))
+    model["representative_profile_repaired_from"] = "last_cycle_power_profile"
 
 
 def repair_learning_quality(database: dict, configs: list[dict]) -> None:
@@ -326,6 +356,7 @@ def repair_learning_quality(database: dict, configs: list[dict]) -> None:
                 int(model.get("runs", 0))
                 for model in instance.get("program_models", {}).values()
             )
+        repair_missing_profile_from_last_cycle(instance)
 
 
 def program_summary(program: str, model: dict) -> dict:
@@ -387,6 +418,7 @@ def update_program_model(instance: dict, cycle: dict) -> dict:
         "peak_power_w": cycle.get("peak_power"),
         "sample_count": cycle.get("sample_count"),
         "energy_source": cycle.get("energy_source"),
+        "normalised_power_profile_w": profile,
     })
     del recent_cycles[:-10]
     return program_summary(program, model)
