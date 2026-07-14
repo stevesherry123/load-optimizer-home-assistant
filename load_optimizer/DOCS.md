@@ -71,6 +71,11 @@ visible before they have any learned runs. For example, a configured
 `MachineCare` policy appears with `runs: 0` and
 `status: configured_unlearned` until the appliance has completed that cycle.
 
+Newly observed learned programs with no explicit policy are also exposed through
+`sensor.load_optimizer_N_discovered_programs`. These entries are safe by
+default: they are not eligible for normal or negative-price recommendations
+until the user adds a policy.
+
 ### Example configuration
 
 Use the `instances_yaml` text field for every appliance. Home Assistant's add-on
@@ -230,6 +235,7 @@ and publishes recommendations only; it never starts an appliance.
 - `sensor.load_optimizer_N_now_recommendation`
 - `sensor.load_optimizer_N_soon_recommendation`
 - `sensor.load_optimizer_N_overnight_recommendation`
+- `sensor.load_optimizer_N_negative_price_recommendation`
 - `sensor.load_optimizer_N_cheapest_start`
 - `sensor.load_optimizer_N_cheapest_cost`
 - `sensor.load_optimizer_N_overnight_cost`

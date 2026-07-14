@@ -4,6 +4,15 @@
 
 - No unreleased changes.
 
+## 0.8.17
+
+- Add `sensor.load_optimizer_N_discovered_programs` to flag learned programs
+  that do not yet have explicit policies.
+- Add `sensor.load_optimizer_N_negative_price_recommendation` for automatic
+  negative-price opportunity planning.
+- Rank negative-price candidates by useful energy intensity so high-consumption,
+  short-duration programs are preferred when users explicitly allow them.
+
 ## 0.8.16
 
 - Add `sensor.load_optimizer_N_program_catalogue` to show learned and
