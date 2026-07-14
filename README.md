@@ -90,6 +90,9 @@ Planned work and backlog ideas are tracked in `docs/roadmap.md`.
 │   ├── Dockerfile
 │   ├── DOCS.md
 │   └── run.sh
+├── homeassistant/
+│   ├── dashboards/
+│   └── packages/
 ├── docs/
 │   ├── architecture.md
 │   ├── naming.md
@@ -118,3 +121,6 @@ package, template, helper, and Pyscript scaffolding has been removed from this
 repository so the public install path stays clean.
 
 For setup and operational notes, use `load_optimizer/DOCS.md`.
+
+Optional Home Assistant packages and dashboard snippets are stored in
+`homeassistant/`.
