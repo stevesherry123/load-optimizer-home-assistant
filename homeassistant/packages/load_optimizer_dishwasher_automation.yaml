@@ -1,0 +1,237 @@
+# Optional Home Assistant orchestration for Dishwasher 1.
+#
+# Load Optimizer remains the recommendation engine. These helpers and
+# automations let dashboards, voice assistants, and household automations request
+# a run without duplicating scheduling logic.
+
+input_select:
+  load_optimizer_1_requested_mode:
+    name: Dishwasher 1 Requested Mode
+    icon: mdi:dishwasher
+    options:
+      - none
+      - now
+      - soon
+      - overnight
+    initial: none
+
+input_text:
+  load_optimizer_1_requested_program:
+    name: Dishwasher 1 Requested Program
+    icon: mdi:format-list-bulleted
+    max: 64
+
+  load_optimizer_1_scheduler_message:
+    name: Dishwasher 1 Scheduler Message
+    icon: mdi:message-text-outline
+    max: 255
+
+input_datetime:
+  load_optimizer_1_requested_start:
+    name: Dishwasher 1 Requested Start
+    has_date: true
+    has_time: true
+
+input_button:
+  load_optimizer_1_request_now:
+    name: Dishwasher 1 Request Start Now
+    icon: mdi:play-circle
+
+  load_optimizer_1_request_soon:
+    name: Dishwasher 1 Request Start Soon
+    icon: mdi:clock-fast
+
+  load_optimizer_1_request_overnight:
+    name: Dishwasher 1 Request Overnight
+    icon: mdi:weather-night
+
+  load_optimizer_1_cancel_schedule:
+    name: Dishwasher 1 Cancel Schedule
+    icon: mdi:cancel
+
+automation:
+  - id: load_optimizer_1_capture_user_request
+    alias: Load Optimizer 1 - Capture User Request
+    description: Store a dishwasher run request from dashboard, voice, or automation controls.
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: input_button.load_optimizer_1_request_now
+        id: now
+      - trigger: state
+        entity_id: input_button.load_optimizer_1_request_soon
+        id: soon
+      - trigger: state
+        entity_id: input_button.load_optimizer_1_request_overnight
+        id: overnight
+    variables:
+      requested_mode: "{{ trigger.id }}"
+      recommendation_entity: "{{ 'sensor.load_optimizer_1_' ~ trigger.id ~ '_recommendation' }}"
+      recommendation_status: "{{ state_attr(recommendation_entity, 'status') }}"
+      recommendation_program: >-
+        {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
+      recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
+      message: >-
+        Dishwasher {{ requested_mode }} request captured:
+        {{ recommendation_program }} at {{ recommendation_start }}.
+    actions:
+      - condition: template
+        value_template: >-
+          {{ recommendation_status == 'ready'
+             and recommendation_program not in ['unknown', 'unavailable', 'none', None, '']
+             and recommendation_start not in ['unknown', 'unavailable', 'none', None, ''] }}
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.load_optimizer_1_requested_mode
+        data:
+          option: "{{ requested_mode }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_requested_program
+        data:
+          value: "{{ recommendation_program }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.load_optimizer_1_requested_start
+        data:
+          datetime: "{{ as_local(as_datetime(recommendation_start)).strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_scheduler_message
+        data:
+          value: "{{ message[:255] }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.announce_text
+        data:
+          value: "{{ message[:255] }}"
+      - action: script.turn_on
+        target:
+          entity_id: script.announce_steve_iphone
+
+  - id: load_optimizer_1_cancel_user_request
+    alias: Load Optimizer 1 - Cancel User Request
+    description: Clear the dishwasher scheduler helpers.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_button.load_optimizer_1_cancel_schedule
+    actions:
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.load_optimizer_1_requested_mode
+        data:
+          option: none
+      - action: input_text.set_value
+        target:
+          entity_id:
+            - input_text.load_optimizer_1_requested_program
+            - input_text.load_optimizer_1_scheduler_message
+        data:
+          value: ""
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.announce_text
+        data:
+          value: Dishwasher schedule cancelled.
+      - action: script.turn_on
+        target:
+          entity_id: script.announce_steve_iphone
+
+  - id: load_optimizer_1_execute_user_request
+    alias: Load Optimizer 1 - Execute User Request
+    description: Start the Bosch dishwasher when the requested Load Optimizer recommendation is due.
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/1"
+      - trigger: state
+        entity_id:
+          - sensor.load_optimizer_1_now_recommendation
+          - sensor.load_optimizer_1_soon_recommendation
+          - sensor.load_optimizer_1_overnight_recommendation
+          - input_select.load_optimizer_1_requested_mode
+          - input_datetime.load_optimizer_1_requested_start
+    variables:
+      requested_mode: "{{ states('input_select.load_optimizer_1_requested_mode') }}"
+      recommendation_entity: >-
+        {{ 'sensor.load_optimizer_1_' ~ requested_mode ~ '_recommendation'
+           if requested_mode in ['now', 'soon', 'overnight']
+           else '' }}
+      recommendation_status: "{{ state_attr(recommendation_entity, 'status') }}"
+      recommendation_program: >-
+        {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
+      recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
+      recommendation_ready_to_start: "{{ state_attr(recommendation_entity, 'ready_to_start') }}"
+      requested_program: "{{ states('input_text.load_optimizer_1_requested_program') }}"
+      requested_start: "{{ states('input_datetime.load_optimizer_1_requested_start') }}"
+      selected_program: >-
+        {{ recommendation_program
+           if recommendation_program not in ['unknown', 'unavailable', 'none', None, '']
+           else requested_program }}
+      due_by_time: >-
+        {{ recommendation_start not in ['unknown', 'unavailable', 'none', None, '']
+           and now() >= as_datetime(recommendation_start) }}
+      due_now: >-
+        {{ requested_mode == 'now'
+           and (recommendation_ready_to_start == true or due_by_time) }}
+      due_scheduled: >-
+        {{ requested_mode in ['soon', 'overnight'] and due_by_time }}
+      start_message: >-
+        Dishwasher start requested by Load Optimizer:
+        {{ selected_program }}.
+      failed_message: >-
+        Dishwasher start may have failed. Bosch did not report a running cycle
+        after the start request for {{ selected_program }}.
+    conditions:
+      - condition: template
+        value_template: "{{ requested_mode in ['now', 'soon', 'overnight'] }}"
+      - condition: template
+        value_template: "{{ recommendation_status == 'ready' }}"
+      - condition: template
+        value_template: "{{ selected_program not in ['unknown', 'unavailable', 'none', None, ''] }}"
+      - condition: template
+        value_template: "{{ states('sensor.load_optimizer_1_cycle_state') == 'idle' }}"
+      - condition: template
+        value_template: "{{ due_now or due_scheduled }}"
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.announce_text
+        data:
+          value: "{{ start_message[:255] }}"
+      - action: script.turn_on
+        target:
+          entity_id: script.announce_steve_iphone
+      - action: home_connect_alt.start_program
+        continue_on_error: true
+        data:
+          validate: true
+          device_id: 821e54dbd6b2cf80546f1349ba18ab2e
+          program_key: "Dishcare.Dishwasher.Program.{{ selected_program }}"
+      - delay:
+          minutes: 2
+      - if:
+          - condition: template
+            value_template: "{{ states('sensor.load_optimizer_1_cycle_state') != 'running' }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.announce_text
+            data:
+              value: "{{ failed_message[:255] }}"
+          - action: script.turn_on
+            target:
+              entity_id: script.announce_steve_iphone
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.load_optimizer_1_requested_mode
+        data:
+          option: none
+      - action: input_text.set_value
+        target:
+          entity_id:
+            - input_text.load_optimizer_1_requested_program
+            - input_text.load_optimizer_1_scheduler_message
+        data:
+          value: ""

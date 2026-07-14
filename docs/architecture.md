@@ -38,6 +38,32 @@ Home Assistant should be used for:
 - published `sensor.load_optimizer_*` entities from the App
 - dashboards, notifications, and automations built on top of those sensors
 
+## Optional Automation Layer
+
+Status: First dishwasher implementation
+
+Load Optimizer should remain the recommendation engine, not the appliance
+launcher. Home Assistant automations should own household-specific execution:
+buttons, voice assistants, announcements, Bosch/Home Connect service calls, and
+manual cancellation.
+
+The first optional package is
+`homeassistant/packages/load_optimizer_dishwasher_automation.yaml`. It is scoped
+to Dishwasher 1 and uses the published recommendation sensors for `now`, `soon`,
+and `overnight` requests. The package stores the user's chosen intent in Home
+Assistant helpers, regularly re-checks the current Load Optimizer recommendation,
+and starts the Bosch dishwasher only when the matching recommendation is due.
+
+This package is intentionally separate from:
+
+- the learning engine
+- other appliance instances
+- future negative-price automation
+
+That separation lets the app keep learning and recommending for many appliance
+types while household-specific automations decide if and how an appliance should
+be physically started.
+
 ## Canonical Entities
 
 The first appliance instance should use the `load_optimizer_1_*` namespace.

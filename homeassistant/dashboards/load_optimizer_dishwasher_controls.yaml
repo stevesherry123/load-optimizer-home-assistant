@@ -1,0 +1,62 @@
+# Raw Home Assistant dashboard cards for Dishwasher 1 request controls.
+#
+# Paste this card stack into the Dishwasher 1 dashboard view after installing
+# `homeassistant/packages/load_optimizer_dishwasher_automation.yaml`.
+
+type: vertical-stack
+cards:
+  - type: entities
+    title: Dishwasher 1 - Run Request
+    show_header_toggle: false
+    entities:
+      - entity: input_select.load_optimizer_1_requested_mode
+        name: Requested Mode
+      - entity: input_text.load_optimizer_1_requested_program
+        name: Requested Program
+      - entity: input_datetime.load_optimizer_1_requested_start
+        name: Requested Start
+      - entity: input_text.load_optimizer_1_scheduler_message
+        name: Scheduler Message
+
+  - type: horizontal-stack
+    cards:
+      - type: button
+        entity: input_button.load_optimizer_1_request_now
+        name: Start Now
+        icon: mdi:play-circle
+        tap_action:
+          action: call-service
+          service: input_button.press
+          target:
+            entity_id: input_button.load_optimizer_1_request_now
+
+      - type: button
+        entity: input_button.load_optimizer_1_request_soon
+        name: Start Soon
+        icon: mdi:clock-fast
+        tap_action:
+          action: call-service
+          service: input_button.press
+          target:
+            entity_id: input_button.load_optimizer_1_request_soon
+
+      - type: button
+        entity: input_button.load_optimizer_1_request_overnight
+        name: Overnight
+        icon: mdi:weather-night
+        tap_action:
+          action: call-service
+          service: input_button.press
+          target:
+            entity_id: input_button.load_optimizer_1_request_overnight
+
+      - type: button
+        entity: input_button.load_optimizer_1_cancel_schedule
+        name: Cancel
+        icon: mdi:cancel
+        tap_action:
+          action: call-service
+          service: input_button.press
+          target:
+            entity_id: input_button.load_optimizer_1_cancel_schedule
+
