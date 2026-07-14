@@ -4,6 +4,15 @@
 
 - No unreleased changes.
 
+## 0.8.14
+
+- Add `sensor.load_optimizer_restart_safety` to show whether restarting or
+  updating the app is currently safe.
+- Publish `restart_blocked` on the main status entity whenever any appliance
+  cycle capture is active.
+- Keep the existing interrupted-cycle protection so accidental restarts still
+  discard incomplete learning data.
+
 ## 0.8.13
 
 - Preserve usable representative power profiles when repairing suspicious

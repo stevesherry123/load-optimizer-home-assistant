@@ -18,6 +18,7 @@ from load_optimizer.app.main import (
     parse_instances_yaml,
     profile_energy_kwh,
     profile_sample,
+    publish_restart_safety,
     program_summary,
     publish_restart_warning,
     repair_learning_quality,
@@ -178,6 +179,28 @@ class ConfigurationTests(unittest.TestCase):
             "load_optimizer_restart_running_cycle",
         )
         self.assertIn("Washing Machine 1", api_request.call_args.args[2]["message"])
+
+    @patch("load_optimizer.app.main.api_request")
+    def test_restart_safety_blocks_when_capture_is_active(self, api_request):
+        publish_restart_safety("token", [{
+            "instance_id": "2",
+            "name": "Washing Machine 1",
+            "cycle_start": "2026-01-01T00:00:00+00:00",
+        }])
+
+        api_request.assert_called_once()
+        self.assertEqual(api_request.call_args.args[1], "/states/sensor.load_optimizer_restart_safety")
+        self.assertEqual(api_request.call_args.args[2]["state"], "blocked")
+        self.assertTrue(api_request.call_args.args[2]["attributes"]["restart_blocked"])
+        self.assertEqual(api_request.call_args.args[2]["attributes"]["active_capture_count"], 1)
+
+    @patch("load_optimizer.app.main.api_request")
+    def test_restart_safety_reports_safe_when_no_capture_is_active(self, api_request):
+        publish_restart_safety("token", [])
+
+        api_request.assert_called_once()
+        self.assertEqual(api_request.call_args.args[2]["state"], "safe")
+        self.assertFalse(api_request.call_args.args[2]["attributes"]["restart_blocked"])
 
     def test_options_are_loaded_from_json(self):
         with tempfile.TemporaryDirectory() as directory:
