@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.15"
+APP_VERSION = "0.8.16"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -478,6 +478,51 @@ def resolve_program_policies(models: dict, configured: list[dict]) -> list[dict]
             continue
         resolved[policy["program"]] = policy
     return [resolved[program] for program in sorted(resolved)]
+
+
+def program_catalogue(models: dict, policies: list[dict]) -> list[dict]:
+    model_programs = set(models)
+    policy_by_program = {policy["program"]: policy for policy in policies}
+    catalogue = []
+    for program in sorted(model_programs | set(policy_by_program)):
+        summary = program_summary(program, models[program]) if program in models else {
+            "program": program,
+            "runs": 0,
+            "profile_count": 0,
+            "expected_runtime_minutes": None,
+            "expected_energy_kwh": None,
+            "average_peak_power_w": None,
+            "confidence": 0,
+        }
+        policy = policy_by_program.get(program, default_program_policy(program))
+        learned = program in model_programs and int(summary.get("runs", 0)) > 0
+        configured = program in policy_by_program
+        if learned and configured:
+            status = "learned_configured"
+        elif learned:
+            status = "learned_unconfigured"
+        else:
+            status = "configured_unlearned"
+        catalogue.append({
+            "program": program,
+            "status": status,
+            "learned": learned,
+            "configured": configured,
+            "runs": summary.get("runs", 0),
+            "profile_count": summary.get("profile_count", 0),
+            "expected_runtime_minutes": summary.get("expected_runtime_minutes"),
+            "expected_energy_kwh": summary.get("expected_energy_kwh"),
+            "average_peak_power_w": summary.get("average_peak_power_w"),
+            "confidence": summary.get("confidence", 0),
+            "classification": policy.get("classification"),
+            "enabled": policy.get("enabled"),
+            "allow_normal_recommendation": policy.get("allow_normal_recommendation"),
+            "allow_negative_price_run": policy.get("allow_negative_price_run"),
+            "preference_rank": policy.get("preference_rank"),
+            "minimum_days_between_runs": policy.get("minimum_days_between_runs"),
+            "maximum_runs_per_window": policy.get("maximum_runs_per_window"),
+        })
+    return catalogue
 
 
 def _option_or_env(options: dict, key: str, default: object = "") -> object:
@@ -1202,6 +1247,18 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "policies": policies,
         "classifications": sorted(PROGRAM_CLASSIFICATIONS),
         "optional_field_defaults": policy_defaults,
+    })
+    catalogue = program_catalogue(models, policies)
+    publish_entity(token, f"{prefix}_program_catalogue", len(catalogue), {
+        "friendly_name": f"{name} Program Catalogue",
+        "icon": "mdi:format-list-checks",
+        "programs": catalogue,
+        "statuses": sorted({item["status"] for item in catalogue}),
+        "status_meanings": {
+            "learned_configured": "Program has learned run data and an explicit policy.",
+            "learned_unconfigured": "Program has been observed but has no explicit policy.",
+            "configured_unlearned": "Program is configured in policy but has no learned runs yet.",
+        },
     })
     summaries = [program_summary(program_name, model) for program_name, model in sorted(models.items())]
     tariff_entities = config.get("tariff_entities", [])

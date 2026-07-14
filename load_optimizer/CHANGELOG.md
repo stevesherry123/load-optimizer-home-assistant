@@ -4,6 +4,15 @@
 
 - No unreleased changes.
 
+## 0.8.16
+
+- Add `sensor.load_optimizer_N_program_catalogue` to show learned and
+  configured-but-unlearned programs together.
+- Keep configured zero-run programs visible with policy, classification, and
+  negative-price eligibility metadata.
+- Support gradual real-world cycle discovery when appliance integrations do not
+  expose a complete available-program list.
+
 ## 0.8.15
 
 - Publish front-end friendly recommendation entities for `now`, `soon`, and

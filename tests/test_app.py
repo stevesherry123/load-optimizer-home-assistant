@@ -18,6 +18,7 @@ from load_optimizer.app.main import (
     parse_instances_yaml,
     profile_energy_kwh,
     profile_sample,
+    program_catalogue,
     publish_restart_safety,
     program_summary,
     publish_restart_warning,
@@ -690,6 +691,20 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(policies[0]["classification"], "preferred")
         self.assertTrue(policies[0]["allow_normal_recommendation"])
         self.assertEqual(policies[0]["estimated_overhead_cost_pence"], 12.5)
+
+    def test_configured_unlearned_policy_is_visible_in_catalogue(self):
+        policies = resolve_program_policies({"Quick65": {"runs": 2}}, [
+            {"program": "Quick65", "classification": "preferred", "allow_normal_recommendation": True},
+            {"program": "MachineCare", "classification": "maintenance", "allow_negative_price_run": True},
+        ])
+
+        catalogue = program_catalogue({"Quick65": {"runs": 2}}, policies)
+        by_program = {item["program"]: item for item in catalogue}
+
+        self.assertEqual(by_program["Quick65"]["status"], "learned_configured")
+        self.assertEqual(by_program["MachineCare"]["status"], "configured_unlearned")
+        self.assertEqual(by_program["MachineCare"]["runs"], 0)
+        self.assertTrue(by_program["MachineCare"]["allow_negative_price_run"])
 
     def test_minimal_policy_uses_safe_optional_defaults(self):
         policy = normalise_program_policy({

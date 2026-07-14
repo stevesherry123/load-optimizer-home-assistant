@@ -65,6 +65,12 @@ Newly learned programs default to `unclassified` and are not eligible for a
 recommendation until the user makes an explicit choice. Resolved policy is
 published through `sensor.load_optimizer_N_program_policies`.
 
+The app also publishes `sensor.load_optimizer_N_program_catalogue`, which merges
+learned programs and explicitly configured policies. This makes planned cycles
+visible before they have any learned runs. For example, a configured
+`MachineCare` policy appears with `runs: 0` and
+`status: configured_unlearned` until the appliance has completed that cycle.
+
 ### Example configuration
 
 Use the `instances_yaml` text field for every appliance. Home Assistant's add-on
