@@ -684,12 +684,17 @@ class ProgramPolicyTests(unittest.TestCase):
             "allow_normal_recommendation": True,
             "allow_negative_price_run": False,
             "minimum_days_between_runs": 0,
-            "maximum_runs_per_window": 1,
+            "minimum_hours_between_runs": 6,
+            "maximum_runs_per_window": 2,
+            "negative_price_priority": 80,
             "estimated_overhead_cost_pence": 12.5,
         }])
 
         self.assertEqual(policies[0]["classification"], "preferred")
         self.assertTrue(policies[0]["allow_normal_recommendation"])
+        self.assertEqual(policies[0]["minimum_hours_between_runs"], 6)
+        self.assertEqual(policies[0]["maximum_runs_per_window"], 2)
+        self.assertEqual(policies[0]["negative_price_priority"], 80)
         self.assertEqual(policies[0]["estimated_overhead_cost_pence"], 12.5)
 
     def test_configured_unlearned_policy_is_visible_in_catalogue(self):
@@ -726,7 +731,20 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(policy["preference_rank"], 50)
         self.assertFalse(policy["allow_normal_recommendation"])
         self.assertFalse(policy["allow_negative_price_run"])
-        self.assertEqual(policy["maximum_runs_per_window"], 1)
+        self.assertEqual(policy["minimum_days_between_runs"], 0)
+        self.assertEqual(policy["minimum_hours_between_runs"], 0)
+        self.assertEqual(policy["maximum_runs_per_window"], 0)
+        self.assertEqual(policy["negative_price_priority"], 50)
+
+    def test_days_cooldown_backfills_hours_for_backwards_compatibility(self):
+        policy = normalise_program_policy({
+            "program": "MachineCare",
+            "classification": "maintenance",
+            "minimum_days_between_runs": 2,
+        })
+
+        self.assertEqual(policy["minimum_days_between_runs"], 2)
+        self.assertEqual(policy["minimum_hours_between_runs"], 48)
 
     def test_disabled_policy_cannot_be_scheduled(self):
         policy = normalise_program_policy({
@@ -816,6 +834,7 @@ class ProgramPolicyTests(unittest.TestCase):
   schedule_window_preference: prefer_overnight
   schedule_overnight_start: "20:00"
   schedule_overnight_end: "08:00"
+  schedule_latest_finish_entity: input_datetime.dishwasher_deadline
   program_policies:
     - program: Default
       classification: preferred
@@ -838,6 +857,7 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(configs[1]["schedule_window_preference"], "prefer_overnight")
         self.assertEqual(configs[1]["schedule_overnight_start"], "20:00")
         self.assertEqual(configs[1]["schedule_overnight_end"], "08:00")
+        self.assertEqual(configs[1]["schedule_latest_finish_entity"], "input_datetime.dishwasher_deadline")
         self.assertEqual(configs[1]["cost_forecast_interval"], 30)
         self.assertEqual(configs[1]["program_policies"][0]["program"], "Default")
         self.assertTrue(configs[1]["program_policies"][0]["allow_normal_recommendation"])

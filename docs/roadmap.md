@@ -8,7 +8,7 @@ implementation architecture in `docs/architecture.md`.
 
 - improve profile-weighted tariff cost estimation across half-hour slots
 - add per-instance earliest start and latest finish constraints
-- add helper-driven deadline support for calendar and travel-aware scheduling
+- extend helper-driven deadline support for calendar and travel-aware scheduling
 - add selectable scheduling strategies such as `cheapest_earliest_finish` and
   `cheapest_latest_finish`
 - continue refining daytime and overnight scheduling windows
@@ -31,7 +31,7 @@ or rely only on fixed-duration appliance assumptions.
 Planned scheduling features:
 
 - per-instance earliest start and latest finish constraints
-- helper-driven deadline support, initially via Home Assistant input helpers
+- helper-driven deadline support via Home Assistant input helpers
 - optional calendar integration, with TripIt recommended for travel-aware
   scheduling where users already expose TripIt to Home Assistant
 - scheduling strategies that are separate from constraints:

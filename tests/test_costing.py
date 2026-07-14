@@ -236,6 +236,81 @@ class CostEstimationTests(unittest.TestCase):
             0,
         )
 
+    def test_negative_price_priority_beats_energy_intensity(self):
+        short_hot = {
+            **self.model,
+            "program": "ShortHot",
+            "expected_runtime_minutes": 30,
+            "expected_energy_kwh": 1.0,
+        }
+        maintenance = {
+            **self.model,
+            "program": "MachineCare",
+            "expected_runtime_minutes": 120,
+            "expected_energy_kwh": 2.0,
+        }
+        policies = [
+            {
+                "program": "ShortHot",
+                "enabled": True,
+                "allow_normal_recommendation": False,
+                "allow_negative_price_run": True,
+                "preference_rank": 50,
+                "negative_price_priority": 50,
+                "estimated_overhead_cost_pence": 0,
+            },
+            {
+                "program": "MachineCare",
+                "enabled": True,
+                "allow_normal_recommendation": False,
+                "allow_negative_price_run": True,
+                "preference_rank": 50,
+                "negative_price_priority": 100,
+                "estimated_overhead_cost_pence": 0,
+            },
+        ]
+        periods = [self.period(0, 180, -10)]
+
+        result = recommend_cycle(
+            [short_hot, maintenance],
+            policies,
+            periods,
+            reference_utc=self.start,
+            search_hours=1,
+            candidate_interval_minutes=30,
+        )
+
+        self.assertEqual(result["negative_price_recommendation"]["program"], "MachineCare")
+
+    def test_latest_finish_deadline_rejects_late_cheap_slot(self):
+        model = {**self.model, "expected_runtime_minutes": 60}
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        periods = [
+            self.period(0, 60, 30),
+            self.period(60, 120, 5),
+        ]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=1,
+            candidate_interval_minutes=60,
+            latest_finish_utc=self.start + timedelta(minutes=90),
+        )
+
+        self.assertEqual(result["start"], self.start)
+        self.assertEqual(result["latest_allowed_finish"], (self.start + timedelta(minutes=90)).isoformat())
+        self.assertEqual(result["rejected_constraints"], 1)
+
     def test_cheapest_earliest_finish_uses_first_near_equivalent_slot(self):
         policy = {
             "program": "Eco",

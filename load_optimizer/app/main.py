@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.17"
+APP_VERSION = "0.8.18"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -109,6 +109,21 @@ def source_state(token: str, entity_id: str) -> dict | None:
     if not entity_id:
         return None
     return api_request(token, f"/states/{entity_id}")
+
+
+def datetime_from_entity_state(entity_state: dict | None) -> datetime | None:
+    if not entity_state:
+        return None
+    value = str(entity_state.get("state") or "").strip()
+    if value in {"", "unknown", "unavailable", "none", "None"}:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def tariff_state_from_entity(token: str, entity_id: str) -> dict | None:
@@ -441,7 +456,9 @@ def default_program_policy(program: str) -> dict:
         "allow_normal_recommendation": False,
         "allow_negative_price_run": False,
         "minimum_days_between_runs": 0,
-        "maximum_runs_per_window": 1,
+        "minimum_hours_between_runs": 0,
+        "maximum_runs_per_window": 0,
+        "negative_price_priority": 50,
         "estimated_overhead_cost_pence": 0.0,
     }
 
@@ -462,7 +479,12 @@ def normalise_program_policy(raw: dict) -> dict:
         "allow_normal_recommendation": bool(raw.get("allow_normal_recommendation", policy["allow_normal_recommendation"])),
         "allow_negative_price_run": bool(raw.get("allow_negative_price_run", policy["allow_negative_price_run"])),
         "minimum_days_between_runs": max(0, int(raw.get("minimum_days_between_runs", policy["minimum_days_between_runs"]))),
+        "minimum_hours_between_runs": max(0, int(raw.get(
+            "minimum_hours_between_runs",
+            int(raw.get("minimum_days_between_runs", policy["minimum_days_between_runs"])) * 24
+        ))),
         "maximum_runs_per_window": max(0, int(raw.get("maximum_runs_per_window", policy["maximum_runs_per_window"]))),
+        "negative_price_priority": max(1, min(100, int(raw.get("negative_price_priority", policy["negative_price_priority"])))),
         "estimated_overhead_cost_pence": max(0.0, float(raw.get("estimated_overhead_cost_pence", policy["estimated_overhead_cost_pence"]))),
     })
     if classification == "disabled":
@@ -522,7 +544,9 @@ def program_catalogue(models: dict, policies: list[dict]) -> list[dict]:
             "allow_negative_price_run": policy.get("allow_negative_price_run"),
             "preference_rank": policy.get("preference_rank"),
             "minimum_days_between_runs": policy.get("minimum_days_between_runs"),
+            "minimum_hours_between_runs": policy.get("minimum_hours_between_runs"),
             "maximum_runs_per_window": policy.get("maximum_runs_per_window"),
+            "negative_price_priority": policy.get("negative_price_priority"),
         })
     return catalogue
 
@@ -562,6 +586,8 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "schedule_window_preference": str(_option_or_env(options, f"{prefix}_schedule_window_preference", "any")),
         "schedule_overnight_start": str(_option_or_env(options, f"{prefix}_schedule_overnight_start", "20:00")),
         "schedule_overnight_end": str(_option_or_env(options, f"{prefix}_schedule_overnight_end", "08:00")),
+        "schedule_earliest_start_entity": str(_option_or_env(options, f"{prefix}_schedule_earliest_start_entity", "")).strip(),
+        "schedule_latest_finish_entity": str(_option_or_env(options, f"{prefix}_schedule_latest_finish_entity", "")).strip(),
         "program_policies": options.get(f"{prefix}_program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_entities": tariff_entities,
@@ -601,6 +627,8 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "schedule_window_preference": str(entry.get("schedule_window_preference", "any")),
         "schedule_overnight_start": str(entry.get("schedule_overnight_start", "20:00")),
         "schedule_overnight_end": str(entry.get("schedule_overnight_end", "08:00")),
+        "schedule_earliest_start_entity": str(entry.get("schedule_earliest_start_entity", "")).strip(),
+        "schedule_latest_finish_entity": str(entry.get("schedule_latest_finish_entity", "")).strip(),
         "program_policies": entry.get("program_policies", []),
         "tariff_entity": str(options.get("tariff_entity", "")).strip(),
         "tariff_entities": tariff_entities,
@@ -933,6 +961,13 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
             "end": result.get("overnight_end"),
             "timezone": result.get("schedule_timezone"),
         },
+        "schedule_earliest_start_entity": result.get("schedule_earliest_start_entity"),
+        "schedule_latest_finish_entity": result.get("schedule_latest_finish_entity"),
+        "constraints": {
+            "earliest_allowed_start": result.get("earliest_allowed_start"),
+            "latest_allowed_finish": result.get("latest_allowed_finish"),
+            "rejected_constraints": result.get("rejected_constraints", 0),
+        },
     }
 
 
@@ -945,6 +980,13 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
         "tariff_start": result.get("tariff_start"),
         "tariff_end": result.get("tariff_end"),
         "reason": result.get("reason"),
+        "schedule_earliest_start_entity": result.get("schedule_earliest_start_entity"),
+        "schedule_latest_finish_entity": result.get("schedule_latest_finish_entity"),
+        "constraints": {
+            "earliest_allowed_start": result.get("earliest_allowed_start"),
+            "latest_allowed_finish": result.get("latest_allowed_finish"),
+            "rejected_constraints": result.get("rejected_constraints", 0),
+        },
     }
     if result.get("tariff_diagnostics") is not None:
         common["tariff_diagnostics"] = result["tariff_diagnostics"]
@@ -1006,6 +1048,11 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                     "start": result.get("overnight_start"),
                     "end": result.get("overnight_end"),
                     "timezone": result.get("schedule_timezone"),
+                },
+                "constraints": {
+                    "earliest_allowed_start": result.get("earliest_allowed_start"),
+                    "latest_allowed_finish": result.get("latest_allowed_finish"),
+                    "rejected_constraints": result.get("rejected_constraints", 0),
                 },
                 "overnight_comparison": result.get("overnight_comparison"),
                 "daytime_comparison": result.get("daytime_comparison"),
@@ -1094,6 +1141,7 @@ def publish_schedule_entities(token: str, prefix: str, name: str, advice: dict) 
         "is_overnight_start": advice.get("is_overnight_start"),
         "is_daytime_start": advice.get("is_daytime_start"),
         "overnight_window": advice.get("overnight_window"),
+        "constraints": advice.get("constraints"),
     }
     publish_entity(token, f"{prefix}_schedule_status", advice.get("status", "not_ready"), {
         "friendly_name": f"{name} Schedule Status",
@@ -1283,6 +1331,14 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "tariff_entities": tariff_entities,
     }
     if tariff_entities:
+        earliest_start_entity = config.get("schedule_earliest_start_entity")
+        latest_finish_entity = config.get("schedule_latest_finish_entity")
+        earliest_start_utc = datetime_from_entity_state(source_state(token, earliest_start_entity)) if earliest_start_entity else None
+        latest_finish_utc = datetime_from_entity_state(source_state(token, latest_finish_entity)) if latest_finish_entity else None
+        if earliest_start_utc and earliest_start_utc <= now.astimezone(timezone.utc):
+            earliest_start_utc = None
+        if latest_finish_utc and latest_finish_utc <= now.astimezone(timezone.utc):
+            latest_finish_utc = None
         tariff_states = []
         missing_entities = []
         for entity_id in tariff_entities:
@@ -1332,6 +1388,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     overnight_start=config.get("schedule_overnight_start", "20:00"),
                     overnight_end=config.get("schedule_overnight_end", "08:00"),
                     schedule_timezone=config.get("tariff_timezone", "Europe/London"),
+                    earliest_start_utc=earliest_start_utc,
+                    latest_finish_utc=latest_finish_utc,
                     forecast_hours=config.get("cost_forecast_hours", 12),
                     forecast_interval_minutes=config.get("cost_forecast_interval", 30),
                 )
@@ -1343,6 +1401,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "tariff_end": periods[-1]["end"].isoformat(),
                     "tariff_diagnostics": tariff_diagnostics,
                     "tariff_parse_errors": tariff_parse_errors,
+                    "schedule_earliest_start_entity": earliest_start_entity,
+                    "schedule_latest_finish_entity": latest_finish_entity,
                 })
             except (TypeError, ValueError) as error:
                 cost_result = {

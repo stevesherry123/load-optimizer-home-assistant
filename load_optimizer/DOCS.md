@@ -107,7 +107,9 @@ instances_yaml: |
         allow_normal_recommendation: false
         allow_negative_price_run: false
         minimum_days_between_runs: 0
-        maximum_runs_per_window: 1
+        minimum_hours_between_runs: 0
+        maximum_runs_per_window: 0
+        negative_price_priority: 50
         estimated_overhead_cost_pence: 0
 
   - id: "2"
@@ -127,6 +129,12 @@ when sharing configuration publicly.
 
 The two recommendation flags default to `false` when omitted. Setting a
 classification alone never grants permission for the scheduler to use a program.
+
+`minimum_hours_between_runs` is the preferred cooldown field. Older
+`minimum_days_between_runs` values are still accepted and are converted to hours
+when the hours field is omitted. `maximum_runs_per_window: 0` means unlimited
+for future negative-price planning. `negative_price_priority` ranks explicitly
+allowed negative-price programs before energy intensity is used as a tie-breaker.
 
 Only `program` and `classification` are required. All other policy fields are
 optional and use the conservative defaults published in the
@@ -333,6 +341,21 @@ it lets the scheduler understand travel, household deadlines, and avoid windows.
 TripIt is a good travel-calendar source because it can automatically populate a
 Home Assistant calendar from itinerary emails, but basic learning and cost
 recommendations do not require TripIt or any calendar.
+
+For travel-aware scheduling, point an appliance at editable Home Assistant
+datetime helpers. The app treats future helper values as constraints and ignores
+empty, unavailable, or past values:
+
+```yaml
+schedule_latest_finish_entity: input_datetime.load_optimizer_1_must_finish_by
+```
+
+The optional example package
+`homeassistant/packages/load_optimizer_travel_deadline_example.yaml` creates that
+helper and shows a TripIt-style calendar automation. The example seeds the
+must-finish-by helper to 90 minutes before the travel event, while leaving the
+helper editable so the household can adjust the deadline before the optimiser
+acts on it.
 
 Ready cost entities include a `cost_breakdown` attribute where applicable. Each
 entry shows the tariff period start/end, the price in pence per kWh, the learned

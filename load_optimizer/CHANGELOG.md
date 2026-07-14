@@ -4,6 +4,18 @@
 
 - No unreleased changes.
 
+## 0.8.18
+
+- Add helper-driven travel/deadline scheduling constraints through
+  `schedule_earliest_start_entity` and `schedule_latest_finish_entity`.
+- Reject candidate starts that would finish after an active latest-finish
+  deadline, while ignoring expired helper values.
+- Add an optional Home Assistant TripIt-style deadline package example.
+- Add `minimum_hours_between_runs` and `negative_price_priority` program-policy
+  fields for the next negative-price automation phase.
+- Treat `maximum_runs_per_window: 0` as unlimited for future negative-price
+  planning.
+
 ## 0.8.17
 
 - Add `sensor.load_optimizer_N_discovered_programs` to flag learned programs
