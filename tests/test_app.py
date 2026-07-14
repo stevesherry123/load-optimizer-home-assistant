@@ -706,6 +706,16 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(by_program["MachineCare"]["runs"], 0)
         self.assertTrue(by_program["MachineCare"]["allow_negative_price_run"])
 
+    def test_learned_unconfigured_program_is_visible_for_review(self):
+        policies = resolve_program_policies({"Auto2": {"runs": 1}}, [])
+
+        catalogue = program_catalogue({"Auto2": {"runs": 1}}, policies)
+
+        self.assertEqual(catalogue[0]["program"], "Auto2")
+        self.assertEqual(catalogue[0]["status"], "learned_unconfigured")
+        self.assertFalse(catalogue[0]["allow_normal_recommendation"])
+        self.assertFalse(catalogue[0]["allow_negative_price_run"])
+
     def test_minimal_policy_uses_safe_optional_defaults(self):
         policy = normalise_program_policy({
             "program": "PreRinse",

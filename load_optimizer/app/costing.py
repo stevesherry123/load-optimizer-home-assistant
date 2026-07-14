@@ -340,6 +340,7 @@ def summarize_decision(
         "negative_price_run": candidate.get("negative_price_run"),
         "is_overnight_start": candidate.get("is_overnight_start"),
         "is_daytime_start": candidate.get("is_daytime_start"),
+        "energy_kwh_per_minute": candidate.get("energy_kwh_per_minute"),
     }
 
 
@@ -461,6 +462,7 @@ def recommend_cycle(
     policy_by_program = {policy["program"]: policy for policy in policies}
     candidates = []
     comparison_candidates = []
+    negative_candidates = []
     rejected_profiles = 0
     search_end = reference_utc + timedelta(hours=search_hours)
     first_start = _next_candidate(reference_utc, candidate_interval_minutes)
@@ -499,10 +501,13 @@ def recommend_cycle(
                     "confidence": model.get("confidence", 0),
                     "preference_rank": policy["preference_rank"],
                     "negative_price_run": negative,
+                    "energy_kwh_per_minute": round(estimate["energy_kwh"] / float(model["expected_runtime_minutes"]), 6),
                     "is_overnight_start": is_overnight,
                     "is_daytime_start": is_daytime,
                 }
                 comparison_candidates.append(candidate)
+                if negative and policy["allow_negative_price_run"]:
+                    negative_candidates.append(candidate)
                 if window_preference == "overnight_only" and not is_overnight:
                     start += timedelta(minutes=candidate_interval_minutes)
                     continue
@@ -551,6 +556,15 @@ def recommend_cycle(
         soon_candidates,
         key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]),
     ) if soon_candidates else None
+    best_negative = max(
+        negative_candidates,
+        key=lambda item: (
+            item["energy_kwh_per_minute"],
+            item["energy_kwh"],
+            -item["total_cost_pence"],
+            -item["preference_rank"],
+        ),
+    ) if negative_candidates else None
     cost_forecast, forecast_diagnostics = forecast_cycle_costs(
         models,
         policies,
@@ -595,6 +609,15 @@ def recommend_cycle(
             ready_to_start=False,
             reason="best_overnight",
         ),
+        "negative_price_recommendation": summarize_decision(
+            intent="negative_price",
+            candidate=best_negative,
+            reference_utc=reference_utc,
+            now_cost=now_cost,
+            ready_to_start=bool(best_negative and best_negative["start"] <= reference_utc),
+            reason="best_negative_price_energy_intensity" if best_negative else "no_negative_price_candidate",
+        ),
+        "negative_price_candidate_count": len(negative_candidates),
         "cost_forecast": cost_forecast,
         "forecast_diagnostics": forecast_diagnostics,
         "forecast_hours": forecast_hours,

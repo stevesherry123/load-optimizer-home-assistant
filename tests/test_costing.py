@@ -184,6 +184,57 @@ class CostEstimationTests(unittest.TestCase):
 
         self.assertEqual(result["start"], self.start + timedelta(minutes=30))
         self.assertTrue(result["negative_price_run"])
+        self.assertEqual(result["negative_price_recommendation"]["program"], "Eco")
+
+    def test_negative_price_recommendation_prefers_energy_intensity(self):
+        short_hot = {
+            **self.model,
+            "program": "ShortHot",
+            "expected_runtime_minutes": 30,
+            "expected_energy_kwh": 1.0,
+        }
+        long_eco = {
+            **self.model,
+            "program": "LongEco",
+            "expected_runtime_minutes": 120,
+            "expected_energy_kwh": 2.0,
+        }
+        policies = [
+            {
+                "program": "ShortHot",
+                "enabled": True,
+                "allow_normal_recommendation": False,
+                "allow_negative_price_run": True,
+                "preference_rank": 50,
+                "estimated_overhead_cost_pence": 0,
+            },
+            {
+                "program": "LongEco",
+                "enabled": True,
+                "allow_normal_recommendation": False,
+                "allow_negative_price_run": True,
+                "preference_rank": 50,
+                "estimated_overhead_cost_pence": 0,
+            },
+        ]
+        periods = [self.period(0, 180, -10)]
+
+        result = recommend_cycle(
+            [short_hot, long_eco],
+            policies,
+            periods,
+            reference_utc=self.start,
+            search_hours=1,
+            candidate_interval_minutes=30,
+        )
+
+        self.assertEqual(result["negative_price_candidate_count"], 6)
+        self.assertEqual(result["negative_price_recommendation"]["program"], "ShortHot")
+        self.assertEqual(result["negative_price_recommendation"]["intent"], "negative_price")
+        self.assertGreater(
+            result["negative_price_recommendation"]["energy_kwh_per_minute"],
+            0,
+        )
 
     def test_cheapest_earliest_finish_uses_first_near_equivalent_slot(self):
         policy = {

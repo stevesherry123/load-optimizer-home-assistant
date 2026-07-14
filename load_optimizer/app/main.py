@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.16"
+APP_VERSION = "0.8.17"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -434,6 +434,7 @@ def bootstrap_program_models(database: dict) -> None:
 def default_program_policy(program: str) -> dict:
     return {
         "program": program,
+        "configured": False,
         "classification": "unclassified",
         "enabled": True,
         "preference_rank": 50,
@@ -454,6 +455,7 @@ def normalise_program_policy(raw: dict) -> dict:
     if classification not in PROGRAM_CLASSIFICATIONS:
         raise ValueError(f"Unsupported program classification: {classification}")
     policy.update({
+        "configured": True,
         "classification": classification,
         "enabled": bool(raw.get("enabled", policy["enabled"])),
         "preference_rank": max(1, min(100, int(raw.get("preference_rank", policy["preference_rank"])))),
@@ -496,7 +498,7 @@ def program_catalogue(models: dict, policies: list[dict]) -> list[dict]:
         }
         policy = policy_by_program.get(program, default_program_policy(program))
         learned = program in model_programs and int(summary.get("runs", 0)) > 0
-        configured = program in policy_by_program
+        configured = bool(policy.get("configured"))
         if learned and configured:
             status = "learned_configured"
         elif learned:
@@ -1025,6 +1027,7 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
         ("now", "mdi:play-circle"),
         ("soon", "mdi:clock-fast"),
         ("overnight", "mdi:weather-night"),
+        ("negative_price", "mdi:transmission-tower-export"),
     ):
         recommendation = result.get(f"{intent}_recommendation") or {}
         recommendation_ready = ready and recommendation.get("status") == "ready"
@@ -1043,6 +1046,7 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
             "cost_pence": rounded_pence(recommendation.get("cost_pence")) if recommendation_ready else None,
             "saving_vs_now_pence": rounded_pence(recommendation.get("saving_vs_now_pence")) if recommendation_ready else None,
             "energy_kwh": recommendation.get("energy_kwh"),
+            "energy_kwh_per_minute": recommendation.get("energy_kwh_per_minute"),
             "confidence": recommendation.get("confidence"),
             "ready_to_start": recommendation.get("ready_to_start", False),
             "negative_price_run": recommendation.get("negative_price_run"),
@@ -1259,6 +1263,17 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
             "learned_unconfigured": "Program has been observed but has no explicit policy.",
             "configured_unlearned": "Program is configured in policy but has no learned runs yet.",
         },
+    })
+    discovered = [item for item in catalogue if item["status"] == "learned_unconfigured"]
+    publish_entity(token, f"{prefix}_discovered_programs", len(discovered), {
+        "friendly_name": f"{name} Discovered Programs",
+        "icon": "mdi:alert-decagram",
+        "programs": discovered,
+        "message": (
+            "Review newly observed programs and add explicit program policies."
+            if discovered else
+            "No newly observed unconfigured programs."
+        ),
     })
     summaries = [program_summary(program_name, model) for program_name, model in sorted(models.items())]
     tariff_entities = config.get("tariff_entities", [])

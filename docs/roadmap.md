@@ -16,6 +16,10 @@ implementation architecture in `docs/architecture.md`.
 - expose a recommended-window active state for dashboards and automations
 - add a manual recalculation service for tariff, policy, or test changes
 - improve runtime status clarity so active capture is obvious
+- model additional per-cycle operating costs such as detergent, water, and
+  appliance wear
+- add automatic negative-price opportunity handling for programs explicitly
+  allowed by policy
 
 ## Scheduling And Cost Estimation
 
@@ -124,10 +128,17 @@ Initial optimisation will use electricity cost only.
 Future versions may calculate a broader operating cost incorporating:
 
 - water consumption
+- water disposal or sewerage charges where applicable
 - detergent and other consumables
 - appliance wear
 - battery degradation for applicable devices
 - other configurable per-cycle costs
+
+These costs should be configurable per program policy. Examples include a fixed
+dishwasher tablet cost, a pence-per-litre water cost, an estimated litres-per-run
+value, and a depreciation or wear allowance. Energy-only recommendations can
+remain available, but the broader model should support a true operating cost and
+show energy cost separately from non-energy costs.
 
 Standing charges should normally be excluded because running a cycle does not
 change them.
@@ -135,6 +146,11 @@ change them.
 This broader cost model will be particularly relevant when evaluating negative
 electricity prices. Consuming electricity may appear profitable while still
 incurring water, consumable, and equipment costs.
+
+Negative-price automation should remain opt-in per program. When electricity is
+negative, the optimiser should prefer useful, high-consumption, short-duration
+programs that are explicitly marked as eligible, while respecting cooldowns,
+maintenance limits, and any future additional operating-cost model.
 
 ## Completed Appliance Infrastructure Cleanup
 
