@@ -7,12 +7,9 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 
 - **Log level** controls diagnostic detail.
 - **Scan interval** controls how often the app refreshes its Home Assistant state.
-- **Scalable appliance instances** is an optional YAML or JSON text field for
-  expandable installs. Add one list item per appliance and give each item a
-  stable numeric `id`.
-- Older `instance_ids` and `instance_N_*` options are still supported for
-  compatibility. Existing installs can continue using them while migrating
-  carefully to `instances_yaml`.
+- **Scalable appliance instances** is the YAML or JSON text field used to define
+  appliances. Add one list item per appliance and give each item a stable
+  numeric `id`.
 - **Reset instance IDs** is normally blank. Set it to a comma-separated list
   such as `2` to clear selected learned instance data on the next app start.
   The request is one-shot while the same value remains configured, and
@@ -70,11 +67,9 @@ published through `sensor.load_optimizer_N_program_policies`.
 
 ### Example configuration
 
-For existing one or two appliance installs, the legacy `instance_ids` and
-`instance_N_*` fields remain supported. For three or more appliances, use the
-`instances_yaml` text field. Home Assistant's add-on options UI does not provide
-reliable unlimited dynamic rows, so the app treats this field as the scalable
-source of truth when it is populated.
+Use the `instances_yaml` text field for every appliance. Home Assistant's add-on
+options UI does not provide reliable unlimited dynamic rows, so the app treats
+this field as the source of truth for instance configuration.
 
 The following example configures a dishwasher as instance `1`, a washing
 machine as instance `2`, and leaves room to add future appliances without new
@@ -118,11 +113,6 @@ instances_yaml: |
 Replace the four `sensor.your_appliance_*` values with entities from the local
 Home Assistant installation. Do not publish private device-specific entity IDs
 when sharing configuration publicly.
-
-If you previously used `instance_ids`, `instance_1_*`, or `instance_2_*`
-settings, copy each appliance into one `instances_yaml` list item using the same
-numeric `id`. For example, old `instance_1_name` becomes the `name` field on the
-list item with `id: "1"`.
 
 The two recommendation flags default to `false` when omitted. Setting a
 classification alone never grants permission for the scheduler to use a program.

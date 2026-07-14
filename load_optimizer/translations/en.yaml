@@ -7,7 +7,7 @@ configuration:
     description: Number of seconds between Home Assistant updates.
   instances_yaml:
     name: Scalable appliance instances
-    description: Optional YAML or JSON list for three or more appliances. When populated, this overrides the legacy instance_ids and instance_N fields.
+    description: YAML or JSON list of appliance instances. Add one item per appliance using a stable numeric id.
   reset_instance_ids:
     name: Reset instance IDs
     description: Optional comma-separated instance numbers to clear from app storage on next start. Clear this after use.
