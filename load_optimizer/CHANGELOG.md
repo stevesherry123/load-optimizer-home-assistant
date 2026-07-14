@@ -4,6 +4,15 @@
 
 - No unreleased changes.
 
+## 0.8.15
+
+- Publish front-end friendly recommendation entities for `now`, `soon`, and
+  `overnight` run intents.
+- Include program, start, finish, cost, saving, confidence, and readiness
+  attributes so Alexa, dashboards, and automations can stay simple.
+- Keep the scheduling intelligence inside Load Optimizer instead of embedding
+  tariff logic in voice or dashboard automations.
+
 ## 0.8.14
 
 - Add `sensor.load_optimizer_restart_safety` to show whether restarting or
