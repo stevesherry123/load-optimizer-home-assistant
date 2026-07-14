@@ -4,6 +4,15 @@
 
 - No unreleased changes.
 
+## 0.8.13
+
+- Preserve usable representative power profiles when repairing suspicious
+  learned cycles.
+- Store compact power profiles with recent cycles so repaired learning models
+  remain cost-forecastable.
+- Rebuild a missing representative profile from the latest completed cycle when
+  raw power samples are still available.
+
 ## 0.8.12
 
 - Remove hardcoded `instance_1_*`, `instance_2_*`, and `instance_ids` add-on
