@@ -300,6 +300,49 @@ def summarize_window_candidate(candidate: dict | None, now_cost: float | None) -
     }
 
 
+def summarize_decision(
+    *,
+    intent: str,
+    candidate: dict | None,
+    reference_utc: datetime,
+    now_cost: float | None,
+    ready_to_start: bool = False,
+    reason: str | None = None,
+) -> dict:
+    if not candidate:
+        return {
+            "intent": intent,
+            "status": "not_ready",
+            "reason": reason or "no_candidate",
+            "ready_to_start": False,
+        }
+    cost = candidate.get("total_cost_pence")
+    saving = None
+    if now_cost is not None and cost is not None:
+        saving = round(max(0.0, now_cost - cost), 4)
+    start = candidate.get("start")
+    seconds_until_start = None
+    if start:
+        seconds_until_start = max(0, round((start - reference_utc).total_seconds()))
+    return {
+        "intent": intent,
+        "status": "ready",
+        "reason": reason,
+        "ready_to_start": ready_to_start,
+        "program": candidate.get("program"),
+        "start": start.isoformat() if start else None,
+        "finish": candidate.get("finish").isoformat() if candidate.get("finish") else None,
+        "seconds_until_start": seconds_until_start,
+        "cost_pence": cost,
+        "saving_vs_now_pence": saving,
+        "energy_kwh": candidate.get("energy_kwh"),
+        "confidence": candidate.get("confidence"),
+        "negative_price_run": candidate.get("negative_price_run"),
+        "is_overnight_start": candidate.get("is_overnight_start"),
+        "is_daytime_start": candidate.get("is_daytime_start"),
+    }
+
+
 def summarize_forecast_candidates(candidates: list[dict], limit: int = 300) -> list[dict]:
     forecast = []
     for candidate in sorted(candidates, key=lambda item: (item["program"], item["start"]))[:limit]:
@@ -495,6 +538,19 @@ def recommend_cycle(
         now_breakdown = []
     best_overnight = best_window_candidate(comparison_candidates, overnight=True)
     best_daytime = best_window_candidate(comparison_candidates, overnight=False)
+    immediate_candidate = min(
+        comparison_candidates,
+        key=lambda item: (abs((item["start"] - reference_utc).total_seconds()), item["total_cost_pence"], item["preference_rank"]),
+    )
+    soon_end = reference_utc + timedelta(hours=2)
+    soon_candidates = [
+        candidate for candidate in comparison_candidates
+        if reference_utc <= candidate["start"] <= soon_end
+    ]
+    best_soon = min(
+        soon_candidates,
+        key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]),
+    ) if soon_candidates else None
     cost_forecast, forecast_diagnostics = forecast_cycle_costs(
         models,
         policies,
@@ -515,6 +571,30 @@ def recommend_cycle(
         "potential_saving_pence": round(max(0.0, now_cost - cheapest["total_cost_pence"]), 4) if now_cost is not None else None,
         "overnight_comparison": summarize_window_candidate(best_overnight, now_cost),
         "daytime_comparison": summarize_window_candidate(best_daytime, now_cost),
+        "now_recommendation": summarize_decision(
+            intent="now",
+            candidate=immediate_candidate,
+            reference_utc=reference_utc,
+            now_cost=now_cost,
+            ready_to_start=True,
+            reason="start_immediately",
+        ),
+        "soon_recommendation": summarize_decision(
+            intent="soon",
+            candidate=best_soon,
+            reference_utc=reference_utc,
+            now_cost=now_cost,
+            ready_to_start=False,
+            reason="best_within_2_hours",
+        ),
+        "overnight_recommendation": summarize_decision(
+            intent="overnight",
+            candidate=best_overnight,
+            reference_utc=reference_utc,
+            now_cost=now_cost,
+            ready_to_start=False,
+            reason="best_overnight",
+        ),
         "cost_forecast": cost_forecast,
         "forecast_diagnostics": forecast_diagnostics,
         "forecast_hours": forecast_hours,

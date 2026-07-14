@@ -370,6 +370,45 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["daytime_comparison"]["saving_vs_now_pence"], 15.0)
         self.assertEqual(result["comparison_candidate_count"], 2)
 
+    def test_recommendation_includes_frontend_intents(self):
+        model = {**self.model, "expected_runtime_minutes": 30}
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        reference = self.start + timedelta(hours=12)
+        periods = [
+            self.period(720, 750, 30),
+            self.period(750, 780, 10),
+            self.period(1200, 1230, 5),
+        ]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=reference,
+            search_hours=8,
+            candidate_interval_minutes=30,
+            overnight_start="20:00",
+            overnight_end="08:00",
+            schedule_timezone="UTC",
+        )
+
+        self.assertEqual(result["now_recommendation"]["intent"], "now")
+        self.assertTrue(result["now_recommendation"]["ready_to_start"])
+        self.assertEqual(result["now_recommendation"]["cost_pence"], 30.0)
+        self.assertEqual(result["soon_recommendation"]["intent"], "soon")
+        self.assertEqual(result["soon_recommendation"]["cost_pence"], 10.0)
+        self.assertFalse(result["soon_recommendation"]["ready_to_start"])
+        self.assertEqual(result["overnight_recommendation"]["intent"], "overnight")
+        self.assertEqual(result["overnight_recommendation"]["cost_pence"], 5.0)
+        self.assertEqual(result["overnight_recommendation"]["seconds_until_start"], 28800)
+
     def test_recommendation_includes_cost_forecast(self):
         model = {**self.model, "expected_runtime_minutes": 30}
         policy = {

@@ -221,6 +221,9 @@ and publishes recommendations only; it never starts an appliance.
 
 - `sensor.load_optimizer_N_cost_status`
 - `sensor.load_optimizer_N_cost_if_started_now`
+- `sensor.load_optimizer_N_now_recommendation`
+- `sensor.load_optimizer_N_soon_recommendation`
+- `sensor.load_optimizer_N_overnight_recommendation`
 - `sensor.load_optimizer_N_cheapest_start`
 - `sensor.load_optimizer_N_cheapest_cost`
 - `sensor.load_optimizer_N_overnight_cost`
@@ -236,6 +239,13 @@ The overnight and daytime comparison entities show the best eligible option in
 each start window, independent of which option is selected as the current
 recommendation. This makes dashboards clearer: users can compare overnight
 cost, daytime cost, cost if started now, and the saving for each option.
+
+The recommendation entities are intended for simple front ends such as Alexa,
+dashboard buttons, mobile notifications, or physical switches. The state is the
+recommended program when ready, while attributes include `start`, `finish`,
+`cost_pence`, `saving_vs_now_pence`, `confidence`, `ready_to_start`, and
+`reason`. A voice workflow can therefore offer "start now or schedule overnight"
+without duplicating tariff or policy logic outside the app.
 
 The cost forecast entity publishes chart-ready forecast data in its `forecast`
 attribute. Each row contains the learned program, candidate start and finish,

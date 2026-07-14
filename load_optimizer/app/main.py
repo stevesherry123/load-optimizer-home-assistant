@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.14"
+APP_VERSION = "0.8.15"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -976,6 +976,35 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                 attributes["cost_breakdown"] = result.get("cost_if_started_now_breakdown", [])
                 attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
         publish_entity(token, f"{prefix}_{suffix}", value if value is not None else "unknown", attributes)
+    for intent, icon in (
+        ("now", "mdi:play-circle"),
+        ("soon", "mdi:clock-fast"),
+        ("overnight", "mdi:weather-night"),
+    ):
+        recommendation = result.get(f"{intent}_recommendation") or {}
+        recommendation_ready = ready and recommendation.get("status") == "ready"
+        state = recommendation.get("program") if recommendation_ready else recommendation.get("status", "not_ready")
+        attributes = {
+            "friendly_name": f"{name} {intent.title()} Recommendation",
+            "icon": icon,
+            **common,
+            "intent": intent,
+            "status": recommendation.get("status", "not_ready"),
+            "reason": recommendation.get("reason"),
+            "program": recommendation.get("program"),
+            "start": recommendation.get("start"),
+            "finish": recommendation.get("finish"),
+            "seconds_until_start": recommendation.get("seconds_until_start"),
+            "cost_pence": rounded_pence(recommendation.get("cost_pence")) if recommendation_ready else None,
+            "saving_vs_now_pence": rounded_pence(recommendation.get("saving_vs_now_pence")) if recommendation_ready else None,
+            "energy_kwh": recommendation.get("energy_kwh"),
+            "confidence": recommendation.get("confidence"),
+            "ready_to_start": recommendation.get("ready_to_start", False),
+            "negative_price_run": recommendation.get("negative_price_run"),
+            "is_overnight_start": recommendation.get("is_overnight_start"),
+            "is_daytime_start": recommendation.get("is_daytime_start"),
+        }
+        publish_entity(token, f"{prefix}_{intent}_recommendation", state or "not_ready", attributes)
     forecast_costs = [
         float(row["cost_pence"]) for row in cost_forecast
         if row.get("cost_pence") is not None
