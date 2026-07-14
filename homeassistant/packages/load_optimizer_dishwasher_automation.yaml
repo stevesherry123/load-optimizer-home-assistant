@@ -3,6 +3,14 @@
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
 # a run without duplicating scheduling logic.
+#
+# Before using this package, replace:
+# - `YOUR_BOSCH_DISHWASHER_DEVICE_ID`
+# - `script.load_optimizer_announce`
+#
+# The announcement script should speak or notify the current value of
+# `input_text.announce_text`, or you can replace both announcement actions with
+# your own notification service.
 
 input_select:
   load_optimizer_1_requested_mode:
@@ -107,7 +115,7 @@ automation:
           value: "{{ message[:255] }}"
       - action: script.turn_on
         target:
-          entity_id: script.announce_steve_iphone
+          entity_id: script.load_optimizer_announce
 
   - id: load_optimizer_1_cancel_user_request
     alias: Load Optimizer 1 - Cancel User Request
@@ -136,7 +144,7 @@ automation:
           value: Dishwasher schedule cancelled.
       - action: script.turn_on
         target:
-          entity_id: script.announce_steve_iphone
+          entity_id: script.load_optimizer_announce
 
   - id: load_optimizer_1_execute_user_request
     alias: Load Optimizer 1 - Execute User Request
@@ -202,12 +210,12 @@ automation:
           value: "{{ start_message[:255] }}"
       - action: script.turn_on
         target:
-          entity_id: script.announce_steve_iphone
+          entity_id: script.load_optimizer_announce
       - action: home_connect_alt.start_program
         continue_on_error: true
         data:
           validate: true
-          device_id: 821e54dbd6b2cf80546f1349ba18ab2e
+          device_id: YOUR_BOSCH_DISHWASHER_DEVICE_ID
           program_key: "Dishcare.Dishwasher.Program.{{ selected_program }}"
       - delay:
           minutes: 2
@@ -222,7 +230,7 @@ automation:
               value: "{{ failed_message[:255] }}"
           - action: script.turn_on
             target:
-              entity_id: script.announce_steve_iphone
+              entity_id: script.load_optimizer_announce
       - action: input_select.select_option
         target:
           entity_id: input_select.load_optimizer_1_requested_mode
