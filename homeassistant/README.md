@@ -12,9 +12,11 @@ to act on Load Optimizer recommendations.
 - `packages/load_optimizer_dishwasher_automation.yaml` adds Dishwasher 1 request
   helpers, request buttons, cancellation, announcements, and Bosch start
   automation.
+- `packages/load_optimizer_travel_deadline_example.yaml` adds an editable
+  Dishwasher 1 must-finish-by helper and a TripIt-style calendar automation
+  example that seeds the helper to 90 minutes before travel.
 
 ## Dashboards
 
 - `dashboards/load_optimizer_dishwasher_controls.yaml` adds raw dashboard cards
   for the Dishwasher 1 request helpers and buttons.
-

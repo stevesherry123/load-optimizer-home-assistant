@@ -1,0 +1,92 @@
+# Optional travel-aware deadline helpers for Dishwasher 1.
+#
+# This package demonstrates the recommended integration pattern:
+# calendar automations set a Home Assistant helper, and Load Optimizer reads that
+# helper as a latest-finish constraint. Replace the calendar, person, zone, and
+# announcement entities before use.
+
+input_datetime:
+  load_optimizer_1_must_finish_by:
+    name: Dishwasher 1 Must Finish By
+    has_date: true
+    has_time: true
+
+input_button:
+  load_optimizer_1_clear_deadline:
+    name: Dishwasher 1 Clear Travel Deadline
+    icon: mdi:calendar-remove
+
+automation:
+  - id: load_optimizer_1_set_travel_deadline_from_calendar
+    alias: Load Optimizer 1 - Set Travel Deadline From Calendar
+    description: Set an editable dishwasher latest-finish deadline before a travel calendar event.
+    mode: single
+    triggers:
+      - trigger: calendar
+        entity_id: calendar.YOUR_TRAVEL_CALENDAR
+        event: start
+        offset: "-1:45:0"
+      - trigger: calendar
+        entity_id: calendar.YOUR_TRAVEL_CALENDAR
+        event: start
+        offset: "-0:20:0"
+    conditions:
+      # Guard against all-day travel summary events that start at midnight.
+      - condition: template
+        value_template: >-
+          {% set start = trigger.calendar_event.start | as_datetime | as_local %}
+          {{ start.hour != 0 or start.minute != 0 }}
+      - condition: time
+        after: "04:00:00"
+        before: "22:00:00"
+      - condition: or
+        conditions:
+          - condition: zone
+            entity_id: person.YOUR_PERSON
+            zone: zone.home
+          - condition: zone
+            entity_id: person.YOUR_PERSON
+            zone: zone.YOUR_TRAVEL_AREA
+    variables:
+      deadline: >-
+        {{ (as_timestamp(trigger.calendar_event.start) - 5400)
+           | timestamp_custom('%Y-%m-%d %H:%M:%S', true) }}
+      message: >-
+        Dishwasher travel deadline set to finish 90 minutes before
+        {{ trigger.calendar_event.start }}. You can edit the helper if needed.
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.load_optimizer_1_must_finish_by
+        data:
+          datetime: "{{ deadline }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.announce_text
+        data:
+          value: "{{ message[:255] }}"
+      - action: script.turn_on
+        target:
+          entity_id: script.load_optimizer_announce
+
+  - id: load_optimizer_1_clear_travel_deadline
+    alias: Load Optimizer 1 - Clear Travel Deadline
+    description: Clear the dishwasher latest-finish deadline by moving it safely into the past.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_button.load_optimizer_1_clear_deadline
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.load_optimizer_1_must_finish_by
+        data:
+          datetime: "1970-01-01 00:00:00"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.announce_text
+        data:
+          value: Dishwasher travel deadline cleared.
+      - action: script.turn_on
+        target:
+          entity_id: script.load_optimizer_announce

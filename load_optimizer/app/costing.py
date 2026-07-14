@@ -449,6 +449,8 @@ def recommend_cycle(
     overnight_start: str = "20:00",
     overnight_end: str = "08:00",
     schedule_timezone: str = "Europe/London",
+    earliest_start_utc: datetime | None = None,
+    latest_finish_utc: datetime | None = None,
     forecast_hours: int = 12,
     forecast_interval_minutes: int = 30,
     forecast_limit: int = 300,
@@ -464,8 +466,11 @@ def recommend_cycle(
     comparison_candidates = []
     negative_candidates = []
     rejected_profiles = 0
+    rejected_constraints = 0
     search_end = reference_utc + timedelta(hours=search_hours)
-    first_start = _next_candidate(reference_utc, candidate_interval_minutes)
+    earliest_allowed_start = earliest_start_utc.astimezone(timezone.utc) if earliest_start_utc else reference_utc
+    latest_allowed_finish = latest_finish_utc.astimezone(timezone.utc) if latest_finish_utc else None
+    first_start = _next_candidate(max(reference_utc, earliest_allowed_start), candidate_interval_minutes)
     for model in models:
         policy = policy_by_program.get(model["program"])
         if not policy or not policy["enabled"]:
@@ -479,6 +484,11 @@ def recommend_cycle(
             continue
         start = first_start
         while start <= search_end:
+            finish = start + timedelta(minutes=float(model["expected_runtime_minutes"]))
+            if latest_allowed_finish and finish > latest_allowed_finish:
+                rejected_constraints += 1
+                start += timedelta(minutes=candidate_interval_minutes)
+                continue
             is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
             is_daytime = not is_overnight
             try:
@@ -492,7 +502,7 @@ def recommend_cycle(
                 candidate = {
                     "program": model["program"],
                     "start": start,
-                    "finish": start + timedelta(minutes=float(model["expected_runtime_minutes"])),
+                    "finish": finish,
                     "energy_cost_pence": estimate["energy_cost_pence"],
                     "energy_kwh": estimate["energy_kwh"],
                     "cost_breakdown": estimate["cost_breakdown"],
@@ -500,6 +510,7 @@ def recommend_cycle(
                     "total_cost_pence": round(total_cost, 4),
                     "confidence": model.get("confidence", 0),
                     "preference_rank": policy["preference_rank"],
+                    "negative_price_priority": policy.get("negative_price_priority", 50),
                     "negative_price_run": negative,
                     "energy_kwh_per_minute": round(estimate["energy_kwh"] / float(model["expected_runtime_minutes"]), 6),
                     "is_overnight_start": is_overnight,
@@ -520,6 +531,9 @@ def recommend_cycle(
         return {
             "status": "insufficient_profile" if rejected_profiles else "no_eligible_programs",
             "rejected_profiles": rejected_profiles,
+            "rejected_constraints": rejected_constraints,
+            "earliest_allowed_start": earliest_allowed_start.isoformat() if earliest_allowed_start else None,
+            "latest_allowed_finish": latest_allowed_finish.isoformat() if latest_allowed_finish else None,
         }
     cheapest_cost = min(item["total_cost_pence"] for item in candidates)
     equivalent_candidates = [
@@ -559,6 +573,7 @@ def recommend_cycle(
     best_negative = max(
         negative_candidates,
         key=lambda item: (
+            item["negative_price_priority"],
             item["energy_kwh_per_minute"],
             item["energy_kwh"],
             -item["total_cost_pence"],
@@ -624,6 +639,9 @@ def recommend_cycle(
         "forecast_interval_minutes": forecast_interval_minutes,
         "candidate_count": len(candidates),
         "comparison_candidate_count": len(comparison_candidates),
+        "rejected_constraints": rejected_constraints,
+        "earliest_allowed_start": earliest_allowed_start.isoformat() if earliest_allowed_start else None,
+        "latest_allowed_finish": latest_allowed_finish.isoformat() if latest_allowed_finish else None,
         "schedule_strategy": schedule_strategy,
         "equivalent_cost_tolerance_pence": equivalent_cost_tolerance_pence,
         "window_preference": window_preference,
