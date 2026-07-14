@@ -1,5 +1,5 @@
 name: Load Optimizer
-version: "0.8.13"
+version: "0.8.14"
 slug: load_optimizer
 description: Learn appliance cycles and find the most economical time and mode to run them.
 url: https://github.com/stevesherry123/load-optimizer-home-assistant

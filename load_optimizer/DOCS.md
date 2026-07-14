@@ -130,8 +130,15 @@ restarts, host restarts, or public auto-updates. The app marks that active
 capture as interrupted. When it later finishes, the cycle is published as a
 discarded cycle and is not loaded into the learned programme model.
 
+The app also publishes `sensor.load_optimizer_restart_safety`. It reports
+`blocked` while any appliance cycle capture is active, and `safe` when no
+capture is in progress. Use this on dashboards before applying add-on updates,
+or in automations that announce when it is unsafe to restart Home Assistant or
+the add-on.
+
 The main status entity also exposes `active_capture_instances` so dashboards and
 debugging views can show whether any appliance was mid-cycle at the last update.
+It also exposes `restart_blocked` for simple dashboard conditions.
 
 Discarded interrupted cycles are visible through
 `sensor.load_optimizer_N_last_discarded_cycle`, including the programme, finish

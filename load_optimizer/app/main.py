@@ -19,11 +19,12 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.13"
+APP_VERSION = "0.8.14"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
 STATUS_ENTITY = "sensor.load_optimizer_status"
+RESTART_SAFETY_ENTITY = "sensor.load_optimizer_restart_safety"
 
 PROGRAM_CLASSIFICATIONS = {
     "unclassified",
@@ -796,6 +797,22 @@ def publish_restart_warning(token: str, running: list[dict]) -> None:
     })
 
 
+def publish_restart_safety(token: str, running: list[dict]) -> None:
+    blocked = bool(running)
+    publish_entity(token, RESTART_SAFETY_ENTITY, "blocked" if blocked else "safe", {
+        "friendly_name": "Load Optimizer Restart Safety",
+        "icon": "mdi:restart-alert" if blocked else "mdi:restart",
+        "restart_blocked": blocked,
+        "active_capture_count": len(running),
+        "active_capture_instances": running,
+        "message": (
+            "Do not restart or update Load Optimizer while appliance cycle capture is active."
+            if blocked else
+            "No active appliance captures. Restart or update is safe."
+        ),
+    })
+
+
 def instance_configs(options: dict | None = None) -> list[dict]:
     options = options if options is not None else load_options()
     configured_instances_yaml = parse_instances_yaml(options.get("instances_yaml", ""))
@@ -1297,10 +1314,12 @@ def publish_status(
     running: list[dict] | None = None,
     reset_status: dict | None = None,
 ) -> None:
+    running = running or []
     publish_entity(token, STATUS_ENTITY, "running", {
         "friendly_name": "Load Optimizer Status", "icon": "mdi:transmission-tower",
         "version": APP_VERSION, "instances": instance_count,
-        "active_capture_instances": running or [],
+        "restart_blocked": bool(running),
+        "active_capture_instances": running,
         **(reset_status or {}),
     })
 
@@ -1351,18 +1370,21 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     LOGGER.info("Load Optimizer %s started", APP_VERSION)
     publish_restart_warning(token, startup_running)
+    publish_restart_safety(token, startup_running)
 
     try:
         while not STOP_EVENT.is_set():
             for config in configs:
                 update_instance(token, state, config)
             save_state(state)
+            active_captures = running_instances(state, configs)
             publish_status(
                 token,
                 len(configs),
-                running_instances(state, configs),
+                active_captures,
                 reset_request_status(state, options),
             )
+            publish_restart_safety(token, active_captures)
             STOP_EVENT.wait(interval)
     finally:
         health_server.shutdown()
