@@ -400,6 +400,8 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["forecast_hours"], 1)
         self.assertEqual(result["forecast_interval_minutes"], 30)
         self.assertEqual(len(result["cost_forecast"]), 3)
+        self.assertEqual(result["forecast_diagnostics"][0]["program"], "Eco")
+        self.assertEqual(result["forecast_diagnostics"][0]["priced_points"], 3)
         self.assertEqual(result["cost_forecast"][0]["program"], "Eco")
         self.assertEqual(result["cost_forecast"][0]["cost_pence"], 20.0)
         self.assertEqual(result["cost_forecast"][1]["start"], "2026-07-06T00:30:00+00:00")

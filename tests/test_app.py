@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 from load_optimizer.app.main import (
     bootstrap_program_models,
-    configured_instance_ids,
     instance_config,
     instance_configs,
     load_state,
@@ -693,19 +692,17 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(config["power_sensor"], "sensor.washing_power")
         self.assertEqual(config["program_policies"][0]["program"], "Cottons")
 
-    def test_instance_configs_follow_configured_ids(self):
+    def test_instance_configs_ignore_legacy_instance_ids(self):
         options = {"instance_ids": "1, 2, nope, 2, 0", "instance_2_name": "Washer"}
 
         configs = instance_configs(options)
 
-        self.assertEqual([config["instance_id"] for config in configs], ["1", "2"])
-        self.assertEqual(configs[1]["name"], "Washer")
+        self.assertEqual(configs, [])
 
-    def test_empty_repeatable_instances_list_falls_back_to_legacy_fields(self):
+    def test_empty_repeatable_instances_list_does_not_fall_back_to_legacy_fields(self):
         configs = instance_configs({"instances": [], "instance_ids": "1", "instance_1_name": "Dishwasher 1"})
 
-        self.assertEqual([config["instance_id"] for config in configs], ["1"])
-        self.assertEqual(configs[0]["name"], "Dishwasher 1")
+        self.assertEqual(configs, [])
 
     def test_repeatable_instances_list_drives_dynamic_instance_config(self):
         options = {
@@ -781,10 +778,6 @@ class ProgramPolicyTests(unittest.TestCase):
 
         self.assertEqual(parsed[0]["id"], "4")
         self.assertEqual(parsed[0]["name"], "EV 1")
-
-    def test_configured_instance_ids_default_to_first_instance(self):
-        self.assertEqual(configured_instance_ids({}), ["1"])
-
 
 class ScheduleAdviceTests(unittest.TestCase):
     def test_ready_recommendation_is_good_to_start_inside_tolerance(self):

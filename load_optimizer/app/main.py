@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.11"
+APP_VERSION = "0.8.12"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -634,11 +634,6 @@ def entity_list(raw: object) -> list[str]:
     return [item.strip() for item in str(raw).split(",") if item.strip()]
 
 
-def configured_instance_ids(options: dict) -> list[str]:
-    raw_ids = str(options.get("instance_ids", "1"))
-    return parse_instance_ids(raw_ids, default=["1"])
-
-
 def parse_instance_ids(raw_ids: object, default: list[str] | None = None) -> list[str]:
     raw_ids = str(raw_ids)
     instance_ids = []
@@ -785,7 +780,7 @@ def instance_configs(options: dict | None = None) -> list[dict]:
             for index, entry in enumerate(configured_instances, start=1)
             if isinstance(entry, dict)
         ]
-    return [instance_config(instance_id, options) for instance_id in configured_instance_ids(options)]
+    return []
 
 
 def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
@@ -944,6 +939,7 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
         "forecast_hours": result.get("forecast_hours") if ready else None,
         "forecast_interval_minutes": result.get("forecast_interval_minutes") if ready else None,
         "forecast_points": len(cost_forecast),
+        "forecast_diagnostics": result.get("forecast_diagnostics", []) if ready else [],
         "forecast": cost_forecast,
         "forecast_format": "program, start, finish, cost_pence, energy_kwh, confidence, is_overnight_start, is_daytime_start",
     })

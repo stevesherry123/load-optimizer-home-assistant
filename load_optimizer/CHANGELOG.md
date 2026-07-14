@@ -4,6 +4,14 @@
 
 - No unreleased changes.
 
+## 0.8.12
+
+- Remove hardcoded `instance_1_*`, `instance_2_*`, and `instance_ids` add-on
+  options from the public schema.
+- Treat `instances_yaml` as the only appliance configuration source.
+- Publish forecast diagnostics so missing forecast programs explain whether they
+  were excluded by policy, profile quality, or tariff coverage.
+
 ## 0.8.11
 
 - Publish forecast chart state using pence instead of forecast point count so
