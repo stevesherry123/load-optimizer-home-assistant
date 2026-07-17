@@ -230,6 +230,11 @@ automation:
         door={{ states(bosch_door_sensor) }},
         remote control={{ states(bosch_remote_control_sensor) }},
         remote start={{ states(bosch_remote_start_sensor) }}.
+      not_startable_message: >-
+        Dishwasher program is not selectable from Home Assistant:
+        program={{ selected_program }},
+        key={{ selected_program_key }},
+        available={{ state_attr(bosch_program_select, 'options') or [] }}.
       failed_message: >-
         Dishwasher start failed for {{ selected_program }}.
         key={{ selected_program_key }},
@@ -280,6 +285,24 @@ automation:
                   entity_id: input_text.load_optimizer_1_scheduler_message
                 data:
                   value: "{{ not_ready_message[:255] }}"
+              - action: script.turn_on
+                target:
+                  entity_id: script.load_optimizer_announce
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {{ selected_program_key not in (state_attr(bosch_program_select, 'options') or []) }}
+            sequence:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.announce_text
+                data:
+                  value: "{{ not_startable_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_scheduler_message
+                data:
+                  value: "{{ not_startable_message[:255] }}"
               - action: script.turn_on
                 target:
                   entity_id: script.load_optimizer_announce
