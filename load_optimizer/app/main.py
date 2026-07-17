@@ -967,7 +967,9 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
             "earliest_allowed_start": result.get("earliest_allowed_start"),
             "latest_allowed_finish": result.get("latest_allowed_finish"),
             "rejected_constraints": result.get("rejected_constraints", 0),
+            "rejected_cooldowns": result.get("rejected_cooldowns", 0),
         },
+        "program_diagnostics": result.get("program_diagnostics", []),
     }
 
 
@@ -986,7 +988,9 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
             "earliest_allowed_start": result.get("earliest_allowed_start"),
             "latest_allowed_finish": result.get("latest_allowed_finish"),
             "rejected_constraints": result.get("rejected_constraints", 0),
+            "rejected_cooldowns": result.get("rejected_cooldowns", 0),
         },
+        "program_diagnostics": result.get("program_diagnostics", []),
     }
     if result.get("tariff_diagnostics") is not None:
         common["tariff_diagnostics"] = result["tariff_diagnostics"]
@@ -1053,7 +1057,9 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                     "earliest_allowed_start": result.get("earliest_allowed_start"),
                     "latest_allowed_finish": result.get("latest_allowed_finish"),
                     "rejected_constraints": result.get("rejected_constraints", 0),
+                    "rejected_cooldowns": result.get("rejected_cooldowns", 0),
                 },
+                "program_diagnostics": result.get("program_diagnostics", []),
                 "overnight_comparison": result.get("overnight_comparison"),
                 "daytime_comparison": result.get("daytime_comparison"),
                 "forecast_hours": result.get("forecast_hours"),

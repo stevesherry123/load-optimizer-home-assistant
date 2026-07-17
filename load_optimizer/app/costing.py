@@ -97,6 +97,32 @@ def _parse_timestamp(value: object) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _model_last_seen_utc(model: dict) -> datetime | None:
+    """Return the latest known successful finish time for a learned program."""
+    candidates = []
+    for value in (model.get("last_seen"), model.get("last_updated")):
+        try:
+            candidates.append(_parse_timestamp(value))
+        except (TypeError, ValueError):
+            pass
+    for cycle in model.get("recent_cycles", []) or []:
+        try:
+            candidates.append(_parse_timestamp(cycle.get("finish")))
+        except (AttributeError, TypeError, ValueError):
+            pass
+    return max(candidates) if candidates else None
+
+
+def _cooldown_until_utc(model: dict, policy: dict) -> datetime | None:
+    hours = int(policy.get("minimum_hours_between_runs") or 0)
+    if hours <= 0:
+        return None
+    last_seen = _model_last_seen_utc(model)
+    if last_seen is None:
+        return None
+    return last_seen + timedelta(hours=hours)
+
+
 def parse_structured_rates(rates: list[dict], *, price_unit: str) -> list[dict]:
     """Normalize common structured Home Assistant rate attributes."""
     periods = []
@@ -386,6 +412,7 @@ def forecast_cycle_costs(
             "candidate_points": 0,
             "priced_points": 0,
             "rejected_points": 0,
+            "rejected_cooldown_points": 0,
             "runtime_minutes": model.get("expected_runtime_minutes"),
             "confidence": model.get("confidence"),
         }
@@ -404,9 +431,17 @@ def forecast_cycle_costs(
             diagnostic.update(status="excluded", reason="insufficient_profile")
             diagnostics.append(diagnostic)
             continue
+        cooldown_until = _cooldown_until_utc(model, policy)
+        if cooldown_until:
+            diagnostic["cooldown_until"] = cooldown_until.isoformat()
+            diagnostic["minimum_hours_between_runs"] = policy.get("minimum_hours_between_runs")
         start = start_at
         while start <= forecast_end:
             diagnostic["candidate_points"] += 1
+            if cooldown_until and start < cooldown_until:
+                diagnostic["rejected_cooldown_points"] += 1
+                start += timedelta(minutes=forecast_interval_minutes)
+                continue
             try:
                 estimate = estimate_cycle_cost(start, model, periods)
             except ValueError:
@@ -430,7 +465,8 @@ def forecast_cycle_costs(
                 })
             start += timedelta(minutes=forecast_interval_minutes)
         if diagnostic["priced_points"] == 0:
-            diagnostic.update(status="excluded", reason="no_fully_priced_forecast_points")
+            reason = "cooldown_active" if diagnostic["rejected_cooldown_points"] else "no_fully_priced_forecast_points"
+            diagnostic.update(status="excluded", reason=reason)
         diagnostics.append(diagnostic)
     return summarize_forecast_candidates(candidates, forecast_limit), diagnostics
 
@@ -467,26 +503,57 @@ def recommend_cycle(
     negative_candidates = []
     rejected_profiles = 0
     rejected_constraints = 0
+    rejected_cooldowns = 0
+    program_diagnostics = []
     search_end = reference_utc + timedelta(hours=search_hours)
     earliest_allowed_start = earliest_start_utc.astimezone(timezone.utc) if earliest_start_utc else reference_utc
     latest_allowed_finish = latest_finish_utc.astimezone(timezone.utc) if latest_finish_utc else None
     first_start = _next_candidate(max(reference_utc, earliest_allowed_start), candidate_interval_minutes)
     for model in models:
+        diagnostic = {
+            "program": model.get("program"),
+            "status": "included",
+            "reason": None,
+            "candidate_points": 0,
+            "priced_points": 0,
+            "rejected_constraints": 0,
+            "rejected_cooldown_points": 0,
+            "rejected_unpriced_points": 0,
+            "runtime_minutes": model.get("expected_runtime_minutes"),
+            "confidence": model.get("confidence"),
+        }
         policy = policy_by_program.get(model["program"])
         if not policy or not policy["enabled"]:
+            diagnostic.update(status="excluded", reason="policy_missing_or_disabled")
+            program_diagnostics.append(diagnostic)
             continue
         if not (policy["allow_normal_recommendation"] or policy["allow_negative_price_run"]):
+            diagnostic.update(status="excluded", reason="policy_not_allowed_for_recommendation")
+            program_diagnostics.append(diagnostic)
             continue
         try:
             _profile_segments(model)
         except ValueError:
             rejected_profiles += 1
+            diagnostic.update(status="excluded", reason="insufficient_profile")
+            program_diagnostics.append(diagnostic)
             continue
+        cooldown_until = _cooldown_until_utc(model, policy)
+        if cooldown_until:
+            diagnostic["cooldown_until"] = cooldown_until.isoformat()
+            diagnostic["minimum_hours_between_runs"] = policy.get("minimum_hours_between_runs")
         start = first_start
         while start <= search_end:
+            diagnostic["candidate_points"] += 1
             finish = start + timedelta(minutes=float(model["expected_runtime_minutes"]))
             if latest_allowed_finish and finish > latest_allowed_finish:
                 rejected_constraints += 1
+                diagnostic["rejected_constraints"] += 1
+                start += timedelta(minutes=candidate_interval_minutes)
+                continue
+            if cooldown_until and start < cooldown_until:
+                rejected_cooldowns += 1
+                diagnostic["rejected_cooldown_points"] += 1
                 start += timedelta(minutes=candidate_interval_minutes)
                 continue
             is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
@@ -494,10 +561,12 @@ def recommend_cycle(
             try:
                 estimate = estimate_cycle_cost(start, model, periods)
             except ValueError:
+                diagnostic["rejected_unpriced_points"] += 1
                 start += timedelta(minutes=candidate_interval_minutes)
                 continue
             negative = estimate["energy_cost_pence"] < 0
             if policy["allow_normal_recommendation"] or (negative and policy["allow_negative_price_run"]):
+                diagnostic["priced_points"] += 1
                 total_cost = estimate["energy_cost_pence"] + policy["estimated_overhead_cost_pence"]
                 candidate = {
                     "program": model["program"],
@@ -527,11 +596,23 @@ def recommend_cycle(
                     continue
                 candidates.append(candidate)
             start += timedelta(minutes=candidate_interval_minutes)
+        if diagnostic["priced_points"] == 0:
+            if diagnostic["rejected_cooldown_points"]:
+                diagnostic.update(status="excluded", reason="cooldown_active")
+            elif diagnostic["rejected_constraints"]:
+                diagnostic.update(status="excluded", reason="outside_schedule_constraints")
+            elif diagnostic["rejected_unpriced_points"]:
+                diagnostic.update(status="excluded", reason="no_fully_priced_points")
+            else:
+                diagnostic.update(status="excluded", reason="no_eligible_candidates")
+        program_diagnostics.append(diagnostic)
     if not candidates:
         return {
             "status": "insufficient_profile" if rejected_profiles else "no_eligible_programs",
             "rejected_profiles": rejected_profiles,
             "rejected_constraints": rejected_constraints,
+            "rejected_cooldowns": rejected_cooldowns,
+            "program_diagnostics": program_diagnostics,
             "earliest_allowed_start": earliest_allowed_start.isoformat() if earliest_allowed_start else None,
             "latest_allowed_finish": latest_allowed_finish.isoformat() if latest_allowed_finish else None,
         }
@@ -640,6 +721,8 @@ def recommend_cycle(
         "candidate_count": len(candidates),
         "comparison_candidate_count": len(comparison_candidates),
         "rejected_constraints": rejected_constraints,
+        "rejected_cooldowns": rejected_cooldowns,
+        "program_diagnostics": program_diagnostics,
         "earliest_allowed_start": earliest_allowed_start.isoformat() if earliest_allowed_start else None,
         "latest_allowed_finish": latest_allowed_finish.isoformat() if latest_allowed_finish else None,
         "schedule_strategy": schedule_strategy,
