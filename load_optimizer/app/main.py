@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.26"
+APP_VERSION = "0.8.27"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -400,6 +400,57 @@ def program_summary(program: str, model: dict) -> dict:
         "confidence": confidence,
         "representative_profile_w": model.get("representative_profile_w", []),
         "recent_cycles": model.get("recent_cycles", []),
+    }
+
+
+def compact_profile_data(models: dict, last_cycle: dict) -> dict:
+    """Build a small chart-friendly profile payload for dashboard cards."""
+    program_profiles = []
+    for program, model in sorted(models.items()):
+        summary = program_summary(program, model)
+        profile = summary.get("representative_profile_w") or []
+        runtime = summary.get("expected_runtime_minutes")
+        if len(profile) < 2 or not runtime:
+            continue
+        denominator = max(len(profile) - 1, 1)
+        points = [
+            [
+                round(index * float(runtime) / denominator, 3),
+                round(float(power), 3),
+            ]
+            for index, power in enumerate(profile)
+            if power is not None
+        ]
+        program_profiles.append({
+            "program": program,
+            "runs": summary.get("runs", 0),
+            "runtime_minutes": runtime,
+            "energy_kwh": summary.get("expected_energy_kwh"),
+            "confidence": summary.get("confidence", 0),
+            "profile_count": summary.get("profile_count", 0),
+            "points": points,
+        })
+
+    last_profile = last_cycle.get("power_profile") or []
+    last_cycle_points = [
+        [
+            round(float(sample.get("offset_seconds", 0)) / 60, 3),
+            round(float(sample["power_w"]), 3),
+        ]
+        for sample in last_profile
+        if sample.get("power_w") is not None
+    ]
+
+    return {
+        "point_format": ["offset_minutes", "power_w"],
+        "program_profiles": program_profiles,
+        "last_cycle": {
+            "program": normalise_program(last_cycle.get("program")),
+            "runtime_minutes": last_cycle.get("runtime_minutes"),
+            "energy_kwh": last_cycle.get("energy_kwh"),
+            "sample_count": len(last_cycle_points),
+            "points": last_cycle_points,
+        },
     }
 
 
@@ -1445,6 +1496,12 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         ] if len(selected_summary.get("representative_profile_w", [])) > 1 else [],
     })
     profile = last.get("power_profile", [])
+    profile_payload = compact_profile_data(models, last)
+    publish_entity(token, f"{prefix}_profile_data", len(profile_payload["program_profiles"]), {
+        "friendly_name": f"{name} Profile Data",
+        "icon": "mdi:chart-line",
+        **profile_payload,
+    })
     publish_entity(token, f"{prefix}_last_profile", "ready" if profile else "none", {
         "friendly_name": f"{name} Last Power Profile",
         "icon": "mdi:chart-line",

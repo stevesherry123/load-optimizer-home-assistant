@@ -4,6 +4,10 @@
 
 - No unreleased changes.
 
+## 0.8.27
+
+- Publish compact per-instance profile data for dashboard power-profile charts.
+
 ## 0.8.26
 
 - Detect Bosch dishwasher learned programs that are not available in the Home

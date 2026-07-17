@@ -9,6 +9,7 @@ from unittest.mock import patch
 from load_optimizer.app.main import (
     APP_VERSION,
     bootstrap_program_models,
+    compact_profile_data,
     instance_config,
     instance_configs,
     load_state,
@@ -616,6 +617,20 @@ class ProgramLearningTests(unittest.TestCase):
         })
 
         self.assertEqual(summary["last_seen"], "2026-01-01T12:00:00+00:00")
+
+    def test_compact_profile_data_exposes_chart_ready_points(self):
+        instance = {}
+        cycle = self.cycle(60, 1.0, 1000)
+        update_program_model(instance, cycle)
+
+        payload = compact_profile_data(instance["program_models"], cycle)
+
+        self.assertEqual(payload["point_format"], ["offset_minutes", "power_w"])
+        self.assertEqual(payload["program_profiles"][0]["program"], "Eco")
+        self.assertEqual(payload["program_profiles"][0]["points"][0], [0.0, 0.0])
+        self.assertEqual(payload["program_profiles"][0]["points"][-1], [60.0, 1000.0])
+        self.assertEqual(payload["last_cycle"]["program"], "Eco")
+        self.assertEqual(payload["last_cycle"]["points"], [[0.0, 0.0], [60.0, 1000.0]])
 
     def test_bootstrap_seeds_model_only_once(self):
         database = {"instances": {"1": {"last_cycle": self.cycle(60, 1.0, 1000)}}}
