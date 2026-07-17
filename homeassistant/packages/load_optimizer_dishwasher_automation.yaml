@@ -198,7 +198,7 @@ automation:
           'IntensivPower': 'Dishcare.Dishwasher.Program.IntensivPower',
           'MixedLoad': 'Dishcare.Dishwasher.Program.MixedLoad',
           'Quick45': 'Dishcare.Dishwasher.Program.Quick45',
-          'QuickD': 'Dishcare.Dishwasher.Program.Quick45',
+          'QuickD': 'Dishcare.Dishwasher.Program.QuickD',
           'NightWash': 'Dishcare.Dishwasher.Program.NightWash',
           'Super60': 'Dishcare.Dishwasher.Program.Super60',
           'Kurz60': 'Dishcare.Dishwasher.Program.Kurz60'
