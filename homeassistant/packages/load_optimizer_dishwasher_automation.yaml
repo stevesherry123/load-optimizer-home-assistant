@@ -164,6 +164,8 @@ automation:
       bosch_power_switch: switch.bosch_406010547033018437_bsh_common_setting_powerstate
       bosch_program_select: select.bosch_406010547033018437_programs
       bosch_start_button: button.bosch_406010547033018437_start_pause
+      bosch_selected_program_sensor: sensor.bosch_406010547033018437_selected_program
+      bosch_power_state_sensor: sensor.bosch_406010547033018437_bsh_common_setting_powerstate
       bosch_connected_sensor: binary_sensor.bosch_406010547033018437_connected
       bosch_door_sensor: binary_sensor.bosch_406010547033018437_bsh_common_status_doorstate
       bosch_remote_control_sensor: binary_sensor.bosch_406010547033018437_bsh_common_status_remotecontrolactive
@@ -229,6 +231,8 @@ automation:
         after the start request for {{ selected_program }}
         using {{ selected_program_key }}.
         Power={{ states(bosch_power_switch) }},
+        power state={{ states(bosch_power_state_sensor) }},
+        selected={{ states(bosch_selected_program_sensor) }},
         operation={{ states(bosch_operation_state_sensor) }}.
       success_state: >-
         {{ states('sensor.load_optimizer_1_cycle_state') == 'running'
@@ -272,19 +276,16 @@ automation:
                 target:
                   entity_id: script.load_optimizer_announce
         default:
-          - if:
-              - condition: template
-                value_template: "{{ states(bosch_power_switch) == 'off' }}"
-            then:
-              - action: switch.turn_on
-                target:
-                  entity_id: "{{ bosch_power_switch }}"
-              - delay:
-                  seconds: 10
+          - action: switch.turn_on
+            continue_on_error: true
+            target:
+              entity_id: switch.bosch_406010547033018437_bsh_common_setting_powerstate
+          - delay:
+              seconds: 15
           - action: select.select_option
             continue_on_error: true
             target:
-              entity_id: "{{ bosch_program_select }}"
+              entity_id: select.bosch_406010547033018437_programs
             data:
               option: "{{ selected_program_key }}"
           - delay:
@@ -292,7 +293,7 @@ automation:
           - action: button.press
             continue_on_error: true
             target:
-              entity_id: "{{ bosch_start_button }}"
+              entity_id: button.bosch_406010547033018437_start_pause
           - delay:
               seconds: 20
           - if:
@@ -331,8 +332,6 @@ automation:
           option: none
       - action: input_text.set_value
         target:
-          entity_id:
-            - input_text.load_optimizer_1_requested_program
-            - input_text.load_optimizer_1_scheduler_message
+          entity_id: input_text.load_optimizer_1_requested_program
         data:
           value: ""
