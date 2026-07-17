@@ -1,4 +1,5 @@
 import json
+import re
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -6,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from load_optimizer.app.main import (
+    APP_VERSION,
     bootstrap_program_models,
     instance_config,
     instance_configs,
@@ -20,6 +22,7 @@ from load_optimizer.app.main import (
     profile_sample,
     program_catalogue,
     publish_restart_safety,
+    publish_schedule_entities,
     program_summary,
     publish_restart_warning,
     repair_learning_quality,
@@ -34,6 +37,15 @@ from load_optimizer.app.main import (
     update_instance,
     update_program_model,
 )
+
+
+class VersionTests(unittest.TestCase):
+    def test_runtime_version_matches_addon_config_version(self):
+        config_path = Path(__file__).resolve().parents[1] / "load_optimizer" / "config.yaml"
+        match = re.search(r'^version:\s*"([^"]+)"', config_path.read_text(), re.MULTILINE)
+
+        self.assertIsNotNone(match)
+        self.assertEqual(APP_VERSION, match.group(1))
 
 
 class StateStorageTests(unittest.TestCase):
@@ -922,6 +934,28 @@ class ScheduleAdviceTests(unittest.TestCase):
         self.assertFalse(advice["good_to_start"])
         self.assertFalse(advice["automation_ready"])
         self.assertEqual(advice["reason"], "recommended_start_in_future")
+
+    @patch("load_optimizer.app.main.publish_entity")
+    def test_schedule_publishes_recommended_finish_entity(self, publish_entity):
+        publish_schedule_entities("token", "sensor.load_optimizer_1", "Dishwasher 1", {
+            "status": "ready",
+            "program": "Quick65",
+            "recommended_start": "2026-01-01T12:00:00+00:00",
+            "recommended_finish": "2026-01-01T12:45:00+00:00",
+            "good_to_start": True,
+            "estimated_cost_pence": 12.345,
+        })
+
+        published = {call.args[1]: call.args for call in publish_entity.call_args_list}
+        self.assertIn("sensor.load_optimizer_1_recommended_finish", published)
+        self.assertEqual(
+            published["sensor.load_optimizer_1_recommended_finish"][2],
+            "2026-01-01T12:45:00+00:00",
+        )
+        self.assertEqual(
+            published["sensor.load_optimizer_1_recommended_finish"][3]["device_class"],
+            "timestamp",
+        )
 
 
 if __name__ == "__main__":
