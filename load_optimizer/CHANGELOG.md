@@ -4,6 +4,13 @@
 
 - No unreleased changes.
 
+## 0.8.26
+
+- Detect Bosch dishwasher learned programs that are not available in the Home
+  Assistant program selector before attempting a start.
+- Report the unavailable program key and selectable Bosch options in the
+  scheduler message helper.
+
 ## 0.8.25
 
 - Write dishwasher execution breadcrumbs to the scheduler message helper after
