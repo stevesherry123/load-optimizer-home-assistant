@@ -4,6 +4,11 @@
 
 - No unreleased changes.
 
+## 0.8.23
+
+- Treat `QuickD` as its own Bosch dishwasher program key instead of mapping it
+  to `Quick45`.
+
 ## 0.8.22
 
 - Harden the dishwasher start automation by calling the Bosch power, program,
