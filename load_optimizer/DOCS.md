@@ -294,6 +294,7 @@ service or start an appliance.
 
 - `sensor.load_optimizer_N_schedule_status`
 - `sensor.load_optimizer_N_recommended_start`
+- `sensor.load_optimizer_N_recommended_finish`
 - `sensor.load_optimizer_N_estimated_scheduled_cost`
 - `sensor.load_optimizer_N_good_to_start`
 

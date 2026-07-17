@@ -4,6 +4,13 @@
 
 - No unreleased changes.
 
+## 0.8.21
+
+- Fix the runtime status entity reporting the old `0.8.18` app version after
+  newer add-on releases were installed.
+- Publish `sensor.load_optimizer_N_recommended_finish` for dashboard cards that
+  need a first-class recommended finish timestamp entity.
+
 ## 0.8.20
 
 - Harden the example Bosch dishwasher execution automation.

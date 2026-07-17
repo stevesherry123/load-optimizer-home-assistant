@@ -19,7 +19,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.18"
+APP_VERSION = "0.8.21"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -1158,6 +1158,12 @@ def publish_schedule_entities(token: str, prefix: str, name: str, advice: dict) 
         "friendly_name": f"{name} Recommended Start",
         "device_class": "timestamp",
         "icon": "mdi:clock-start",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_recommended_finish", advice.get("recommended_finish") or "unknown", {
+        "friendly_name": f"{name} Recommended Finish",
+        "device_class": "timestamp",
+        "icon": "mdi:clock-end",
         **common,
     })
     estimated_cost = advice.get("estimated_cost_pence")
