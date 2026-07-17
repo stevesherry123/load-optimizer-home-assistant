@@ -4,6 +4,13 @@
 
 - No unreleased changes.
 
+## 0.8.25
+
+- Write dishwasher execution breadcrumbs to the scheduler message helper after
+  each Bosch start stage.
+- Keep a visible success or failure summary in the scheduler helper after a
+  manual start request completes.
+
 ## 0.8.24
 
 - Make dishwasher failed-start diagnostics concise enough to appear in the
