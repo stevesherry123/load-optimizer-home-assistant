@@ -227,11 +227,10 @@ automation:
         remote control={{ states(bosch_remote_control_sensor) }},
         remote start={{ states(bosch_remote_start_sensor) }}.
       failed_message: >-
-        Dishwasher start may have failed. Bosch did not report a running cycle
-        after the start request for {{ selected_program }}
-        using {{ selected_program_key }}.
-        Power={{ states(bosch_power_switch) }},
-        power state={{ states(bosch_power_state_sensor) }},
+        Dishwasher start failed for {{ selected_program }}.
+        key={{ selected_program_key }},
+        switch={{ states(bosch_power_switch) }},
+        power={{ states(bosch_power_state_sensor) }},
         selected={{ states(bosch_selected_program_sensor) }},
         operation={{ states(bosch_operation_state_sensor) }}.
       success_state: >-
@@ -301,6 +300,18 @@ automation:
                 value_template: "{{ not success_state }}"
             then:
               - action: home_connect_alt.start_program
+                continue_on_error: true
+                data:
+                  validate: true
+                  device_id: "{{ bosch_device_id }}"
+                  program_key: "{{ selected_program_key }}"
+          - delay:
+              seconds: 20
+          - if:
+              - condition: template
+                value_template: "{{ not success_state }}"
+            then:
+              - action: home_connect.start_program
                 continue_on_error: true
                 data:
                   validate: true

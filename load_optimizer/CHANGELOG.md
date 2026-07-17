@@ -4,6 +4,13 @@
 
 - No unreleased changes.
 
+## 0.8.24
+
+- Make dishwasher failed-start diagnostics concise enough to appear in the
+  announcement and scheduler helper.
+- Try the standard Home Connect `start_program` service after the Home Connect
+  Alt fallback if the Bosch button path still does not report a running cycle.
+
 ## 0.8.23
 
 - Treat `QuickD` as its own Bosch dishwasher program key instead of mapping it
