@@ -4,6 +4,15 @@
 
 - No unreleased changes.
 
+## 0.8.22
+
+- Harden the dishwasher start automation by calling the Bosch power, program,
+  and start entities directly.
+- Preserve the dishwasher scheduler diagnostic message after a failed start
+  attempt.
+- Add Bosch selected-program and power-state details to failed-start
+  diagnostics.
+
 ## 0.8.21
 
 - Fix the runtime status entity reporting the old `0.8.18` app version after
