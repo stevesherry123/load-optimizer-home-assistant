@@ -220,6 +220,10 @@ automation:
       start_message: >-
         Dishwasher start requested by Load Optimizer:
         {{ selected_program }}.
+      executing_message: >-
+        Dishwasher execution started for {{ selected_program }}.
+        key={{ selected_program_key }},
+        due={{ recommendation_start }}.
       not_ready_message: >-
         Dishwasher is not ready to start {{ selected_program }}.
         Connected={{ states(bosch_connected_sensor) }},
@@ -253,6 +257,11 @@ automation:
           entity_id: input_text.announce_text
         data:
           value: "{{ start_message[:255] }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_scheduler_message
+        data:
+          value: "{{ executing_message[:255] }}"
       - action: script.turn_on
         target:
           entity_id: script.load_optimizer_announce
@@ -281,6 +290,14 @@ automation:
               entity_id: switch.bosch_406010547033018437_bsh_common_setting_powerstate
           - delay:
               seconds: 15
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_scheduler_message
+            data:
+              value: >-
+                Dishwasher power step complete.
+                switch={{ states(bosch_power_switch) }},
+                power={{ states(bosch_power_state_sensor) }}.
           - action: select.select_option
             continue_on_error: true
             target:
@@ -289,12 +306,28 @@ automation:
               option: "{{ selected_program_key }}"
           - delay:
               seconds: 5
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_scheduler_message
+            data:
+              value: >-
+                Dishwasher program step complete.
+                requested={{ selected_program_key }},
+                selected={{ states(bosch_selected_program_sensor) }}.
           - action: button.press
             continue_on_error: true
             target:
               entity_id: button.bosch_406010547033018437_start_pause
           - delay:
               seconds: 20
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_scheduler_message
+            data:
+              value: >-
+                Dishwasher button start attempted.
+                operation={{ states(bosch_operation_state_sensor) }},
+                cycle={{ states('sensor.load_optimizer_1_cycle_state') }}.
           - if:
               - condition: template
                 value_template: "{{ not success_state }}"
@@ -311,6 +344,18 @@ automation:
               - condition: template
                 value_template: "{{ not success_state }}"
             then:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_scheduler_message
+                data:
+                  value: >-
+                    Dishwasher Home Connect Alt fallback attempted.
+                    operation={{ states(bosch_operation_state_sensor) }},
+                    cycle={{ states('sensor.load_optimizer_1_cycle_state') }}.
+          - if:
+              - condition: template
+                value_template: "{{ not success_state }}"
+            then:
               - action: home_connect.start_program
                 continue_on_error: true
                 data:
@@ -319,6 +364,18 @@ automation:
                   program_key: "{{ selected_program_key }}"
           - delay:
               minutes: 2
+          - if:
+              - condition: template
+                value_template: "{{ success_state }}"
+            then:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_scheduler_message
+                data:
+                  value: >-
+                    Dishwasher started successfully.
+                    program={{ selected_program }},
+                    operation={{ states(bosch_operation_state_sensor) }}.
           - if:
               - condition: template
                 value_template: "{{ not success_state }}"
