@@ -571,6 +571,86 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["cost_forecast"][0]["cost_pence"], 20.0)
         self.assertEqual(result["cost_forecast"][1]["start"], "2026-07-06T00:30:00+00:00")
 
+    def test_cooldown_excludes_recent_program_and_uses_next_candidate(self):
+        quick = {
+            **self.model,
+            "program": "Quick65",
+            "last_seen": (self.start - timedelta(hours=12)).isoformat(),
+        }
+        super60 = {
+            **self.model,
+            "program": "Super60",
+            "expected_energy_kwh": 1.2,
+        }
+        policies = [
+            {
+                "program": "Quick65",
+                "enabled": True,
+                "allow_normal_recommendation": True,
+                "allow_negative_price_run": False,
+                "preference_rank": 1,
+                "minimum_hours_between_runs": 46,
+                "estimated_overhead_cost_pence": 0,
+            },
+            {
+                "program": "Super60",
+                "enabled": True,
+                "allow_normal_recommendation": True,
+                "allow_negative_price_run": False,
+                "preference_rank": 50,
+                "minimum_hours_between_runs": 0,
+                "estimated_overhead_cost_pence": 0,
+            },
+        ]
+
+        result = recommend_cycle(
+            [quick, super60],
+            policies,
+            [self.period(0, 180, 10)],
+            reference_utc=self.start,
+            search_hours=2,
+            candidate_interval_minutes=30,
+        )
+
+        self.assertEqual(result["program"], "Super60")
+        self.assertGreater(result["rejected_cooldowns"], 0)
+        quick_diagnostic = next(item for item in result["program_diagnostics"] if item["program"] == "Quick65")
+        self.assertEqual(quick_diagnostic["status"], "excluded")
+        self.assertEqual(quick_diagnostic["reason"], "cooldown_active")
+        self.assertEqual(quick_diagnostic["cooldown_until"], "2026-07-07T10:00:00+00:00")
+
+    def test_cooldown_allows_program_after_cooldown_expires_in_window(self):
+        quick = {
+            **self.model,
+            "program": "Quick65",
+            "last_seen": (self.start - timedelta(hours=1)).isoformat(),
+        }
+        policy = {
+            "program": "Quick65",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "minimum_hours_between_runs": 2,
+            "estimated_overhead_cost_pence": 0,
+        }
+
+        result = recommend_cycle(
+            [quick],
+            [policy],
+            [self.period(0, 240, 10)],
+            reference_utc=self.start,
+            search_hours=3,
+            candidate_interval_minutes=30,
+        )
+
+        self.assertEqual(result["program"], "Quick65")
+        self.assertEqual(result["start"], self.start + timedelta(hours=1))
+        self.assertGreater(result["rejected_cooldowns"], 0)
+        diagnostic = result["program_diagnostics"][0]
+        self.assertEqual(diagnostic["status"], "included")
+        self.assertEqual(diagnostic["rejected_cooldown_points"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,6 +22,13 @@ automation:
     description: Set an editable dishwasher latest-finish deadline before a travel calendar event.
     mode: single
     triggers:
+      # Set this early enough that an evening "overnight" request can see the
+      # next morning's travel deadline before choosing a start time.
+      - trigger: calendar
+        entity_id: calendar.YOUR_TRAVEL_CALENDAR
+        event: start
+        offset: "-24:00:0"
+      # Refresh nearer departure in case the travel calendar was updated.
       - trigger: calendar
         entity_id: calendar.YOUR_TRAVEL_CALENDAR
         event: start
@@ -48,6 +55,9 @@ automation:
             entity_id: person.YOUR_PERSON
             zone: zone.YOUR_TRAVEL_AREA
     variables:
+      # The dishwasher should finish before household travel starts. This
+      # example uses 90 minutes, but the helper remains editable in Home
+      # Assistant if a particular journey needs more or less buffer.
       deadline: >-
         {{ (as_timestamp(trigger.calendar_event.start) - 5400)
            | timestamp_custom('%Y-%m-%d %H:%M:%S', true) }}
@@ -81,7 +91,8 @@ automation:
         target:
           entity_id: input_datetime.load_optimizer_1_must_finish_by
         data:
-          datetime: "1970-01-01 00:00:00"
+          date: "{{ (now() - timedelta(days=1)).strftime('%Y-%m-%d') }}"
+          time: "00:00:00"
       - action: input_text.set_value
         target:
           entity_id: input_text.announce_text

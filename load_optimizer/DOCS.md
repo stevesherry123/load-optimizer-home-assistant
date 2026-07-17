@@ -132,9 +132,16 @@ classification alone never grants permission for the scheduler to use a program.
 
 `minimum_hours_between_runs` is the preferred cooldown field. Older
 `minimum_days_between_runs` values are still accepted and are converted to hours
-when the hours field is omitted. `maximum_runs_per_window: 0` means unlimited
-for future negative-price planning. `negative_price_priority` ranks explicitly
-allowed negative-price programs before energy intensity is used as a tie-breaker.
+when the hours field is omitted. During scheduling, candidates that would start
+before the program's latest learned finish plus this cooldown are rejected. This
+lets the optimiser fall through to the next eligible program instead of
+repeating the same cycle while still building confidence in alternatives.
+Cooldown decisions are exposed in `program_diagnostics` with
+`reason: cooldown_active` and `cooldown_until` where applicable.
+
+`maximum_runs_per_window: 0` means unlimited for future negative-price planning.
+`negative_price_priority` ranks explicitly allowed negative-price programs
+before energy intensity is used as a tie-breaker.
 
 Only `program` and `classification` are required. All other policy fields are
 optional and use the conservative defaults published in the

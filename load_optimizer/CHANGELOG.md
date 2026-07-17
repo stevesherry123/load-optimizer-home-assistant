@@ -4,6 +4,23 @@
 
 - No unreleased changes.
 
+## 0.8.20
+
+- Harden the example Bosch dishwasher execution automation.
+- Check Bosch connectivity, door, remote-control, and remote-start readiness
+  before attempting a start.
+- Power on the appliance, select the Bosch program entity, and press the Bosch
+  start button before falling back to the direct Home Connect start service.
+- Keep the scheduler diagnostic message visible after failed start attempts.
+
+## 0.8.19
+
+- Enforce `minimum_hours_between_runs` during scheduling and cost forecasting.
+- Reject candidate start times that fall inside a program cooldown window so the
+  optimiser can fall through to the next eligible cycle type.
+- Publish cooldown diagnostics, including `cooldown_until`,
+  `rejected_cooldowns`, and `reason: cooldown_active`.
+
 ## 0.8.18
 
 - Add helper-driven travel/deadline scheduling constraints through

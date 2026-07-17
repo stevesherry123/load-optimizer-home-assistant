@@ -4,9 +4,9 @@
 # automations let dashboards, voice assistants, and household automations request
 # a run without duplicating scheduling logic.
 #
-# Before using this package, replace:
-# - `YOUR_BOSCH_DISHWASHER_DEVICE_ID`
-# - `script.load_optimizer_announce`
+# Before using this package, replace the Bosch entity ids and
+# `script.load_optimizer_announce` with the equivalents from your own Home
+# Assistant instance.
 #
 # The announcement script should speak or notify the current value of
 # `input_text.announce_text`, or you can replace both announcement actions with
@@ -132,9 +132,7 @@ automation:
           option: none
       - action: input_text.set_value
         target:
-          entity_id:
-            - input_text.load_optimizer_1_requested_program
-            - input_text.load_optimizer_1_scheduler_message
+          entity_id: input_text.load_optimizer_1_requested_program
         data:
           value: ""
       - action: input_text.set_value
@@ -162,6 +160,15 @@ automation:
           - input_datetime.load_optimizer_1_requested_start
     variables:
       requested_mode: "{{ states('input_select.load_optimizer_1_requested_mode') }}"
+      bosch_device_id: YOUR_BOSCH_DISHWASHER_DEVICE_ID
+      bosch_power_switch: switch.bosch_406010547033018437_bsh_common_setting_powerstate
+      bosch_program_select: select.bosch_406010547033018437_programs
+      bosch_start_button: button.bosch_406010547033018437_start_pause
+      bosch_connected_sensor: binary_sensor.bosch_406010547033018437_connected
+      bosch_door_sensor: binary_sensor.bosch_406010547033018437_bsh_common_status_doorstate
+      bosch_remote_control_sensor: binary_sensor.bosch_406010547033018437_bsh_common_status_remotecontrolactive
+      bosch_remote_start_sensor: binary_sensor.bosch_406010547033018437_bsh_common_status_remotecontrolstartallowed
+      bosch_operation_state_sensor: sensor.bosch_406010547033018437_bsh_common_status_operationstate
       recommendation_entity: >-
         {{ 'sensor.load_optimizer_1_' ~ requested_mode ~ '_recommendation'
            if requested_mode in ['now', 'soon', 'overnight']
@@ -174,9 +181,32 @@ automation:
       requested_program: "{{ states('input_text.load_optimizer_1_requested_program') }}"
       requested_start: "{{ states('input_datetime.load_optimizer_1_requested_start') }}"
       selected_program: >-
-        {{ recommendation_program
-           if recommendation_program not in ['unknown', 'unavailable', 'none', None, '']
-           else requested_program }}
+        {{ requested_program
+           if requested_program not in ['unknown', 'unavailable', 'none', None, '']
+           else recommendation_program }}
+      selected_program_key: >-
+        {% set program_map = {
+          'Eco50': 'Dishcare.Dishwasher.Program.Eco50',
+          'Auto2': 'Dishcare.Dishwasher.Program.Auto2',
+          'Intensiv70': 'Dishcare.Dishwasher.Program.Intensiv70',
+          'Quick65': 'Dishcare.Dishwasher.Program.Quick65',
+          'Glas40': 'Dishcare.Dishwasher.Program.Glas40',
+          'MachineCare': 'Dishcare.Dishwasher.Program.MachineCare',
+          'PreRinse': 'Dishcare.Dishwasher.Program.PreRinse',
+          'IntensivPower': 'Dishcare.Dishwasher.Program.IntensivPower',
+          'MixedLoad': 'Dishcare.Dishwasher.Program.MixedLoad',
+          'Quick45': 'Dishcare.Dishwasher.Program.Quick45',
+          'QuickD': 'Dishcare.Dishwasher.Program.Quick45',
+          'NightWash': 'Dishcare.Dishwasher.Program.NightWash',
+          'Super60': 'Dishcare.Dishwasher.Program.Super60',
+          'Kurz60': 'Dishcare.Dishwasher.Program.Kurz60'
+        } %}
+        {{ program_map.get(selected_program, selected_program) }}
+      bosch_ready: >-
+        {{ states(bosch_connected_sensor) == 'on'
+           and states(bosch_door_sensor) == 'off'
+           and states(bosch_remote_control_sensor) == 'on'
+           and states(bosch_remote_start_sensor) == 'on' }}
       due_by_time: >-
         {{ recommendation_start not in ['unknown', 'unavailable', 'none', None, '']
            and now() >= as_datetime(recommendation_start) }}
@@ -188,9 +218,21 @@ automation:
       start_message: >-
         Dishwasher start requested by Load Optimizer:
         {{ selected_program }}.
+      not_ready_message: >-
+        Dishwasher is not ready to start {{ selected_program }}.
+        Connected={{ states(bosch_connected_sensor) }},
+        door={{ states(bosch_door_sensor) }},
+        remote control={{ states(bosch_remote_control_sensor) }},
+        remote start={{ states(bosch_remote_start_sensor) }}.
       failed_message: >-
         Dishwasher start may have failed. Bosch did not report a running cycle
-        after the start request for {{ selected_program }}.
+        after the start request for {{ selected_program }}
+        using {{ selected_program_key }}.
+        Power={{ states(bosch_power_switch) }},
+        operation={{ states(bosch_operation_state_sensor) }}.
+      success_state: >-
+        {{ states('sensor.load_optimizer_1_cycle_state') == 'running'
+           or states(bosch_operation_state_sensor) == 'BSH.Common.EnumType.OperationState.Run' }}
     conditions:
       - condition: template
         value_template: "{{ requested_mode in ['now', 'soon', 'overnight'] }}"
@@ -211,26 +253,77 @@ automation:
       - action: script.turn_on
         target:
           entity_id: script.load_optimizer_announce
-      - action: home_connect_alt.start_program
-        continue_on_error: true
-        data:
-          validate: true
-          device_id: YOUR_BOSCH_DISHWASHER_DEVICE_ID
-          program_key: "Dishcare.Dishwasher.Program.{{ selected_program }}"
-      - delay:
-          minutes: 2
-      - if:
-          - condition: template
-            value_template: "{{ states('sensor.load_optimizer_1_cycle_state') != 'running' }}"
-        then:
-          - action: input_text.set_value
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ not bosch_ready }}"
+            sequence:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.announce_text
+                data:
+                  value: "{{ not_ready_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_scheduler_message
+                data:
+                  value: "{{ not_ready_message[:255] }}"
+              - action: script.turn_on
+                target:
+                  entity_id: script.load_optimizer_announce
+        default:
+          - if:
+              - condition: template
+                value_template: "{{ states(bosch_power_switch) == 'off' }}"
+            then:
+              - action: switch.turn_on
+                target:
+                  entity_id: "{{ bosch_power_switch }}"
+              - delay:
+                  seconds: 10
+          - action: select.select_option
+            continue_on_error: true
             target:
-              entity_id: input_text.announce_text
+              entity_id: "{{ bosch_program_select }}"
             data:
-              value: "{{ failed_message[:255] }}"
-          - action: script.turn_on
+              option: "{{ selected_program_key }}"
+          - delay:
+              seconds: 5
+          - action: button.press
+            continue_on_error: true
             target:
-              entity_id: script.load_optimizer_announce
+              entity_id: "{{ bosch_start_button }}"
+          - delay:
+              seconds: 20
+          - if:
+              - condition: template
+                value_template: "{{ not success_state }}"
+            then:
+              - action: home_connect_alt.start_program
+                continue_on_error: true
+                data:
+                  validate: true
+                  device_id: "{{ bosch_device_id }}"
+                  program_key: "{{ selected_program_key }}"
+          - delay:
+              minutes: 2
+          - if:
+              - condition: template
+                value_template: "{{ not success_state }}"
+            then:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.announce_text
+                data:
+                  value: "{{ failed_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_scheduler_message
+                data:
+                  value: "{{ failed_message[:255] }}"
+              - action: script.turn_on
+                target:
+                  entity_id: script.load_optimizer_announce
       - action: input_select.select_option
         target:
           entity_id: input_select.load_optimizer_1_requested_mode
