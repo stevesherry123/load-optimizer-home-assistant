@@ -20,7 +20,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.29"
+APP_VERSION = "0.8.30"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -1349,6 +1349,76 @@ def publish_schedule_entities(token: str, prefix: str, name: str, advice: dict) 
     })
 
 
+def publish_execution_entities(token: str, prefix: str, name: str, instance_id: str) -> None:
+    helper_prefix = f"load_optimizer_{instance_id}"
+    snapshot = render_template(token, """
+{% set helper_prefix = 'load_optimizer_""" + instance_id.replace("'", "\\'") + """' %}
+{{ {
+  'status': states('input_text.' ~ helper_prefix ~ '_start_attempt_status'),
+  'message': states('input_text.' ~ helper_prefix ~ '_start_attempt_message'),
+  'result': states('input_text.' ~ helper_prefix ~ '_last_start_result'),
+  'failure_reason': states('input_text.' ~ helper_prefix ~ '_last_start_failure_reason'),
+  'program': states('input_text.' ~ helper_prefix ~ '_last_start_program'),
+  'attempt': states('input_datetime.' ~ helper_prefix ~ '_last_start_attempt')
+} | to_json }}
+""")
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+
+    def text_value(key: str) -> str | None:
+        value = str(snapshot.get(key) or "").strip()
+        if value in {"", "unknown", "unavailable", "none", "None"}:
+            return None
+        return value
+
+    status = text_value("status") or "not_configured"
+    message = text_value("message")
+    result = text_value("result")
+    failure_reason = text_value("failure_reason")
+    program = text_value("program")
+    attempt_at = datetime_from_entity_state({"state": text_value("attempt")})
+    attempt_value = attempt_at.isoformat() if attempt_at else "unknown"
+    common = {
+        "status_helper": f"input_text.{helper_prefix}_start_attempt_status",
+        "message_helper": f"input_text.{helper_prefix}_start_attempt_message",
+        "last_result_helper": f"input_text.{helper_prefix}_last_start_result",
+        "last_failure_helper": f"input_text.{helper_prefix}_last_start_failure_reason",
+        "last_program_helper": f"input_text.{helper_prefix}_last_start_program",
+        "last_attempt_helper": f"input_datetime.{helper_prefix}_last_start_attempt",
+        "last_start_attempt": attempt_value if attempt_at else None,
+        "last_start_program": program,
+        "last_start_result": result,
+        "last_start_failure_reason": failure_reason,
+        "message": message,
+    }
+    publish_entity(token, f"{prefix}_execution_status", status, {
+        "friendly_name": f"{name} Execution Status",
+        "icon": "mdi:play-network",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_last_start_attempt", attempt_value, {
+        "friendly_name": f"{name} Last Start Attempt",
+        "device_class": "timestamp",
+        "icon": "mdi:clock-play",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_last_start_program", program or "unknown", {
+        "friendly_name": f"{name} Last Start Program",
+        "icon": "mdi:format-list-bulleted",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_last_start_result", result or "unknown", {
+        "friendly_name": f"{name} Last Start Result",
+        "icon": "mdi:check-decagram",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_last_start_failure_reason", failure_reason or "none", {
+        "friendly_name": f"{name} Last Start Failure Reason",
+        "icon": "mdi:alert-circle",
+        **common,
+    })
+
+
 def update_instance(token: str, database: dict, config: dict, now: datetime | None = None) -> None:
     now = now or datetime.now(timezone.utc)
     instance_id = str(config.get("instance_id", "1"))
@@ -1597,6 +1667,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         publish_cost_forecast=config.get("publish_cost_forecast", True),
     )
     publish_schedule_entities(token, prefix, name, schedule_advice(cost_result, config, now))
+    publish_execution_entities(token, prefix, name, instance_id)
     latest_program = normalise_program(last.get("program"))
     selected_program = latest_program if latest_program in models else (next(iter(sorted(models)), None))
     selected_summary = program_summary(selected_program, models[selected_program]) if selected_program else {}

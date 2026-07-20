@@ -17,6 +17,16 @@ cards:
         name: Requested Start
       - entity: input_text.load_optimizer_1_scheduler_message
         name: Scheduler Message
+      - entity: sensor.load_optimizer_1_execution_status
+        name: Execution Status
+      - entity: sensor.load_optimizer_1_last_start_result
+        name: Last Start Result
+      - entity: sensor.load_optimizer_1_last_start_program
+        name: Last Start Program
+      - entity: sensor.load_optimizer_1_last_start_failure_reason
+        name: Last Failure Reason
+      - entity: sensor.load_optimizer_1_last_start_attempt
+        name: Last Start Attempt
 
   - type: horizontal-stack
     cards:
@@ -59,4 +69,3 @@ cards:
           service: input_button.press
           target:
             entity_id: input_button.load_optimizer_1_cancel_schedule
-

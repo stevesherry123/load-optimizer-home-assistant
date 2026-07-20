@@ -28,6 +28,7 @@ from load_optimizer.app.main import (
     program_catalogue,
     publish_restart_safety,
     publish_schedule_entities,
+    publish_execution_entities,
     program_summary,
     publish_restart_warning,
     repair_learning_quality,
@@ -1060,6 +1061,47 @@ class ScheduleAdviceTests(unittest.TestCase):
         self.assertEqual(
             published["sensor.load_optimizer_1_recommended_finish"][3]["device_class"],
             "timestamp",
+        )
+
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.render_template")
+    def test_execution_publishes_not_configured_when_helpers_are_absent(self, render_template, publish_entity):
+        render_template.return_value = {
+            "status": "unknown",
+            "message": "unknown",
+            "result": "unknown",
+            "failure_reason": "unknown",
+            "program": "unknown",
+            "attempt": "unknown",
+        }
+
+        publish_execution_entities("token", "sensor.load_optimizer_1", "Dishwasher 1", "1")
+
+        published = {call.args[1]: call.args for call in publish_entity.call_args_list}
+        self.assertEqual(published["sensor.load_optimizer_1_execution_status"][2], "not_configured")
+        self.assertEqual(published["sensor.load_optimizer_1_last_start_attempt"][2], "unknown")
+
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.render_template")
+    def test_execution_publishes_start_attempt_helpers(self, render_template, publish_entity):
+        render_template.return_value = {
+            "status": "failed",
+            "message": "Dishwasher start failed for QuickD.",
+            "result": "failed",
+            "failure_reason": "not_running_after_start key=Dishcare.Dishwasher.Program.QuickD",
+            "program": "QuickD",
+            "attempt": "2026-01-01 12:00:00",
+        }
+
+        publish_execution_entities("token", "sensor.load_optimizer_1", "Dishwasher 1", "1")
+
+        published = {call.args[1]: call.args for call in publish_entity.call_args_list}
+        status_args = published["sensor.load_optimizer_1_execution_status"]
+        self.assertEqual(status_args[2], "failed")
+        self.assertEqual(status_args[3]["last_start_program"], "QuickD")
+        self.assertEqual(
+            status_args[3]["last_start_failure_reason"],
+            "not_running_after_start key=Dishcare.Dishwasher.Program.QuickD",
         )
 
 

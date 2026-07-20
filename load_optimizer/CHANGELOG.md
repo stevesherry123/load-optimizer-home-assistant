@@ -4,6 +4,17 @@
 
 - No unreleased changes.
 
+## 0.8.30
+
+- Add execution-status publishing for optional Home Assistant start-attempt
+  helpers.
+- Extend the Dishwasher 1 automation package with durable start-attempt
+  status, result, program, timestamp, and failure-reason helpers.
+- Preserve Bosch start diagnostics separately from the scheduler request so
+  failed starts can be reviewed after the request helpers are cleared.
+- Re-check live Bosch/app state after each start step instead of relying on a
+  stale automation-start snapshot.
+
 ## 0.8.29
 
 - Add configurable per-program non-energy operating costs for fixed consumables,

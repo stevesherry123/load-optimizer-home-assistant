@@ -34,9 +34,39 @@ input_text:
     icon: mdi:message-text-outline
     max: 255
 
+  load_optimizer_1_start_attempt_status:
+    name: Dishwasher 1 Start Attempt Status
+    icon: mdi:play-network
+    max: 64
+
+  load_optimizer_1_start_attempt_message:
+    name: Dishwasher 1 Start Attempt Message
+    icon: mdi:message-alert-outline
+    max: 255
+
+  load_optimizer_1_last_start_program:
+    name: Dishwasher 1 Last Start Program
+    icon: mdi:format-list-bulleted
+    max: 64
+
+  load_optimizer_1_last_start_result:
+    name: Dishwasher 1 Last Start Result
+    icon: mdi:check-decagram
+    max: 64
+
+  load_optimizer_1_last_start_failure_reason:
+    name: Dishwasher 1 Last Start Failure Reason
+    icon: mdi:alert-circle-outline
+    max: 255
+
 input_datetime:
   load_optimizer_1_requested_start:
     name: Dishwasher 1 Requested Start
+    has_date: true
+    has_time: true
+
+  load_optimizer_1_last_start_attempt:
+    name: Dishwasher 1 Last Start Attempt
     has_date: true
     has_time: true
 
@@ -230,11 +260,19 @@ automation:
         door={{ states(bosch_door_sensor) }},
         remote control={{ states(bosch_remote_control_sensor) }},
         remote start={{ states(bosch_remote_start_sensor) }}.
+      not_ready_reason: >-
+        not_ready connected={{ states(bosch_connected_sensor) }}
+        door={{ states(bosch_door_sensor) }}
+        remote_control={{ states(bosch_remote_control_sensor) }}
+        remote_start={{ states(bosch_remote_start_sensor) }}
       not_startable_message: >-
         Dishwasher program is not selectable from Home Assistant:
         program={{ selected_program }},
         key={{ selected_program_key }},
         available={{ state_attr(bosch_program_select, 'options') or [] }}.
+      not_startable_reason: >-
+        program_not_selectable program={{ selected_program }}
+        key={{ selected_program_key }}
       failed_message: >-
         Dishwasher start failed for {{ selected_program }}.
         key={{ selected_program_key }},
@@ -242,9 +280,10 @@ automation:
         power={{ states(bosch_power_state_sensor) }},
         selected={{ states(bosch_selected_program_sensor) }},
         operation={{ states(bosch_operation_state_sensor) }}.
-      success_state: >-
-        {{ states('sensor.load_optimizer_1_cycle_state') == 'running'
-           or states(bosch_operation_state_sensor) == 'BSH.Common.EnumType.OperationState.Run' }}
+      failed_reason: >-
+        not_running_after_start key={{ selected_program_key }}
+        selected={{ states(bosch_selected_program_sensor) }}
+        operation={{ states(bosch_operation_state_sensor) }}
     conditions:
       - condition: template
         value_template: "{{ requested_mode in ['now', 'soon', 'overnight'] }}"
@@ -259,9 +298,39 @@ automation:
     actions:
       - action: input_text.set_value
         target:
+          entity_id: input_text.load_optimizer_1_start_attempt_status
+        data:
+          value: attempting
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_start_program
+        data:
+          value: "{{ selected_program }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_start_result
+        data:
+          value: pending
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_start_failure_reason
+        data:
+          value: ""
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.load_optimizer_1_last_start_attempt
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: input_text.set_value
+        target:
           entity_id: input_text.announce_text
         data:
           value: "{{ start_message[:255] }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_start_attempt_message
+        data:
+          value: "{{ executing_message[:255] }}"
       - action: input_text.set_value
         target:
           entity_id: input_text.load_optimizer_1_scheduler_message
@@ -285,6 +354,26 @@ automation:
                   entity_id: input_text.load_optimizer_1_scheduler_message
                 data:
                   value: "{{ not_ready_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_status
+                data:
+                  value: blocked
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: blocked
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_failure_reason
+                data:
+                  value: "{{ not_ready_reason[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_message
+                data:
+                  value: "{{ not_ready_message[:255] }}"
               - action: script.turn_on
                 target:
                   entity_id: script.load_optimizer_announce
@@ -301,6 +390,26 @@ automation:
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_scheduler_message
+                data:
+                  value: "{{ not_startable_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_status
+                data:
+                  value: blocked
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: blocked
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_failure_reason
+                data:
+                  value: "{{ not_startable_reason[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_message
                 data:
                   value: "{{ not_startable_message[:255] }}"
               - action: script.turn_on
@@ -353,7 +462,9 @@ automation:
                 cycle={{ states('sensor.load_optimizer_1_cycle_state') }}.
           - if:
               - condition: template
-                value_template: "{{ not success_state }}"
+                value_template: >-
+                  {{ states('sensor.load_optimizer_1_cycle_state') != 'running'
+                     and states(bosch_operation_state_sensor) != 'BSH.Common.EnumType.OperationState.Run' }}
             then:
               - action: home_connect_alt.start_program
                 continue_on_error: true
@@ -365,7 +476,9 @@ automation:
               seconds: 20
           - if:
               - condition: template
-                value_template: "{{ not success_state }}"
+                value_template: >-
+                  {{ states('sensor.load_optimizer_1_cycle_state') != 'running'
+                     and states(bosch_operation_state_sensor) != 'BSH.Common.EnumType.OperationState.Run' }}
             then:
               - action: input_text.set_value
                 target:
@@ -377,7 +490,9 @@ automation:
                     cycle={{ states('sensor.load_optimizer_1_cycle_state') }}.
           - if:
               - condition: template
-                value_template: "{{ not success_state }}"
+                value_template: >-
+                  {{ states('sensor.load_optimizer_1_cycle_state') != 'running'
+                     and states(bosch_operation_state_sensor) != 'BSH.Common.EnumType.OperationState.Run' }}
             then:
               - action: home_connect.start_program
                 continue_on_error: true
@@ -389,8 +504,33 @@ automation:
               minutes: 2
           - if:
               - condition: template
-                value_template: "{{ success_state }}"
+                value_template: >-
+                  {{ states('sensor.load_optimizer_1_cycle_state') == 'running'
+                     or states(bosch_operation_state_sensor) == 'BSH.Common.EnumType.OperationState.Run' }}
             then:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_status
+                data:
+                  value: confirmed
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: confirmed
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_failure_reason
+                data:
+                  value: ""
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_message
+                data:
+                  value: >-
+                    Dishwasher started successfully.
+                    program={{ selected_program }},
+                    operation={{ states(bosch_operation_state_sensor) }}.
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_scheduler_message
@@ -401,8 +541,30 @@ automation:
                     operation={{ states(bosch_operation_state_sensor) }}.
           - if:
               - condition: template
-                value_template: "{{ not success_state }}"
+                value_template: >-
+                  {{ states('sensor.load_optimizer_1_cycle_state') != 'running'
+                     and states(bosch_operation_state_sensor) != 'BSH.Common.EnumType.OperationState.Run' }}
             then:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_status
+                data:
+                  value: failed
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: failed
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_failure_reason
+                data:
+                  value: "{{ failed_reason[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_message
+                data:
+                  value: "{{ failed_message[:255] }}"
               - action: input_text.set_value
                 target:
                   entity_id: input_text.announce_text
