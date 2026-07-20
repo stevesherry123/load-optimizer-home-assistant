@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- No unreleased changes.
+- Document the provider-layer architecture so tariff, green-window, solar,
+  battery, and calendar inputs remain optional context rather than core
+  dependencies.
 
 ## 0.8.30
 

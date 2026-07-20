@@ -250,6 +250,12 @@ Load Optimizer does not depend on Octopus Intelligence or any particular energy
 supplier. OIE's forecast entity is one compatible source, while other integrations
 can provide structured rates. Leave both tariff fields blank to disable costing.
 
+Treat tariff and environmental data as provider inputs. The app should stay a
+generic load optimiser: Octopus, BottlecapDave's Octopus Energy integration,
+manual tariff helpers, solar forecasts, battery sensors, and future non-UK
+tariff providers are all optional sources of context rather than core
+requirements.
+
 For BottlecapDave's Octopus Energy integration, prefer the upstream rate event
 entities directly, for example:
 
@@ -374,6 +380,13 @@ Future scheduling work will separate constraints from strategy. Constraints
 define what is allowed, such as a latest finish deadline. Strategy decides which
 allowed slot to prefer, such as `cheapest_earliest_finish` for dishwashers or
 `cheapest_latest_finish` for EV-style loads.
+
+Future provider-aware scheduling may also compare the cheapest candidate with a
+greener candidate. For example, an Octopus user may expose a greener-nights
+calendar, while another household may expose a local carbon-intensity sensor or
+solar/battery forecast. The intended model is to publish both the financial
+best option and the greener option, including the extra cost of choosing the
+greener run. This should remain optional and supplier-agnostic.
 
 Supported strategy values are:
 

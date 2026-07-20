@@ -20,6 +20,8 @@ implementation architecture in `docs/architecture.md`.
   appliance wear
 - account for household solar generation and battery storage when estimating the
   effective cost of running a cycle
+- add optional greener-window scheduling that compares the cheapest candidate
+  with a lower-carbon or provider-highlighted green candidate
 - add automatic negative-price opportunity handling for programs explicitly
   allowed by policy
 
@@ -30,14 +32,22 @@ experience around tariff windows and run recommendations. Community Agile-window
 projects show useful patterns, but Load Optimizer should not become Octopus-only
 or rely only on fixed-duration appliance assumptions.
 
+Energy suppliers and tariff integrations should be treated as provider layers.
+The core optimiser should consume normalized prices, green windows, deadlines,
+and local-energy context rather than embedding provider-specific behaviour.
+
 Planned scheduling features:
 
 - per-instance earliest start and latest finish constraints
 - helper-driven deadline support via Home Assistant input helpers
 - optional calendar integration, with TripIt recommended for travel-aware
   scheduling where users already expose TripIt to Home Assistant
+- optional green-window integration, with provider calendars such as Octopus
+  Greener Nights treated as one possible low-carbon signal
 - scheduling strategies that are separate from constraints:
   `cheapest_earliest_finish`, `cheapest_latest_finish`, and later `cheapest_absolute`
+- future environmental strategies such as `greenest`, `balanced`, and
+  `greenest_if_within_budget`
 - schedule window preferences for overnight/daytime operation
 - clear recommended start and finish sensors
 - a recommended-window active state for dashboards and automations
@@ -70,6 +80,12 @@ full automation. The first implementation should prefer a helper contract such
 as an enabled flag plus a must-finish-by datetime, so TripIt, Google Calendar,
 Outlook, or manual Home Assistant automations can all drive the same scheduler.
 Direct calendar polling can be added later as a convenience layer.
+
+Green-window scheduling should show the cost tradeoff explicitly. A household
+may want to know both "what is the cheapest possible run?" and "what would it
+cost to choose the greenest acceptable run instead?" The app should therefore
+publish the cheapest candidate, the greenest candidate, and the extra cost of
+choosing the greener option when a green-window provider is configured.
 
 The project may expose binary sensors later, but the core model should first
 publish enough state for either binary sensors or ordinary sensors to be built

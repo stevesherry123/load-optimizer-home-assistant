@@ -2,13 +2,15 @@
 
 ## Overview
 
-Load Optimizer is split into three layers:
+Load Optimizer is split into four layers:
 
 1. Core learning and optimisation logic
-2. Device adapters
-3. Home Assistant entity and dashboard surfaces
+2. Provider context inputs
+3. Device adapters
+4. Home Assistant entity, automation, and dashboard surfaces
 
-The core must not depend on Bosch, Home Connect, washing machine-specific logic, or any other single appliance.
+The core must not depend on Bosch, Home Connect, Octopus Energy,
+washing-machine-specific logic, or any other single appliance or supplier.
 
 ## Core Responsibilities
 
@@ -16,8 +18,40 @@ The core must not depend on Bosch, Home Connect, washing machine-specific logic,
 - Sample power during the cycle.
 - Detect when a cycle ends.
 - Build and maintain learned summaries.
-- Estimate cost for a future run.
+- Estimate cost or score for a future run from normalized provider inputs.
 - Select an economical start window.
+
+## Provider Context Responsibilities
+
+Provider context inputs supply external information that helps the core compare
+candidate starts. They must be optional, normalized before use, and treated as
+data sources rather than product dependencies.
+
+Examples include:
+
+- tariff-rate entities
+- greener or lower-carbon calendar windows
+- carbon-intensity sensors
+- local solar generation forecasts
+- battery state, reserve, and charge/discharge limits
+- manually configured fixed-rate tariffs
+
+Octopus Energy, BottlecapDave's Octopus Energy integration, Octopus
+Intelligence, TripIt, solar inverters, and battery integrations are all examples
+of provider layers. None should be hard-coded as a core requirement.
+
+The preferred provider contract is:
+
+- **Price source**: supplies normalized future prices.
+- **Green window source**: supplies preferred low-carbon or greener time
+  windows.
+- **Local energy source**: supplies optional household generation or battery
+  context.
+- **Deadline source**: supplies optional earliest-start or latest-finish
+  constraints.
+
+The core should rank candidates using those normalized concepts rather than
+calling provider-specific APIs directly.
 
 ## Device Adapter Responsibilities
 
@@ -35,6 +69,8 @@ Home Assistant should be used for:
 
 - source power, energy, program, and state sensors
 - tariff entities from any compatible supplier integration or custom source
+- optional calendar or sensor entities that describe greener, travel, or local
+  energy context
 - published `sensor.load_optimizer_*` entities from the App
 - dashboards, notifications, and automations built on top of those sensors
 
@@ -192,6 +228,37 @@ This should remain optional and supplier-agnostic. Users without solar or
 batteries should not need to configure these fields, and users with local energy
 systems should be able to decide whether the optimiser values self-consumption,
 export revenue, battery preservation, or pure grid-import cost.
+
+## Greener Window Context
+
+Status: Future design principle
+
+Some users may prefer a slightly more expensive run if it lands in a greener or
+lower-carbon window. This should be modelled as an optional provider input, not
+as an Octopus-only feature.
+
+The first version should accept a generic Home Assistant calendar or sensor that
+marks preferred green windows. BottlecapDave's Octopus Energy integration
+currently exposes a greener-nights calendar for Octopus users, but the core
+should only care that a candidate start overlaps a green window.
+
+Future scheduling strategies may include:
+
+- `cheapest`: choose the lowest total cost.
+- `greenest`: choose the best available green-window candidate.
+- `balanced`: prefer green candidates when the extra cost is within a configured
+  tolerance.
+- `greenest_if_within_budget`: choose green only when the difference from the
+  cheapest candidate is acceptable.
+
+The app should expose both values when possible:
+
+- cheapest possible cost and start
+- greenest acceptable cost and start
+- extra cost of choosing the greener option
+
+This keeps environmental preference visible without hiding the financial
+tradeoff from the household.
 
 ## Calendar And Deadline Context
 
