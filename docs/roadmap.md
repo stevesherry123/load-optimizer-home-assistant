@@ -18,6 +18,8 @@ implementation architecture in `docs/architecture.md`.
 - improve runtime status clarity so active capture is obvious
 - model additional per-cycle operating costs such as detergent, water, and
   appliance wear
+- account for household solar generation and battery storage when estimating the
+  effective cost of running a cycle
 - add automatic negative-price opportunity handling for programs explicitly
   allowed by policy
 
@@ -146,6 +148,14 @@ change them.
 This broader cost model will be particularly relevant when evaluating negative
 electricity prices. Consuming electricity may appear profitable while still
 incurring water, consumable, and equipment costs.
+
+Future versions should also support local energy context. For homes with solar
+panels, battery storage, or both, the cheapest grid-import slot may not be the
+true cheapest operating slot. The optimiser should eventually be able to factor
+in available solar generation, battery state of charge, charge/discharge limits,
+round-trip efficiency, export value, and whether stored energy should be
+reserved for other household loads. The first version of this should be
+optional, sensor-driven, and supplier-agnostic.
 
 Negative-price automation should remain opt-in per program. When electricity is
 negative, the optimiser should prefer useful, high-consumption, short-duration
