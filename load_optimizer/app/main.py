@@ -20,7 +20,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.28"
+APP_VERSION = "0.8.29"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -553,6 +553,12 @@ def default_program_policy(program: str) -> dict:
         "maximum_runs_per_window": 0,
         "negative_price_priority": 50,
         "estimated_overhead_cost_pence": 0.0,
+        "fixed_cost_pence": 0.0,
+        "water_litres": 0.0,
+        "water_cost_pence_per_litre": 0.0,
+        "water_cost_pence": 0.0,
+        "wear_cost_pence": 0.0,
+        "non_energy_cost_pence": 0.0,
     }
 
 
@@ -564,6 +570,14 @@ def normalise_program_policy(raw: dict) -> dict:
     classification = str(raw.get("classification", "unclassified")).lower()
     if classification not in PROGRAM_CLASSIFICATIONS:
         raise ValueError(f"Unsupported program classification: {classification}")
+    fixed_cost = max(0.0, float(raw.get(
+        "fixed_cost_pence",
+        raw.get("estimated_overhead_cost_pence", policy["fixed_cost_pence"]),
+    )))
+    water_litres = max(0.0, float(raw.get("water_litres", policy["water_litres"])))
+    water_cost = max(0.0, float(raw.get("water_cost_pence_per_litre", policy["water_cost_pence_per_litre"])))
+    wear_cost = max(0.0, float(raw.get("wear_cost_pence", policy["wear_cost_pence"])))
+    non_energy_cost = round(fixed_cost + (water_litres * water_cost) + wear_cost, 4)
     policy.update({
         "configured": True,
         "classification": classification,
@@ -578,7 +592,13 @@ def normalise_program_policy(raw: dict) -> dict:
         ))),
         "maximum_runs_per_window": max(0, int(raw.get("maximum_runs_per_window", policy["maximum_runs_per_window"]))),
         "negative_price_priority": max(1, min(100, int(raw.get("negative_price_priority", policy["negative_price_priority"])))),
-        "estimated_overhead_cost_pence": max(0.0, float(raw.get("estimated_overhead_cost_pence", policy["estimated_overhead_cost_pence"]))),
+        "estimated_overhead_cost_pence": fixed_cost,
+        "fixed_cost_pence": fixed_cost,
+        "water_litres": water_litres,
+        "water_cost_pence_per_litre": water_cost,
+        "water_cost_pence": round(water_litres * water_cost, 4),
+        "wear_cost_pence": wear_cost,
+        "non_energy_cost_pence": non_energy_cost,
     })
     if classification == "disabled":
         policy.update(enabled=False, allow_normal_recommendation=False, allow_negative_price_run=False)
@@ -640,6 +660,12 @@ def program_catalogue(models: dict, policies: list[dict]) -> list[dict]:
             "minimum_hours_between_runs": policy.get("minimum_hours_between_runs"),
             "maximum_runs_per_window": policy.get("maximum_runs_per_window"),
             "negative_price_priority": policy.get("negative_price_priority"),
+            "fixed_cost_pence": policy.get("fixed_cost_pence"),
+            "water_litres": policy.get("water_litres"),
+            "water_cost_pence_per_litre": policy.get("water_cost_pence_per_litre"),
+            "water_cost_pence": policy.get("water_cost_pence"),
+            "wear_cost_pence": policy.get("wear_cost_pence"),
+            "non_energy_cost_pence": policy.get("non_energy_cost_pence"),
         })
     return catalogue
 
@@ -1157,6 +1183,13 @@ def publish_cost_entities(
                 "energy_kwh": result.get("energy_kwh"),
                 "energy_cost_pence": result.get("energy_cost_pence"),
                 "overhead_cost_pence": result.get("overhead_cost_pence"),
+                "fixed_cost_pence": result.get("fixed_cost_pence"),
+                "water_litres": result.get("water_litres"),
+                "water_cost_pence_per_litre": result.get("water_cost_pence_per_litre"),
+                "water_cost_pence": result.get("water_cost_pence"),
+                "wear_cost_pence": result.get("wear_cost_pence"),
+                "non_energy_cost_pence": result.get("non_energy_cost_pence"),
+                "operating_cost_breakdown": result.get("operating_cost_breakdown"),
                 "negative_price_run": result.get("negative_price_run"),
                 "candidate_count": result.get("candidate_count"),
                 "comparison_candidate_count": result.get("comparison_candidate_count"),
@@ -1193,6 +1226,7 @@ def publish_cost_entities(
                 attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
             if publish_diagnostics and suffix == "cost_if_started_now":
                 attributes["cost_breakdown"] = result.get("cost_if_started_now_breakdown", [])
+                attributes["operating_cost_breakdown"] = result.get("cost_if_started_now_operating_breakdown")
                 attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
         publish_entity(token, f"{prefix}_{suffix}", value if value is not None else "unknown", attributes)
     for intent, icon in (
@@ -1216,6 +1250,8 @@ def publish_cost_entities(
             "finish": recommendation.get("finish"),
             "seconds_until_start": recommendation.get("seconds_until_start"),
             "cost_pence": rounded_pence(recommendation.get("cost_pence")) if recommendation_ready else None,
+            "energy_cost_pence": rounded_pence(recommendation.get("energy_cost_pence")) if recommendation_ready else None,
+            "non_energy_cost_pence": rounded_pence(recommendation.get("non_energy_cost_pence")) if recommendation_ready else None,
             "saving_vs_now_pence": rounded_pence(recommendation.get("saving_vs_now_pence")) if recommendation_ready else None,
             "energy_kwh": recommendation.get("energy_kwh"),
             "energy_kwh_per_minute": recommendation.get("energy_kwh_per_minute"),

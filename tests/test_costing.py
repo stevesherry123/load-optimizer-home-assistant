@@ -158,6 +158,42 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["cost_breakdown"][0]["energy_cost_pence"], 5.0)
         self.assertEqual(result["cost_if_started_now_breakdown"][0]["energy_cost_pence"], 20.0)
 
+    def test_recommendation_includes_non_energy_operating_costs(self):
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "fixed_cost_pence": 10,
+            "water_litres": 8,
+            "water_cost_pence_per_litre": 0.25,
+            "wear_cost_pence": 3,
+        }
+        periods = [
+            self.period(0, 60, 20),
+            self.period(60, 120, 5),
+        ]
+
+        result = recommend_cycle(
+            [self.model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=1,
+            candidate_interval_minutes=30,
+        )
+
+        self.assertEqual(result["energy_cost_pence"], 5.0)
+        self.assertEqual(result["fixed_cost_pence"], 10)
+        self.assertEqual(result["water_cost_pence"], 2)
+        self.assertEqual(result["wear_cost_pence"], 3)
+        self.assertEqual(result["non_energy_cost_pence"], 15)
+        self.assertEqual(result["total_cost_pence"], 20.0)
+        self.assertEqual(result["cost_if_started_now_pence"], 35.0)
+        self.assertEqual(result["operating_cost_breakdown"]["total_cost_pence"], 20.0)
+        self.assertEqual(result["now_recommendation"]["non_energy_cost_pence"], 15)
+
     def test_opportunistic_policy_only_uses_negative_window(self):
         model = {**self.model, "expected_runtime_minutes": 30}
         policy = {

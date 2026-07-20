@@ -309,6 +309,42 @@ def best_window_candidate(candidates: list[dict], *, overnight: bool) -> dict | 
     return min(matching, key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]))
 
 
+def non_energy_cost_breakdown(policy: dict) -> dict:
+    """Return configurable non-energy cycle costs for one program policy."""
+    fixed_cost = float(policy.get("fixed_cost_pence", policy.get("estimated_overhead_cost_pence", 0)) or 0)
+    water_litres = float(policy.get("water_litres", 0) or 0)
+    water_cost_per_litre = float(policy.get("water_cost_pence_per_litre", 0) or 0)
+    water_cost = water_litres * water_cost_per_litre
+    wear_cost = float(policy.get("wear_cost_pence", 0) or 0)
+    total = fixed_cost + water_cost + wear_cost
+    return {
+        "fixed_cost_pence": round(fixed_cost, 4),
+        "water_litres": round(water_litres, 4),
+        "water_cost_pence_per_litre": round(water_cost_per_litre, 6),
+        "water_cost_pence": round(water_cost, 4),
+        "wear_cost_pence": round(wear_cost, 4),
+        "non_energy_cost_pence": round(total, 4),
+    }
+
+
+def apply_operating_costs(estimate: dict, policy: dict) -> dict:
+    """Combine tariff energy cost with configurable per-cycle operating costs."""
+    non_energy = non_energy_cost_breakdown(policy)
+    energy_cost = float(estimate["energy_cost_pence"])
+    total_cost = energy_cost + non_energy["non_energy_cost_pence"]
+    return {
+        **estimate,
+        **non_energy,
+        "energy_cost_pence": round(energy_cost, 4),
+        "total_cost_pence": round(total_cost, 4),
+        "operating_cost_breakdown": {
+            "energy_cost_pence": round(energy_cost, 4),
+            **non_energy,
+            "total_cost_pence": round(total_cost, 4),
+        },
+    }
+
+
 def summarize_window_candidate(candidate: dict | None, now_cost: float | None) -> dict | None:
     if not candidate:
         return None
@@ -320,6 +356,8 @@ def summarize_window_candidate(candidate: dict | None, now_cost: float | None) -
         "start": candidate.get("start").isoformat() if candidate.get("start") else None,
         "finish": candidate.get("finish").isoformat() if candidate.get("finish") else None,
         "cost_pence": candidate.get("total_cost_pence"),
+        "energy_cost_pence": candidate.get("energy_cost_pence"),
+        "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
         "saving_vs_now_pence": saving,
         "energy_kwh": candidate.get("energy_kwh"),
         "confidence": candidate.get("confidence"),
@@ -360,6 +398,8 @@ def summarize_decision(
         "finish": candidate.get("finish").isoformat() if candidate.get("finish") else None,
         "seconds_until_start": seconds_until_start,
         "cost_pence": cost,
+        "energy_cost_pence": candidate.get("energy_cost_pence"),
+        "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
         "saving_vs_now_pence": saving,
         "energy_kwh": candidate.get("energy_kwh"),
         "confidence": candidate.get("confidence"),
@@ -378,6 +418,8 @@ def summarize_forecast_candidates(candidates: list[dict], limit: int = 300) -> l
             "start": candidate.get("start").isoformat() if candidate.get("start") else None,
             "finish": candidate.get("finish").isoformat() if candidate.get("finish") else None,
             "cost_pence": candidate.get("total_cost_pence"),
+            "energy_cost_pence": candidate.get("energy_cost_pence"),
+            "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
             "energy_kwh": candidate.get("energy_kwh"),
             "confidence": candidate.get("confidence"),
             "is_overnight_start": candidate.get("is_overnight_start"),
@@ -450,14 +492,16 @@ def forecast_cycle_costs(
                 continue
             negative = estimate["energy_cost_pence"] < 0
             if policy["allow_normal_recommendation"] or (negative and policy["allow_negative_price_run"]):
+                estimate = apply_operating_costs(estimate, policy)
                 diagnostic["priced_points"] += 1
-                total_cost = estimate["energy_cost_pence"] + policy["estimated_overhead_cost_pence"]
                 is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
                 candidates.append({
                     "program": model["program"],
                     "start": start,
                     "finish": start + timedelta(minutes=float(model["expected_runtime_minutes"])),
-                    "total_cost_pence": round(total_cost, 4),
+                    "total_cost_pence": estimate["total_cost_pence"],
+                    "energy_cost_pence": estimate["energy_cost_pence"],
+                    "non_energy_cost_pence": estimate["non_energy_cost_pence"],
                     "energy_kwh": estimate["energy_kwh"],
                     "confidence": model.get("confidence", 0),
                     "is_overnight_start": is_overnight,
@@ -566,8 +610,8 @@ def recommend_cycle(
                 continue
             negative = estimate["energy_cost_pence"] < 0
             if policy["allow_normal_recommendation"] or (negative and policy["allow_negative_price_run"]):
+                estimate = apply_operating_costs(estimate, policy)
                 diagnostic["priced_points"] += 1
-                total_cost = estimate["energy_cost_pence"] + policy["estimated_overhead_cost_pence"]
                 candidate = {
                     "program": model["program"],
                     "start": start,
@@ -575,8 +619,15 @@ def recommend_cycle(
                     "energy_cost_pence": estimate["energy_cost_pence"],
                     "energy_kwh": estimate["energy_kwh"],
                     "cost_breakdown": estimate["cost_breakdown"],
-                    "overhead_cost_pence": policy["estimated_overhead_cost_pence"],
-                    "total_cost_pence": round(total_cost, 4),
+                    "overhead_cost_pence": estimate["fixed_cost_pence"],
+                    "fixed_cost_pence": estimate["fixed_cost_pence"],
+                    "water_litres": estimate["water_litres"],
+                    "water_cost_pence_per_litre": estimate["water_cost_pence_per_litre"],
+                    "water_cost_pence": estimate["water_cost_pence"],
+                    "wear_cost_pence": estimate["wear_cost_pence"],
+                    "non_energy_cost_pence": estimate["non_energy_cost_pence"],
+                    "operating_cost_breakdown": estimate["operating_cost_breakdown"],
+                    "total_cost_pence": estimate["total_cost_pence"],
                     "confidence": model.get("confidence", 0),
                     "preference_rank": policy["preference_rank"],
                     "negative_price_priority": policy.get("negative_price_priority", 50),
@@ -631,11 +682,14 @@ def recommend_cycle(
     try:
         now_estimate = estimate_cycle_cost(reference_utc, selected_model, periods)
         policy = policy_by_program[cheapest["program"]]
-        now_cost = round(now_estimate["energy_cost_pence"] + policy["estimated_overhead_cost_pence"], 4)
+        now_estimate = apply_operating_costs(now_estimate, policy)
+        now_cost = now_estimate["total_cost_pence"]
         now_breakdown = now_estimate["cost_breakdown"]
+        now_operating_breakdown = now_estimate["operating_cost_breakdown"]
     except ValueError:
         now_cost = None
         now_breakdown = []
+        now_operating_breakdown = None
     best_overnight = best_window_candidate(comparison_candidates, overnight=True)
     best_daytime = best_window_candidate(comparison_candidates, overnight=False)
     immediate_candidate = min(
@@ -678,6 +732,7 @@ def recommend_cycle(
         **cheapest,
         "cost_if_started_now_pence": now_cost,
         "cost_if_started_now_breakdown": now_breakdown,
+        "cost_if_started_now_operating_breakdown": now_operating_breakdown,
         "potential_saving_pence": round(max(0.0, now_cost - cheapest["total_cost_pence"]), 4) if now_cost is not None else None,
         "overnight_comparison": summarize_window_candidate(best_overnight, now_cost),
         "daytime_comparison": summarize_window_candidate(best_daytime, now_cost),

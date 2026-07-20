@@ -793,6 +793,25 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(policies[0]["maximum_runs_per_window"], 2)
         self.assertEqual(policies[0]["negative_price_priority"], 80)
         self.assertEqual(policies[0]["estimated_overhead_cost_pence"], 12.5)
+        self.assertEqual(policies[0]["fixed_cost_pence"], 12.5)
+        self.assertEqual(policies[0]["non_energy_cost_pence"], 12.5)
+
+    def test_policy_calculates_true_non_energy_costs(self):
+        policies = resolve_program_policies({"Eco": {"runs": 2}}, [{
+            "program": "Eco",
+            "classification": "preferred",
+            "fixed_cost_pence": 14,
+            "water_litres": 10,
+            "water_cost_pence_per_litre": 0.25,
+            "wear_cost_pence": 3,
+        }])
+
+        self.assertEqual(policies[0]["fixed_cost_pence"], 14)
+        self.assertEqual(policies[0]["water_litres"], 10)
+        self.assertEqual(policies[0]["water_cost_pence_per_litre"], 0.25)
+        self.assertEqual(policies[0]["water_cost_pence"], 2.5)
+        self.assertEqual(policies[0]["wear_cost_pence"], 3)
+        self.assertEqual(policies[0]["non_energy_cost_pence"], 19.5)
 
     def test_configured_unlearned_policy_is_visible_in_catalogue(self):
         policies = resolve_program_policies({"Quick65": {"runs": 2}}, [
@@ -832,6 +851,7 @@ class ProgramPolicyTests(unittest.TestCase):
         self.assertEqual(policy["minimum_hours_between_runs"], 0)
         self.assertEqual(policy["maximum_runs_per_window"], 0)
         self.assertEqual(policy["negative_price_priority"], 50)
+        self.assertEqual(policy["non_energy_cost_pence"], 0)
 
     def test_days_cooldown_backfills_hours_for_backwards_compatibility(self):
         policy = normalise_program_policy({
