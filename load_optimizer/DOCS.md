@@ -27,7 +27,7 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 Start the app and open its log. A successful start includes:
 
 ```text
-Load Optimizer 0.8.29 started
+Load Optimizer 0.8.30 started
 ```
 
 Home Assistant exposes `sensor.load_optimizer_status` and a set of
