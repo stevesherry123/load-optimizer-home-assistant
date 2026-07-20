@@ -4,6 +4,15 @@
 
 - No unreleased changes.
 
+## 0.8.29
+
+- Add configurable per-program non-energy operating costs for fixed consumables,
+  water, and wear-and-tear.
+- Publish energy, non-energy, and total operating-cost breakdowns on cost and
+  scheduling recommendation entities.
+- Keep `estimated_overhead_cost_pence` as a backwards-compatible alias for the
+  new `fixed_cost_pence` policy field.
+
 ## 0.8.28
 
 - Reduce Home Assistant Recorder churn by skipping unchanged entity publishes.

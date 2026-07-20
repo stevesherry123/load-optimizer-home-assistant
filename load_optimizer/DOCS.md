@@ -27,7 +27,7 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 Start the app and open its log. A successful start includes:
 
 ```text
-Load Optimizer 0.8.28 started
+Load Optimizer 0.8.29 started
 ```
 
 Home Assistant exposes `sensor.load_optimizer_status` and a set of
@@ -59,7 +59,7 @@ Program policies are configured separately from learned measurements. Each
 policy can classify a program as `preferred`, `alternative`, `maintenance`,
 `opportunistic`, `disabled`, or `unclassified`, and can control normal and
 negative-price eligibility, preference rank, cooldown, run limits, and estimated
-non-energy overhead.
+non-energy operating costs.
 
 Newly learned programs default to `unclassified` and are not eligible for a
 recommendation until the user makes an explicit choice. Resolved policy is
@@ -113,7 +113,10 @@ instances_yaml: |
         minimum_hours_between_runs: 0
         maximum_runs_per_window: 0
         negative_price_priority: 50
-        estimated_overhead_cost_pence: 0
+        fixed_cost_pence: 0
+        water_litres: 0
+        water_cost_pence_per_litre: 0
+        wear_cost_pence: 0
 
   - id: "2"
     name: Washing Machine 1
@@ -145,6 +148,25 @@ Cooldown decisions are exposed in `program_diagnostics` with
 `maximum_runs_per_window: 0` means unlimited for future negative-price planning.
 `negative_price_priority` ranks explicitly allowed negative-price programs
 before energy intensity is used as a tie-breaker.
+
+Operating-cost fields let the recommendation show a more realistic cycle cost
+than electricity alone:
+
+- `fixed_cost_pence`: fixed per-run consumables, such as a dishwasher tablet.
+- `water_litres`: estimated water consumed by this program.
+- `water_cost_pence_per_litre`: household water and wastewater cost.
+- `wear_cost_pence`: optional depreciation or wear-and-tear allowance.
+
+The app calculates `non_energy_cost_pence` from those fields and adds it to the
+tariff-based electricity estimate. Older configurations using
+`estimated_overhead_cost_pence` still work; it is treated as
+`fixed_cost_pence`.
+
+Negative-price opportunity detection still uses the energy-cost component so
+that genuinely negative electricity windows are not hidden by tablet, water, or
+wear estimates. Published recommendation attributes expose both
+`energy_cost_pence` and `non_energy_cost_pence`, with `cost_pence` representing
+the combined total.
 
 Only `program` and `classification` are required. All other policy fields are
 optional and use the conservative defaults published in the
