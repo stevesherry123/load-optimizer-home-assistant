@@ -309,6 +309,53 @@ def best_window_candidate(candidates: list[dict], *, overnight: bool) -> dict | 
     return min(matching, key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]))
 
 
+def candidate_green_overlap_seconds(candidate: dict, green_windows: list[dict]) -> float:
+    """Return how many seconds of a candidate cycle overlap preferred green windows."""
+    start = candidate.get("start")
+    finish = candidate.get("finish")
+    if not start or not finish or not green_windows:
+        return 0.0
+    overlap_seconds = 0.0
+    for window in green_windows:
+        window_start = window.get("start")
+        window_end = window.get("end")
+        if not window_start or not window_end:
+            continue
+        overlap_start = max(start, window_start)
+        overlap_end = min(finish, window_end)
+        if overlap_end > overlap_start:
+            overlap_seconds += (overlap_end - overlap_start).total_seconds()
+    return overlap_seconds
+
+
+def annotate_green_context(candidate: dict, green_windows: list[dict]) -> dict:
+    """Attach provider-neutral green-window context to a candidate."""
+    overlap_seconds = candidate_green_overlap_seconds(candidate, green_windows)
+    runtime_seconds = max(1.0, (candidate["finish"] - candidate["start"]).total_seconds())
+    return {
+        **candidate,
+        "green_window_overlap_seconds": round(overlap_seconds),
+        "green_window_overlap_percent": round((overlap_seconds / runtime_seconds) * 100, 2),
+        "is_green_window_start": overlap_seconds > 0,
+    }
+
+
+def best_green_candidate(candidates: list[dict]) -> dict | None:
+    """Choose the cheapest candidate that materially overlaps a green window."""
+    matching = [candidate for candidate in candidates if candidate.get("green_window_overlap_seconds", 0) > 0]
+    if not matching:
+        return None
+    return min(
+        matching,
+        key=lambda item: (
+            item["total_cost_pence"],
+            -item.get("green_window_overlap_seconds", 0),
+            item["preference_rank"],
+            item["finish"],
+        ),
+    )
+
+
 def non_energy_cost_breakdown(policy: dict) -> dict:
     """Return configurable non-energy cycle costs for one program policy."""
     fixed_cost = float(policy.get("fixed_cost_pence", policy.get("estimated_overhead_cost_pence", 0)) or 0)
@@ -361,6 +408,9 @@ def summarize_window_candidate(candidate: dict | None, now_cost: float | None) -
         "saving_vs_now_pence": saving,
         "energy_kwh": candidate.get("energy_kwh"),
         "confidence": candidate.get("confidence"),
+        "green_window_overlap_seconds": candidate.get("green_window_overlap_seconds"),
+        "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
+        "is_green_window_start": candidate.get("is_green_window_start"),
     }
 
 
@@ -407,6 +457,9 @@ def summarize_decision(
         "is_overnight_start": candidate.get("is_overnight_start"),
         "is_daytime_start": candidate.get("is_daytime_start"),
         "energy_kwh_per_minute": candidate.get("energy_kwh_per_minute"),
+        "green_window_overlap_seconds": candidate.get("green_window_overlap_seconds"),
+        "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
+        "is_green_window_start": candidate.get("is_green_window_start"),
     }
 
 
@@ -424,6 +477,9 @@ def summarize_forecast_candidates(candidates: list[dict], limit: int = 300) -> l
             "confidence": candidate.get("confidence"),
             "is_overnight_start": candidate.get("is_overnight_start"),
             "is_daytime_start": candidate.get("is_daytime_start"),
+            "green_window_overlap_seconds": candidate.get("green_window_overlap_seconds"),
+            "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
+            "is_green_window_start": candidate.get("is_green_window_start"),
         })
     return forecast
 
@@ -440,6 +496,7 @@ def forecast_cycle_costs(
     overnight_end: str,
     schedule_timezone: str,
     forecast_limit: int,
+    green_windows: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     policy_by_program = {policy["program"]: policy for policy in policies}
     forecast_end = reference_utc + timedelta(hours=max(0, forecast_hours))
@@ -495,7 +552,7 @@ def forecast_cycle_costs(
                 estimate = apply_operating_costs(estimate, policy)
                 diagnostic["priced_points"] += 1
                 is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
-                candidates.append({
+                candidate = {
                     "program": model["program"],
                     "start": start,
                     "finish": start + timedelta(minutes=float(model["expected_runtime_minutes"])),
@@ -506,7 +563,8 @@ def forecast_cycle_costs(
                     "confidence": model.get("confidence", 0),
                     "is_overnight_start": is_overnight,
                     "is_daytime_start": not is_overnight,
-                })
+                }
+                candidates.append(annotate_green_context(candidate, green_windows or []))
             start += timedelta(minutes=forecast_interval_minutes)
         if diagnostic["priced_points"] == 0:
             reason = "cooldown_active" if diagnostic["rejected_cooldown_points"] else "no_fully_priced_forecast_points"
@@ -534,6 +592,7 @@ def recommend_cycle(
     forecast_hours: int = 12,
     forecast_interval_minutes: int = 30,
     forecast_limit: int = 300,
+    green_windows: list[dict] | None = None,
 ) -> dict:
     """Find the least-cost policy-eligible program and start time."""
     if schedule_strategy not in SCHEDULE_STRATEGIES:
@@ -636,6 +695,7 @@ def recommend_cycle(
                     "is_overnight_start": is_overnight,
                     "is_daytime_start": is_daytime,
                 }
+                candidate = annotate_green_context(candidate, green_windows or [])
                 comparison_candidates.append(candidate)
                 if negative and policy["allow_negative_price_run"]:
                     negative_candidates.append(candidate)
@@ -692,6 +752,7 @@ def recommend_cycle(
         now_operating_breakdown = None
     best_overnight = best_window_candidate(comparison_candidates, overnight=True)
     best_daytime = best_window_candidate(comparison_candidates, overnight=False)
+    greenest = best_green_candidate(comparison_candidates)
     immediate_candidate = min(
         comparison_candidates,
         key=lambda item: (abs((item["start"] - reference_utc).total_seconds()), item["total_cost_pence"], item["preference_rank"]),
@@ -726,6 +787,7 @@ def recommend_cycle(
         overnight_end=overnight_end,
         schedule_timezone=schedule_timezone,
         forecast_limit=forecast_limit,
+        green_windows=green_windows,
     )
     return {
         "status": "ready",
@@ -736,6 +798,12 @@ def recommend_cycle(
         "potential_saving_pence": round(max(0.0, now_cost - cheapest["total_cost_pence"]), 4) if now_cost is not None else None,
         "overnight_comparison": summarize_window_candidate(best_overnight, now_cost),
         "daytime_comparison": summarize_window_candidate(best_daytime, now_cost),
+        "greenest_comparison": summarize_window_candidate(greenest, now_cost),
+        "green_window_candidate_count": len([
+            candidate for candidate in comparison_candidates
+            if candidate.get("green_window_overlap_seconds", 0) > 0
+        ]),
+        "green_window_count": len(green_windows or []),
         "now_recommendation": summarize_decision(
             intent="now",
             candidate=immediate_candidate,
@@ -767,6 +835,14 @@ def recommend_cycle(
             now_cost=now_cost,
             ready_to_start=bool(best_negative and best_negative["start"] <= reference_utc),
             reason="best_negative_price_energy_intensity" if best_negative else "no_negative_price_candidate",
+        ),
+        "greenest_recommendation": summarize_decision(
+            intent="greenest",
+            candidate=greenest,
+            reference_utc=reference_utc,
+            now_cost=now_cost,
+            ready_to_start=bool(greenest and greenest["start"] <= reference_utc),
+            reason="best_green_window" if greenest else "no_green_window_candidate",
         ),
         "negative_price_candidate_count": len(negative_candidates),
         "cost_forecast": cost_forecast,
