@@ -388,6 +388,27 @@ solar/battery forecast. The intended model is to publish both the financial
 best option and the greener option, including the extra cost of choosing the
 greener run. This should remain optional and supplier-agnostic.
 
+To enable green-window comparison, set **Green window entity** to a Home
+Assistant calendar or entity that exposes preferred greener windows. The app
+does not require Octopus, but BottlecapDave's Octopus Energy greener-nights
+calendar is a suitable source when available:
+
+```yaml
+green_window_entity: calendar.octopus_energy_xxx_greener_nights
+```
+
+The app will continue to publish the cheapest recommendation, then additionally
+publish the best candidate that overlaps a green window:
+
+- `sensor.load_optimizer_N_greenest_recommendation`
+- `sensor.load_optimizer_N_greenest_cost`
+- `sensor.load_optimizer_N_greenest_extra_cost`
+
+`greenest_extra_cost` is the extra cost of choosing the greener candidate rather
+than the cheapest candidate. If no green-window entity is configured, or no
+candidate overlaps a green window, these entities remain `unknown` or
+`not_ready`.
+
 Supported strategy values are:
 
 - `cheapest_absolute`: choose the mathematically cheapest candidate.

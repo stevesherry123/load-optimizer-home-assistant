@@ -124,6 +124,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertFalse(config["publish_diagnostics"])
         self.assertTrue(config["publish_profile_data"])
         self.assertTrue(config["publish_cost_forecast"])
+        self.assertEqual(config["green_window_entity"], "")
 
     def test_instance_config_parses_storage_publish_options(self):
         config = instance_config("1", {
@@ -135,6 +136,14 @@ class ConfigurationTests(unittest.TestCase):
         self.assertTrue(config["publish_diagnostics"])
         self.assertFalse(config["publish_profile_data"])
         self.assertFalse(config["publish_cost_forecast"])
+
+    def test_instance_config_supports_green_window_override(self):
+        config = instance_config("1", {
+            "green_window_entity": "calendar.global_green",
+            "instance_1_green_window_entity": "calendar.appliance_green",
+        })
+
+        self.assertEqual(config["green_window_entity"], "calendar.appliance_green")
 
     def test_instance_config_does_not_duplicate_single_tariff_entity(self):
         config = instance_config("1", {

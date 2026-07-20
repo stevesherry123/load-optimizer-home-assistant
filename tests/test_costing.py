@@ -607,6 +607,47 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["cost_forecast"][0]["cost_pence"], 20.0)
         self.assertEqual(result["cost_forecast"][1]["start"], "2026-07-06T00:30:00+00:00")
 
+    def test_recommendation_includes_green_window_candidate(self):
+        model = {**self.model, "expected_runtime_minutes": 30}
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        periods = [
+            self.period(0, 30, 5),
+            self.period(30, 60, 20),
+            self.period(60, 90, 10),
+        ]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=1,
+            candidate_interval_minutes=30,
+            forecast_hours=1,
+            forecast_interval_minutes=30,
+            green_windows=[{
+                "start": self.start + timedelta(minutes=60),
+                "end": self.start + timedelta(minutes=90),
+            }],
+        )
+
+        self.assertEqual(result["program"], "Eco")
+        self.assertEqual(result["total_cost_pence"], 5.0)
+        self.assertEqual(result["green_window_count"], 1)
+        self.assertEqual(result["green_window_candidate_count"], 1)
+        self.assertEqual(result["greenest_comparison"]["start"], "2026-07-06T01:00:00+00:00")
+        self.assertEqual(result["greenest_comparison"]["cost_pence"], 10.0)
+        self.assertEqual(result["greenest_comparison"]["green_window_overlap_percent"], 100.0)
+        self.assertEqual(result["greenest_recommendation"]["program"], "Eco")
+        self.assertTrue(result["cost_forecast"][2]["is_green_window_start"])
+
     def test_cooldown_excludes_recent_program_and_uses_next_candidate(self):
         quick = {
             **self.model,

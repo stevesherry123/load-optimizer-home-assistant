@@ -9,9 +9,10 @@ import os
 import signal
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import quote, urlencode
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -20,7 +21,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.30"
+APP_VERSION = "0.8.31"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -148,6 +149,82 @@ def datetime_from_entity_state(entity_state: dict | None) -> datetime | None:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def datetime_from_value(value: object) -> datetime | None:
+    if isinstance(value, dict):
+        value = value.get("dateTime") or value.get("date")
+    if value is None:
+        return None
+    value = str(value).strip()
+    if value in {"", "unknown", "unavailable", "none", "None"}:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def green_windows_from_entity(
+    token: str,
+    entity_id: str,
+    *,
+    start: datetime,
+    end: datetime,
+) -> tuple[list[dict], dict | None]:
+    """Read provider-neutral green windows from a calendar or state entity."""
+    if not entity_id:
+        return [], None
+    entity = source_state(token, entity_id)
+    diagnostic = {
+        "entity_id": entity_id,
+        "readable": entity is not None,
+        "source": "state",
+        "windows": 0,
+    }
+    if entity is None:
+        diagnostic["reason"] = "entity_unavailable"
+        return [], diagnostic
+
+    windows = []
+    if str(entity_id).startswith("calendar."):
+        query = urlencode({
+            "start": start.astimezone(timezone.utc).isoformat(),
+            "end": end.astimezone(timezone.utc).isoformat(),
+        })
+        events = api_request(token, f"/calendars/{quote(entity_id, safe='.')}?{query}")
+        if isinstance(events, list):
+            diagnostic["source"] = "calendar_events"
+            diagnostic["events"] = len(events)
+            for event in events:
+                event_start = datetime_from_value(event.get("start"))
+                event_end = datetime_from_value(event.get("end"))
+                if event_start and event_end and event_end > start and event_start < end:
+                    windows.append({
+                        "start": max(event_start, start),
+                        "end": min(event_end, end),
+                        "summary": event.get("summary") or event.get("message"),
+                    })
+        else:
+            diagnostic["calendar_events_readable"] = False
+
+    attributes = entity.get("attributes", {})
+    state_start = datetime_from_value(attributes.get("start_time") or attributes.get("start") or attributes.get("from"))
+    state_end = datetime_from_value(attributes.get("end_time") or attributes.get("end") or attributes.get("to"))
+    if state_start and state_end and state_end > start and state_start < end:
+        windows.append({
+            "start": max(state_start, start),
+            "end": min(state_end, end),
+            "summary": attributes.get("friendly_name") or entity_id,
+        })
+
+    windows.sort(key=lambda window: window["start"])
+    diagnostic["windows"] = len(windows)
+    diagnostic["window_source_state"] = entity.get("state")
+    return windows, diagnostic
 
 
 def tariff_state_from_entity(token: str, entity_id: str) -> dict | None:
@@ -712,6 +789,7 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "tariff_entities": tariff_entities,
         "tariff_timezone": str(options.get("tariff_timezone", "Europe/London")).strip(),
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
+        "green_window_entity": str(_option_or_env(options, f"{prefix}_green_window_entity", options.get("green_window_entity", ""))).strip(),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
         "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
@@ -756,6 +834,7 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "tariff_entities": tariff_entities,
         "tariff_timezone": str(options.get("tariff_timezone", "Europe/London")).strip(),
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
+        "green_window_entity": str(entry.get("green_window_entity", options.get("green_window_entity", ""))).strip(),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
         "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
@@ -1098,6 +1177,9 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
         },
         "schedule_earliest_start_entity": result.get("schedule_earliest_start_entity"),
         "schedule_latest_finish_entity": result.get("schedule_latest_finish_entity"),
+        "green_window_entity": result.get("green_window_entity"),
+        "green_window_count": result.get("green_window_count", 0),
+        "green_window_candidate_count": result.get("green_window_candidate_count", 0),
         "constraints": {
             "earliest_allowed_start": result.get("earliest_allowed_start"),
             "latest_allowed_finish": result.get("latest_allowed_finish"),
@@ -1140,6 +1222,8 @@ def publish_cost_entities(
         common["tariff_diagnostics"] = result["tariff_diagnostics"]
     if publish_diagnostics and result.get("tariff_parse_errors") is not None:
         common["tariff_parse_errors"] = result["tariff_parse_errors"]
+    if publish_diagnostics and result.get("green_window_diagnostic") is not None:
+        common["green_window_diagnostic"] = result["green_window_diagnostic"]
     publish_entity(token, f"{prefix}_cost_status", status, {
         "friendly_name": f"{name} Cost Status",
         "icon": "mdi:currency-gbp",
@@ -1148,6 +1232,7 @@ def publish_cost_entities(
     ready = status == "ready"
     overnight_comparison = result.get("overnight_comparison") or {}
     daytime_comparison = result.get("daytime_comparison") or {}
+    greenest_comparison = result.get("greenest_comparison") or {}
     cost_forecast = result.get("cost_forecast", []) if ready else []
 
     def rounded_pence(value):
@@ -1161,6 +1246,8 @@ def publish_cost_entities(
         ("cheapest_cost", rounded_pence(result.get("total_cost_pence")) if ready else "unknown", "p", "mdi:cash-check"),
         ("overnight_cost", rounded_pence(overnight_comparison.get("cost_pence")) if ready and overnight_comparison else "unknown", "p", "mdi:weather-night"),
         ("daytime_cost", rounded_pence(daytime_comparison.get("cost_pence")) if ready and daytime_comparison else "unknown", "p", "mdi:white-balance-sunny"),
+        ("greenest_cost", rounded_pence(greenest_comparison.get("cost_pence")) if ready and greenest_comparison else "unknown", "p", "mdi:leaf"),
+        ("greenest_extra_cost", rounded_pence(max(0.0, greenest_comparison.get("cost_pence", 0) - result.get("total_cost_pence", 0))) if ready and greenest_comparison else "unknown", "p", "mdi:leaf-circle"),
         ("potential_saving", rounded_pence(result.get("potential_saving_pence")) if ready else "unknown", "p", "mdi:piggy-bank"),
         ("overnight_saving", rounded_pence(overnight_comparison.get("saving_vs_now_pence")) if ready and overnight_comparison else "unknown", "p", "mdi:weather-night"),
         ("daytime_saving", rounded_pence(daytime_comparison.get("saving_vs_now_pence")) if ready and daytime_comparison else "unknown", "p", "mdi:white-balance-sunny"),
@@ -1212,6 +1299,7 @@ def publish_cost_entities(
                 },
                 "overnight_comparison": result.get("overnight_comparison"),
                 "daytime_comparison": result.get("daytime_comparison"),
+                "greenest_comparison": result.get("greenest_comparison"),
                 "forecast_hours": result.get("forecast_hours"),
                 "forecast_interval_minutes": result.get("forecast_interval_minutes"),
             })
@@ -1221,6 +1309,12 @@ def publish_cost_entities(
                 attributes.update(result["overnight_comparison"])
             if suffix.startswith("daytime_") and result.get("daytime_comparison"):
                 attributes.update(result["daytime_comparison"])
+            if suffix.startswith("greenest_") and result.get("greenest_comparison"):
+                attributes.update(result["greenest_comparison"])
+                attributes["extra_cost_vs_cheapest_pence"] = rounded_pence(max(
+                    0.0,
+                    result["greenest_comparison"].get("cost_pence", 0) - result.get("total_cost_pence", 0),
+                ))
             if publish_diagnostics and suffix in {"cheapest_cost", "cheapest_start", "recommended_program"}:
                 attributes["cost_breakdown"] = result.get("cost_breakdown", [])
                 attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
@@ -1234,6 +1328,7 @@ def publish_cost_entities(
         ("soon", "mdi:clock-fast"),
         ("overnight", "mdi:weather-night"),
         ("negative_price", "mdi:transmission-tower-export"),
+        ("greenest", "mdi:leaf"),
     ):
         recommendation = result.get(f"{intent}_recommendation") or {}
         recommendation_ready = ready and recommendation.get("status") == "ready"
@@ -1621,6 +1716,16 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 if not periods:
                     raise ValueError("No configured tariff entity produced a supported future-rate attribute")
                 periods.sort(key=lambda period: period["start"])
+                green_window_entity = config.get("green_window_entity", "")
+                green_windows, green_window_diagnostic = green_windows_from_entity(
+                    token,
+                    green_window_entity,
+                    start=now.astimezone(timezone.utc),
+                    end=now.astimezone(timezone.utc) + timedelta(hours=max(
+                        config["cost_search_hours"],
+                        config.get("cost_forecast_hours", 12),
+                    )),
+                ) if green_window_entity else ([], None)
                 cost_result = recommend_cycle(
                     summaries,
                     policies,
@@ -1638,6 +1743,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     latest_finish_utc=latest_finish_utc,
                     forecast_hours=config.get("cost_forecast_hours", 12),
                     forecast_interval_minutes=config.get("cost_forecast_interval", 30),
+                    green_windows=green_windows,
                 )
                 cost_result.update({
                     "tariff_entity": ", ".join(tariff_entities),
@@ -1649,6 +1755,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "tariff_parse_errors": tariff_parse_errors,
                     "schedule_earliest_start_entity": earliest_start_entity,
                     "schedule_latest_finish_entity": latest_finish_entity,
+                    "green_window_entity": green_window_entity,
+                    "green_window_diagnostic": green_window_diagnostic,
                 })
             except (TypeError, ValueError) as error:
                 cost_result = {

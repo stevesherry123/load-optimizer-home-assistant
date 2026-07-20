@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- No unreleased changes.
+
+## 0.8.31
+
+- Add optional `green_window_entity` support for supplier-agnostic greener-window
+  scheduling comparisons.
+- Publish greenest recommendation, greenest cost, and extra-cost-vs-cheapest
+  entities when configured green windows overlap costed candidates.
 - Document the provider-layer architecture so tariff, green-window, solar,
   battery, and calendar inputs remain optional context rather than core
   dependencies.
