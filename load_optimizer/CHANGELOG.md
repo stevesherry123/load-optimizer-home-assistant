@@ -4,6 +4,16 @@
 
 - No unreleased changes.
 
+## 0.8.28
+
+- Reduce Home Assistant Recorder churn by skipping unchanged entity publishes.
+- Save private app state only when learned or in-progress cycle data changes.
+- Publish slimmer learned-program summaries without large profile/history arrays.
+- Add `publish_diagnostics`, `publish_profile_data`, and
+  `publish_cost_forecast` controls for storage-constrained installs.
+- Document optional Recorder exclusions for Raspberry Pi and SD-card
+  deployments.
+
 ## 0.8.27
 
 - Publish compact per-instance profile data for dashboard power-profile charts.

@@ -27,7 +27,7 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 Start the app and open its log. A successful start includes:
 
 ```text
-Load Optimizer 0.7.0 started
+Load Optimizer 0.8.28 started
 ```
 
 Home Assistant exposes `sensor.load_optimizer_status` and a set of
@@ -90,6 +90,9 @@ app fields:
 log_level: info
 scan_interval: 60
 reset_instance_ids: ""
+publish_diagnostics: false
+publish_profile_data: true
+publish_cost_forecast: true
 instances_yaml: |
   - id: "1"
     name: Dishwasher 1
@@ -282,11 +285,47 @@ daytime. By default the forecast covers the next 12 hours:
 ```yaml
 cost_forecast_hours: 12
 cost_forecast_interval: 30
+publish_diagnostics: false
+publish_profile_data: true
+publish_cost_forecast: true
 ```
 
 `cost_forecast_interval` controls chart granularity only. The optimiser can keep
 using a smaller `cost_candidate_interval` for precise recommendations while the
 forecast chart shows cleaner half-hourly points.
+
+### Storage-conscious publishing
+
+Load Optimizer keeps learned data in its private app storage, then publishes a
+dashboard-friendly subset to Home Assistant entities. To reduce database growth
+on smaller Raspberry Pi installations, repeated unchanged entity states are not
+republished, and large diagnostic attributes are disabled by default.
+
+- `publish_diagnostics: false` omits verbose tariff, forecast, breakdown, and
+  program diagnostics from routine entity attributes.
+- `publish_profile_data: true` keeps the compact chart payload available for
+  profile dashboards. Set it to `false` if disk space is more important than
+  profile charts.
+- `publish_cost_forecast: true` keeps the forecast chart payload available. Set
+  it to `false` if cost forecast charts are not used.
+
+For very tight SD-card installations, Home Assistant Recorder exclusions can
+also be used. This is optional, but useful if dashboards do not need historical
+copies of the larger derived attributes:
+
+```yaml
+recorder:
+  exclude:
+    entity_globs:
+      - sensor.load_optimizer_*_last_profile
+      - sensor.load_optimizer_*_profile_data
+      - sensor.load_optimizer_*_cost_forecast
+      - sensor.load_optimizer_*_program_model
+      - sensor.load_optimizer_*_learned_programs
+      - sensor.load_optimizer_*_program_policies
+      - sensor.load_optimizer_*_program_catalogue
+      - sensor.load_optimizer_*_discovered_programs
+```
 
 The scheduling layer is advisory-only. It republishes the current recommendation
 as explicit start guidance and a safe automation signal, but it does not call any
