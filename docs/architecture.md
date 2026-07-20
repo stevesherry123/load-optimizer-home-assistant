@@ -150,6 +150,8 @@ Examples of constraints:
 - avoid a calendar window
 - only start during an overnight or daytime window
 - only allow selected programs
+- optionally prefer or avoid windows based on local solar generation or battery
+  availability once those sources are supported
 
 Examples of strategies:
 
@@ -169,6 +171,27 @@ future EV or battery use case, the likely model is a departure deadline plus
 The current App runtime exposes advisory scheduling entities only. It should not
 start appliances until constraints, confidence thresholds, and user permissions
 have been proven through read-only operation.
+
+## Local Energy Context
+
+Status: Future design principle
+
+The tariff price is only one part of the real household cost when a home has
+solar generation or battery storage. Future cost estimation should be able to
+combine the learned load profile with optional local-energy sensors, including:
+
+- current and forecast solar generation
+- battery state of charge
+- battery charge and discharge power limits
+- battery round-trip efficiency
+- export tariff or deemed export value
+- user preference to reserve battery capacity for household resilience or other
+  loads
+
+This should remain optional and supplier-agnostic. Users without solar or
+batteries should not need to configure these fields, and users with local energy
+systems should be able to decide whether the optimiser values self-consumption,
+export revenue, battery preservation, or pure grid-import cost.
 
 ## Calendar And Deadline Context
 
