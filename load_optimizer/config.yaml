@@ -1,5 +1,5 @@
 name: Load Optimizer
-version: "0.8.27"
+version: "0.8.28"
 slug: load_optimizer
 description: Learn appliance cycles and find the most economical time and mode to run them.
 url: https://github.com/stevesherry123/load-optimizer-home-assistant
@@ -26,6 +26,9 @@ options:
   cost_forecast_hours: 12
   cost_forecast_interval: 30
   cost_candidate_interval: 5
+  publish_diagnostics: false
+  publish_profile_data: true
+  publish_cost_forecast: true
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   scan_interval: int(10,3600)
@@ -39,3 +42,6 @@ schema:
   cost_forecast_hours: int(1,72)
   cost_forecast_interval: int(5,60)
   cost_candidate_interval: int(1,30)
+  publish_diagnostics: bool
+  publish_profile_data: bool
+  publish_cost_forecast: bool

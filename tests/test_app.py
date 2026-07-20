@@ -8,7 +8,9 @@ from unittest.mock import patch
 
 from load_optimizer.app.main import (
     APP_VERSION,
+    PUBLISHED_ENTITY_CACHE,
     bootstrap_program_models,
+    bool_option,
     compact_profile_data,
     instance_config,
     instance_configs,
@@ -19,6 +21,8 @@ from load_optimizer.app.main import (
     normalise_program,
     normalise_program_policy,
     parse_instances_yaml,
+    public_program_summary,
+    publish_entity,
     profile_energy_kwh,
     profile_sample,
     program_catalogue,
@@ -28,6 +32,7 @@ from load_optimizer.app.main import (
     publish_restart_warning,
     repair_learning_quality,
     save_state,
+    save_state_if_changed,
     reset_configured_instances,
     reset_request_status,
     resolve_program_policies,
@@ -69,8 +74,41 @@ class StateStorageTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), expected)
             self.assertEqual(load_state(path), expected)
 
+    @patch("load_optimizer.app.main.save_state")
+    def test_state_is_saved_only_when_signature_changes(self, save_state_mock):
+        data = {"schema_version": 1, "instances": {"1": {"runs": 1}}}
+
+        signature = save_state_if_changed(data, None)
+        signature = save_state_if_changed(data, signature)
+        data["instances"]["1"]["runs"] = 2
+        save_state_if_changed(data, signature)
+
+        self.assertEqual(save_state_mock.call_count, 2)
+
+
+class PublishingTests(unittest.TestCase):
+    def tearDown(self):
+        PUBLISHED_ENTITY_CACHE.clear()
+
+    @patch("load_optimizer.app.main.api_request")
+    def test_publish_entity_skips_unchanged_payloads(self, api_request):
+        api_request.return_value = {"state": "ready"}
+
+        publish_entity("token", "sensor.test_storage", "ready", {"friendly_name": "Storage Test"})
+        publish_entity("token", "sensor.test_storage", "ready", {"friendly_name": "Storage Test"})
+        publish_entity("token", "sensor.test_storage", "changed", {"friendly_name": "Storage Test"})
+
+        self.assertEqual(api_request.call_count, 2)
+
 
 class ConfigurationTests(unittest.TestCase):
+    def test_bool_option_accepts_common_string_values(self):
+        self.assertTrue(bool_option("true"))
+        self.assertTrue(bool_option("on"))
+        self.assertFalse(bool_option("false", True))
+        self.assertFalse(bool_option("0", True))
+        self.assertTrue(bool_option("", True))
+
     def test_instance_config_combines_multiple_and_single_tariff_fields(self):
         config = instance_config("1", {
             "tariff_entities": "event.current_day_rates, event.next_day_rates",
@@ -82,6 +120,20 @@ class ConfigurationTests(unittest.TestCase):
             "event.next_day_rates",
             "sensor.single_feed",
         ])
+        self.assertFalse(config["publish_diagnostics"])
+        self.assertTrue(config["publish_profile_data"])
+        self.assertTrue(config["publish_cost_forecast"])
+
+    def test_instance_config_parses_storage_publish_options(self):
+        config = instance_config("1", {
+            "publish_diagnostics": "true",
+            "publish_profile_data": "false",
+            "publish_cost_forecast": "off",
+        })
+
+        self.assertTrue(config["publish_diagnostics"])
+        self.assertFalse(config["publish_profile_data"])
+        self.assertFalse(config["publish_cost_forecast"])
 
     def test_instance_config_does_not_duplicate_single_tariff_entity(self):
         config = instance_config("1", {
@@ -371,6 +423,7 @@ class InstanceMonitoringTests(unittest.TestCase):
             "tariff_price_unit": "gbp_per_kwh",
             "cost_search_hours": 1,
             "cost_candidate_interval": 30,
+            "publish_diagnostics": True,
         }
 
         update_instance("token", database, config, datetime(2026, 1, 1, tzinfo=timezone.utc))
@@ -617,6 +670,23 @@ class ProgramLearningTests(unittest.TestCase):
         })
 
         self.assertEqual(summary["last_seen"], "2026-01-01T12:00:00+00:00")
+
+    def test_public_program_summary_excludes_large_internal_fields(self):
+        summary = {
+            "program": "Eco",
+            "runs": 3,
+            "confidence": 60,
+            "representative_profile_w": [1, 2, 3],
+            "recent_cycles": [{"finish": "2026-01-01T12:00:00+00:00"}],
+        }
+
+        public = public_program_summary(summary)
+
+        self.assertEqual(public["program"], "Eco")
+        self.assertEqual(public["runs"], 3)
+        self.assertEqual(public["confidence"], 60)
+        self.assertNotIn("representative_profile_w", public)
+        self.assertNotIn("recent_cycles", public)
 
     def test_compact_profile_data_exposes_chart_ready_points(self):
         instance = {}

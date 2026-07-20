@@ -8,6 +8,7 @@ import math
 import os
 import signal
 import threading
+import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,7 +20,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.27"
+APP_VERSION = "0.8.28"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -37,6 +38,8 @@ PROGRAM_CLASSIFICATIONS = {
 
 LOGGER = logging.getLogger("load_optimizer")
 STOP_EVENT = threading.Event()
+PUBLISHED_ENTITY_CACHE: dict[str, str] = {}
+API_WARNING_CACHE: dict[str, float] = {}
 
 
 def configure_logging() -> None:
@@ -65,6 +68,17 @@ def save_state(data: dict, path: Path = DATA_PATH) -> None:
     temporary_path.replace(path)
 
 
+def state_signature(data: dict) -> str:
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def save_state_if_changed(data: dict, previous_signature: str | None, path: Path = DATA_PATH) -> str:
+    signature = state_signature(data)
+    if signature != previous_signature:
+        save_state(data, path)
+    return signature
+
+
 def load_options(path: Path = OPTIONS_PATH) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -87,7 +101,11 @@ def api_request(token: str, path: str, payload: dict | None = None) -> dict | No
         with urlopen(request, timeout=10) as response:
             return json.loads(response.read().decode("utf-8"))
     except (HTTPError, URLError, TimeoutError) as error:
-        LOGGER.warning("Home Assistant API request failed for %s: %s", path, error)
+        warning_key = f"{path}:{type(error).__name__}:{error}"
+        now = time.monotonic()
+        if now - API_WARNING_CACHE.get(warning_key, 0) >= 300:
+            API_WARNING_CACHE[warning_key] = now
+            LOGGER.warning("Home Assistant API request failed for %s: %s", path, error)
         return None
 
 
@@ -102,7 +120,13 @@ def render_template(token: str, template: str) -> object | None:
 
 
 def publish_entity(token: str, entity_id: str, state: object, attributes: dict) -> None:
-    api_request(token, f"/states/{entity_id}", {"state": str(state), "attributes": attributes})
+    payload = {"state": str(state), "attributes": attributes}
+    signature = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    if PUBLISHED_ENTITY_CACHE.get(entity_id) == signature:
+        return
+    response = api_request(token, f"/states/{entity_id}", payload)
+    if response is not None:
+        PUBLISHED_ENTITY_CACHE[entity_id] = signature
 
 
 def source_state(token: str, entity_id: str) -> dict | None:
@@ -403,6 +427,24 @@ def program_summary(program: str, model: dict) -> dict:
     }
 
 
+def public_program_summary(summary: dict) -> dict:
+    """Remove large internal profile/history fields before publishing to HA."""
+    public_keys = (
+        "program",
+        "runs",
+        "first_seen",
+        "last_seen",
+        "profile_count",
+        "expected_runtime_minutes",
+        "runtime_stddev_minutes",
+        "expected_energy_kwh",
+        "energy_stddev_kwh",
+        "average_peak_power_w",
+        "confidence",
+    )
+    return {key: summary.get(key) for key in public_keys}
+
+
 def compact_profile_data(models: dict, last_cycle: dict) -> dict:
     """Build a small chart-friendly profile payload for dashboard cards."""
     program_profiles = []
@@ -648,6 +690,9 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
         "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
         "cost_candidate_interval": int(options.get("cost_candidate_interval", 5)),
+        "publish_diagnostics": bool_option(options.get("publish_diagnostics"), False),
+        "publish_profile_data": bool_option(options.get("publish_profile_data"), True),
+        "publish_cost_forecast": bool_option(options.get("publish_cost_forecast"), True),
     }
 
 
@@ -689,6 +734,9 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
         "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
         "cost_candidate_interval": int(options.get("cost_candidate_interval", 5)),
+        "publish_diagnostics": bool_option(entry.get("publish_diagnostics", options.get("publish_diagnostics")), False),
+        "publish_profile_data": bool_option(entry.get("publish_profile_data", options.get("publish_profile_data")), True),
+        "publish_cost_forecast": bool_option(entry.get("publish_cost_forecast", options.get("publish_cost_forecast")), True),
     }
 
 
@@ -791,6 +839,16 @@ def entity_list(raw: object) -> list[str]:
     if isinstance(raw, list):
         return [str(item).strip() for item in raw if str(item).strip()]
     return [item.strip() for item in str(raw).split(",") if item.strip()]
+
+
+def bool_option(value: object, default: bool = False) -> bool:
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "enable", "enabled"}
 
 
 def parse_instance_ids(raw_ids: object, default: list[str] | None = None) -> list[str]:
@@ -1024,7 +1082,15 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
     }
 
 
-def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> None:
+def publish_cost_entities(
+    token: str,
+    prefix: str,
+    name: str,
+    result: dict,
+    *,
+    publish_diagnostics: bool = False,
+    publish_cost_forecast: bool = True,
+) -> None:
     status = result.get("status", "error")
     common = {
         "tariff_entity": result.get("tariff_entity"),
@@ -1041,11 +1107,12 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
             "rejected_constraints": result.get("rejected_constraints", 0),
             "rejected_cooldowns": result.get("rejected_cooldowns", 0),
         },
-        "program_diagnostics": result.get("program_diagnostics", []),
     }
-    if result.get("tariff_diagnostics") is not None:
+    if publish_diagnostics:
+        common["program_diagnostics"] = result.get("program_diagnostics", [])
+    if publish_diagnostics and result.get("tariff_diagnostics") is not None:
         common["tariff_diagnostics"] = result["tariff_diagnostics"]
-    if result.get("tariff_parse_errors") is not None:
+    if publish_diagnostics and result.get("tariff_parse_errors") is not None:
         common["tariff_parse_errors"] = result["tariff_parse_errors"]
     publish_entity(token, f"{prefix}_cost_status", status, {
         "friendly_name": f"{name} Cost Status",
@@ -1110,20 +1177,21 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
                     "rejected_constraints": result.get("rejected_constraints", 0),
                     "rejected_cooldowns": result.get("rejected_cooldowns", 0),
                 },
-                "program_diagnostics": result.get("program_diagnostics", []),
                 "overnight_comparison": result.get("overnight_comparison"),
                 "daytime_comparison": result.get("daytime_comparison"),
                 "forecast_hours": result.get("forecast_hours"),
                 "forecast_interval_minutes": result.get("forecast_interval_minutes"),
             })
+            if publish_diagnostics:
+                attributes["program_diagnostics"] = result.get("program_diagnostics", [])
             if suffix.startswith("overnight_") and result.get("overnight_comparison"):
                 attributes.update(result["overnight_comparison"])
             if suffix.startswith("daytime_") and result.get("daytime_comparison"):
                 attributes.update(result["daytime_comparison"])
-            if suffix in {"cheapest_cost", "cheapest_start", "recommended_program"}:
+            if publish_diagnostics and suffix in {"cheapest_cost", "cheapest_start", "recommended_program"}:
                 attributes["cost_breakdown"] = result.get("cost_breakdown", [])
                 attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
-            if suffix == "cost_if_started_now":
+            if publish_diagnostics and suffix == "cost_if_started_now":
                 attributes["cost_breakdown"] = result.get("cost_if_started_now_breakdown", [])
                 attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
         publish_entity(token, f"{prefix}_{suffix}", value if value is not None else "unknown", attributes)
@@ -1162,7 +1230,7 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
         float(row["cost_pence"]) for row in cost_forecast
         if row.get("cost_pence") is not None
     ]
-    publish_entity(token, f"{prefix}_cost_forecast", rounded_pence(min(forecast_costs)) if forecast_costs else "unknown", {
+    forecast_attributes = {
         "friendly_name": f"{name} Cost Forecast",
         "icon": "mdi:chart-line",
         "unit_of_measurement": "p",
@@ -1170,10 +1238,19 @@ def publish_cost_entities(token: str, prefix: str, name: str, result: dict) -> N
         "forecast_hours": result.get("forecast_hours") if ready else None,
         "forecast_interval_minutes": result.get("forecast_interval_minutes") if ready else None,
         "forecast_points": len(cost_forecast),
-        "forecast_diagnostics": result.get("forecast_diagnostics", []) if ready else [],
-        "forecast": cost_forecast,
+        "forecast_publishing": publish_cost_forecast,
         "forecast_format": "program, start, finish, cost_pence, energy_kwh, confidence, is_overnight_start, is_daytime_start",
-    })
+    }
+    if publish_diagnostics:
+        forecast_attributes["forecast_diagnostics"] = result.get("forecast_diagnostics", []) if ready else []
+    if publish_cost_forecast:
+        forecast_attributes["forecast"] = cost_forecast
+    publish_entity(
+        token,
+        f"{prefix}_cost_forecast",
+        rounded_pence(min(forecast_costs)) if forecast_costs and publish_cost_forecast else "unknown",
+        forecast_attributes,
+    )
 
 
 def publish_schedule_entities(token: str, prefix: str, name: str, advice: dict) -> None:
@@ -1475,7 +1552,14 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "tariff_diagnostics": tariff_diagnostics,
                     "reason": str(error),
                 }
-    publish_cost_entities(token, prefix, name, cost_result)
+    publish_cost_entities(
+        token,
+        prefix,
+        name,
+        cost_result,
+        publish_diagnostics=config.get("publish_diagnostics", False),
+        publish_cost_forecast=config.get("publish_cost_forecast", True),
+    )
     publish_schedule_entities(token, prefix, name, schedule_advice(cost_result, config, now))
     latest_program = normalise_program(last.get("program"))
     selected_program = latest_program if latest_program in models else (next(iter(sorted(models)), None))
@@ -1483,7 +1567,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     publish_entity(token, f"{prefix}_learned_programs", len(models), {
         "friendly_name": f"{name} Learned Programs",
         "icon": "mdi:database-check",
-        "programs": summaries,
+        "programs": [public_program_summary(summary) for summary in summaries],
     })
     publish_entity(token, f"{prefix}_program_model", selected_program or "none", {
         "friendly_name": f"{name} Program Model",
@@ -1496,12 +1580,20 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         ] if len(selected_summary.get("representative_profile_w", [])) > 1 else [],
     })
     profile = last.get("power_profile", [])
-    profile_payload = compact_profile_data(models, last)
-    publish_entity(token, f"{prefix}_profile_data", len(profile_payload["program_profiles"]), {
-        "friendly_name": f"{name} Profile Data",
-        "icon": "mdi:chart-line",
-        **profile_payload,
-    })
+    if config.get("publish_profile_data", True):
+        profile_payload = compact_profile_data(models, last)
+        publish_entity(token, f"{prefix}_profile_data", len(profile_payload["program_profiles"]), {
+            "friendly_name": f"{name} Profile Data",
+            "icon": "mdi:chart-line",
+            **profile_payload,
+        })
+    else:
+        publish_entity(token, f"{prefix}_profile_data", "disabled", {
+            "friendly_name": f"{name} Profile Data",
+            "icon": "mdi:chart-line",
+            "profile_publishing": False,
+            "message": "Profile data publishing is disabled in Load Optimizer configuration.",
+        })
     publish_entity(token, f"{prefix}_last_profile", "ready" if profile else "none", {
         "friendly_name": f"{name} Last Power Profile",
         "icon": "mdi:chart-line",
@@ -1587,13 +1679,14 @@ def main() -> None:
     interval = max(10, int(os.getenv("LOAD_OPTIMIZER_SCAN_INTERVAL", "60")))
     options = load_options()
     state = load_state()
+    state_cache = state_signature(state)
     reset_configured_instances(state, options)
     configs = instance_configs(options)
     bootstrap_program_models(state)
     repair_learning_quality(state, configs)
     startup_running = running_instances(state, configs)
     mark_interrupted_captures(state, startup_running)
-    save_state(state)
+    state_cache = save_state_if_changed(state, state_cache)
     health_server = run_health_server()
 
     signal.signal(signal.SIGTERM, stop)
@@ -1606,7 +1699,7 @@ def main() -> None:
         while not STOP_EVENT.is_set():
             for config in configs:
                 update_instance(token, state, config)
-            save_state(state)
+            state_cache = save_state_if_changed(state, state_cache)
             active_captures = running_instances(state, configs)
             publish_status(
                 token,
