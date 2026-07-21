@@ -2,6 +2,8 @@
 #
 # Paste this card stack into the Dishwasher 1 dashboard view after installing
 # `homeassistant/packages/load_optimizer_dishwasher_automation.yaml`.
+#
+# Requires Load Optimizer 0.8.32 or later for the decision-policy attributes.
 
 type: vertical-stack
 cards:
@@ -69,3 +71,90 @@ cards:
           service: input_button.press
           target:
             entity_id: input_button.load_optimizer_1_cancel_schedule
+
+  - type: markdown
+    title: Why This Program?
+    content: |-
+      {% set policy = state_attr('sensor.load_optimizer_1_cost_status', 'decision_policy') or {} -%}
+      {% set selected = policy.get('selected_program', 'none') -%}
+      {% set start = policy.get('selected_start') -%}
+      {% set finish = policy.get('selected_finish') -%}
+      {% set cost = policy.get('selected_cost_pence') -%}
+      {% set factors = policy.get('selection_factors') or [] -%}
+      | Metric | Value |
+      |---|---:|
+      | Selected program | {{ selected }} |
+      | Selected cost | {% if cost is number %}£{{ (cost / 100) | round(2) }}{% else %}unknown{% endif %} |
+      | Confidence | {{ policy.get('selected_confidence', 'unknown') }}% |
+      | Preference rank | {{ policy.get('selected_preference_rank', 'unknown') }} |
+      | Eligible programs | {{ policy.get('eligible_program_count', 0) }} |
+      | Costed programs | {{ policy.get('costed_program_count', 0) }} |
+      | Start | {% if start %}{{ as_timestamp(as_datetime(start)) | timestamp_custom('%a %H:%M', true) }}{% else %}unknown{% endif %} |
+      | Finish | {% if finish %}{{ as_timestamp(as_datetime(finish)) | timestamp_custom('%a %H:%M', true) }}{% else %}unknown{% endif %} |
+      | Why | {{ factors | join(', ') if factors else 'No decision factors published yet' }} |
+
+  - type: markdown
+    title: Alternative Programs
+    content: |-
+      {% set policy = state_attr('sensor.load_optimizer_1_cost_status', 'decision_policy') or {} -%}
+      {% set alternatives = policy.get('alternative_programs') or [] -%}
+      {% if alternatives | length == 0 -%}
+      No alternative costed programs are currently available.
+      {% else -%}
+      | Program | Cost | Confidence | Start |
+      |---|---:|---:|---:|
+      {%- for item in alternatives %}
+      | {{ item.program }} | {% if item.cost_pence is number %}£{{ (item.cost_pence / 100) | round(2) }}{% else %}unknown{% endif %} | {{ item.confidence | default('unknown') }}% | {% if item.start %}{{ as_timestamp(as_datetime(item.start)) | timestamp_custom('%a %H:%M', true) }}{% else %}unknown{% endif %} |
+      {%- endfor %}
+      {% endif -%}
+
+  - type: conditional
+    conditions:
+      - condition: state
+        entity: sensor.load_optimizer_1_cost_status
+        state_not: unavailable
+    card:
+      type: markdown
+      title: Cooldown Rotation
+      content: |-
+        {% set policy = state_attr('sensor.load_optimizer_1_cost_status', 'decision_policy') or {} -%}
+        {% set cooldowns = policy.get('cooldown_programs') or [] -%}
+        {% if cooldowns | length == 0 -%}
+        No programs are currently being rotated out by cooldown.
+        {% else -%}
+        | Program | Reason | Cooldown Until |
+        |---|---|---:|
+        {%- for item in cooldowns %}
+        | {{ item.program }} | {{ item.reason }} | {% if item.cooldown_until %}{{ as_timestamp(as_datetime(item.cooldown_until)) | timestamp_custom('%a %H:%M', true) }}{% else %}unknown{% endif %} |
+        {%- endfor %}
+        {% endif -%}
+
+  - type: markdown
+    title: Excluded Programs
+    content: |-
+      {% set policy = state_attr('sensor.load_optimizer_1_cost_status', 'decision_policy') or {} -%}
+      {% set excluded = policy.get('excluded_programs') or [] -%}
+      {% if excluded | length == 0 -%}
+      No configured programs are currently excluded.
+      {% else -%}
+      | Program | Reason | Confidence |
+      |---|---|---:|
+      {%- for item in excluded %}
+      | {{ item.program }} | {{ item.reason }} | {{ item.confidence | default('unknown') }}% |
+      {%- endfor %}
+      {% endif -%}
+
+  - type: entities
+    title: Automation Safety
+    show_header_toggle: false
+    entities:
+      - entity: sensor.load_optimizer_restart_safety
+        name: Restart Safety
+      - entity: sensor.load_optimizer_1_execution_status
+        name: Execution Status
+      - entity: sensor.load_optimizer_1_last_start_result
+        name: Last Start Result
+      - entity: sensor.load_optimizer_1_last_start_failure_reason
+        name: Last Failure Reason
+      - entity: sensor.load_optimizer_1_last_start_attempt
+        name: Last Start Attempt
