@@ -4,6 +4,17 @@
 
 - No unreleased changes.
 
+## 0.8.32
+
+- Publish a compact `decision_policy` summary on cost, schedule, and intent
+  recommendation entities so dashboards can explain selected programs,
+  alternatives, cooldown rotation, and exclusions without enabling full
+  diagnostics.
+- Make the dishwasher automation package execute against the captured requested
+  start helper instead of a moving live recommendation timestamp.
+- Expire stale dishwasher start requests after a safety window, record the
+  outcome, announce it, and clear request helpers to prevent repeated retries.
+
 ## 0.8.31
 
 - Add optional `green_window_entity` support for supplier-agnostic greener-window

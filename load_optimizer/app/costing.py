@@ -463,6 +463,119 @@ def summarize_decision(
     }
 
 
+def summarize_program_rotation(program_diagnostics: list[dict], limit: int = 10) -> dict:
+    """Return a compact explanation of program availability and cooldown state."""
+    excluded = []
+    cooldowns = []
+    for diagnostic in program_diagnostics:
+        item = {
+            "program": diagnostic.get("program"),
+            "status": diagnostic.get("status"),
+            "reason": diagnostic.get("reason"),
+            "confidence": diagnostic.get("confidence"),
+            "priced_points": diagnostic.get("priced_points", 0),
+        }
+        if diagnostic.get("cooldown_until"):
+            item["cooldown_until"] = diagnostic["cooldown_until"]
+            item["minimum_hours_between_runs"] = diagnostic.get("minimum_hours_between_runs")
+        if diagnostic.get("status") != "included":
+            excluded.append(item)
+        if diagnostic.get("reason") == "cooldown_active" or diagnostic.get("rejected_cooldown_points", 0):
+            cooldowns.append(item)
+    return {
+        "excluded_programs": excluded[:limit],
+        "cooldown_programs": cooldowns[:limit],
+    }
+
+
+def summarize_alternative_programs(candidates: list[dict], selected: dict, limit: int = 8) -> list[dict]:
+    """Summarise the cheapest visible option for each alternative program."""
+    best_by_program = {}
+    for candidate in candidates:
+        program = candidate.get("program")
+        if not program or program == selected.get("program"):
+            continue
+        previous = best_by_program.get(program)
+        if previous is None or candidate["total_cost_pence"] < previous["total_cost_pence"]:
+            best_by_program[program] = candidate
+    alternatives = sorted(
+        best_by_program.values(),
+        key=lambda item: (item["total_cost_pence"], item.get("preference_rank", 50), item["finish"]),
+    )
+    return [
+        {
+            "program": item.get("program"),
+            "start": item.get("start").isoformat() if item.get("start") else None,
+            "finish": item.get("finish").isoformat() if item.get("finish") else None,
+            "cost_pence": item.get("total_cost_pence"),
+            "confidence": item.get("confidence"),
+            "preference_rank": item.get("preference_rank"),
+            "negative_price_run": item.get("negative_price_run"),
+            "green_window_overlap_percent": item.get("green_window_overlap_percent"),
+        }
+        for item in alternatives[:limit]
+    ]
+
+
+def summarize_selection_policy(
+    *,
+    selected: dict,
+    candidates: list[dict],
+    comparison_candidates: list[dict],
+    program_diagnostics: list[dict],
+    schedule_strategy: str,
+    window_preference: str,
+    equivalent_cost_tolerance_pence: float,
+    now_cost: float | None,
+    best_overnight: dict | None,
+    best_daytime: dict | None,
+    greenest: dict | None,
+    best_negative: dict | None,
+    latest_allowed_finish: datetime | None,
+) -> dict:
+    rotation = summarize_program_rotation(program_diagnostics)
+    selected_cost = selected.get("total_cost_pence")
+    factors = [
+        f"schedule_strategy:{schedule_strategy}",
+        f"window_preference:{window_preference}",
+    ]
+    if equivalent_cost_tolerance_pence:
+        factors.append(f"equivalent_cost_tolerance_pence:{equivalent_cost_tolerance_pence}")
+    if latest_allowed_finish:
+        factors.append("latest_finish_constraint_active")
+    if rotation["cooldown_programs"]:
+        factors.append("cooldown_rotation_active")
+    if selected.get("negative_price_run"):
+        factors.append("negative_price_candidate")
+    if selected.get("green_window_overlap_seconds", 0) > 0:
+        factors.append("green_window_overlap")
+
+    def delta(candidate: dict | None) -> float | None:
+        if not candidate or selected_cost is None or candidate.get("total_cost_pence") is None:
+            return None
+        return round(candidate["total_cost_pence"] - selected_cost, 4)
+
+    return {
+        "selected_program": selected.get("program"),
+        "selected_start": selected.get("start").isoformat() if selected.get("start") else None,
+        "selected_finish": selected.get("finish").isoformat() if selected.get("finish") else None,
+        "selected_cost_pence": selected_cost,
+        "selected_confidence": selected.get("confidence"),
+        "selected_preference_rank": selected.get("preference_rank"),
+        "selection_factors": factors,
+        "eligible_program_count": len({item.get("program") for item in candidates}),
+        "costed_program_count": len({item.get("program") for item in comparison_candidates}),
+        "alternative_programs": summarize_alternative_programs(comparison_candidates, selected),
+        "excluded_programs": rotation["excluded_programs"],
+        "cooldown_programs": rotation["cooldown_programs"],
+        "cost_if_started_now_pence": now_cost,
+        "overnight_delta_pence": delta(best_overnight),
+        "daytime_delta_pence": delta(best_daytime),
+        "greenest_delta_pence": delta(greenest),
+        "negative_price_program": best_negative.get("program") if best_negative else None,
+    }
+
+
 def summarize_forecast_candidates(candidates: list[dict], limit: int = 300) -> list[dict]:
     forecast = []
     for candidate in sorted(candidates, key=lambda item: (item["program"], item["start"]))[:limit]:
@@ -799,6 +912,21 @@ def recommend_cycle(
         "overnight_comparison": summarize_window_candidate(best_overnight, now_cost),
         "daytime_comparison": summarize_window_candidate(best_daytime, now_cost),
         "greenest_comparison": summarize_window_candidate(greenest, now_cost),
+        "decision_policy": summarize_selection_policy(
+            selected=cheapest,
+            candidates=candidates,
+            comparison_candidates=comparison_candidates,
+            program_diagnostics=program_diagnostics,
+            schedule_strategy=schedule_strategy,
+            window_preference=window_preference,
+            equivalent_cost_tolerance_pence=equivalent_cost_tolerance_pence,
+            now_cost=now_cost,
+            best_overnight=best_overnight,
+            best_daytime=best_daytime,
+            greenest=greenest,
+            best_negative=best_negative,
+            latest_allowed_finish=latest_allowed_finish,
+        ),
         "green_window_candidate_count": len([
             candidate for candidate in comparison_candidates
             if candidate.get("green_window_overlap_seconds", 0) > 0
