@@ -212,6 +212,11 @@ automation:
       recommendation_ready_to_start: "{{ state_attr(recommendation_entity, 'ready_to_start') }}"
       requested_program: "{{ states('input_text.load_optimizer_1_requested_program') }}"
       requested_start: "{{ states('input_datetime.load_optimizer_1_requested_start') }}"
+      selected_start: >-
+        {{ requested_start
+           if requested_start not in ['unknown', 'unavailable', 'none', None, '']
+           else recommendation_start }}
+      maximum_start_lag_minutes: 30
       selected_program: >-
         {{ requested_program
            if requested_program not in ['unknown', 'unavailable', 'none', None, '']
@@ -240,8 +245,11 @@ automation:
            and states(bosch_remote_control_sensor) == 'on'
            and states(bosch_remote_start_sensor) == 'on' }}
       due_by_time: >-
-        {{ recommendation_start not in ['unknown', 'unavailable', 'none', None, '']
-           and now() >= as_datetime(recommendation_start) }}
+        {{ selected_start not in ['unknown', 'unavailable', 'none', None, '']
+           and as_timestamp(now()) >= as_timestamp(as_datetime(selected_start)) }}
+      stale_request: >-
+        {{ selected_start not in ['unknown', 'unavailable', 'none', None, '']
+           and as_timestamp(now()) > as_timestamp(as_datetime(selected_start)) + (maximum_start_lag_minutes * 60) }}
       due_now: >-
         {{ requested_mode == 'now'
            and (recommendation_ready_to_start == true or due_by_time) }}
@@ -253,7 +261,15 @@ automation:
       executing_message: >-
         Dishwasher execution started for {{ selected_program }}.
         key={{ selected_program_key }},
-        due={{ recommendation_start }}.
+        due={{ selected_start }}.
+      stale_request_message: >-
+        Dishwasher start request expired without being run:
+        {{ selected_program }} was due at {{ selected_start }}.
+        Please request a fresh schedule.
+      stale_request_reason: >-
+        stale_request program={{ selected_program }}
+        due={{ selected_start }}
+        lag_limit_minutes={{ maximum_start_lag_minutes }}
       not_ready_message: >-
         Dishwasher is not ready to start {{ selected_program }}.
         Connected={{ states(bosch_connected_sensor) }},
@@ -288,13 +304,13 @@ automation:
       - condition: template
         value_template: "{{ requested_mode in ['now', 'soon', 'overnight'] }}"
       - condition: template
-        value_template: "{{ recommendation_status == 'ready' }}"
+        value_template: "{{ recommendation_status == 'ready' or stale_request }}"
       - condition: template
         value_template: "{{ selected_program not in ['unknown', 'unavailable', 'none', None, ''] }}"
       - condition: template
         value_template: "{{ states('sensor.load_optimizer_1_cycle_state') == 'idle' }}"
       - condition: template
-        value_template: "{{ due_now or due_scheduled }}"
+        value_template: "{{ due_now or due_scheduled or stale_request }}"
     actions:
       - action: input_text.set_value
         target:
@@ -340,6 +356,43 @@ automation:
         target:
           entity_id: script.load_optimizer_announce
       - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ stale_request }}"
+            sequence:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.announce_text
+                data:
+                  value: "{{ stale_request_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_scheduler_message
+                data:
+                  value: "{{ stale_request_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_status
+                data:
+                  value: expired
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: expired
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_failure_reason
+                data:
+                  value: "{{ stale_request_reason[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_message
+                data:
+                  value: "{{ stale_request_message[:255] }}"
+              - action: script.turn_on
+                target:
+                  entity_id: script.load_optimizer_announce
           - conditions:
               - condition: template
                 value_template: "{{ not bosch_ready }}"

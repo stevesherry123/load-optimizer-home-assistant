@@ -21,7 +21,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.31"
+APP_VERSION = "0.8.32"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -1186,6 +1186,7 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
             "rejected_constraints": result.get("rejected_constraints", 0),
             "rejected_cooldowns": result.get("rejected_cooldowns", 0),
         },
+        "decision_policy": result.get("decision_policy"),
         "program_diagnostics": result.get("program_diagnostics", []),
     }
 
@@ -1215,6 +1216,7 @@ def publish_cost_entities(
             "rejected_constraints": result.get("rejected_constraints", 0),
             "rejected_cooldowns": result.get("rejected_cooldowns", 0),
         },
+        "decision_policy": result.get("decision_policy"),
     }
     if publish_diagnostics:
         common["program_diagnostics"] = result.get("program_diagnostics", [])
@@ -1297,6 +1299,7 @@ def publish_cost_entities(
                     "rejected_constraints": result.get("rejected_constraints", 0),
                     "rejected_cooldowns": result.get("rejected_cooldowns", 0),
                 },
+                "decision_policy": result.get("decision_policy"),
                 "overnight_comparison": result.get("overnight_comparison"),
                 "daytime_comparison": result.get("daytime_comparison"),
                 "greenest_comparison": result.get("greenest_comparison"),
@@ -1355,6 +1358,7 @@ def publish_cost_entities(
             "negative_price_run": recommendation.get("negative_price_run"),
             "is_overnight_start": recommendation.get("is_overnight_start"),
             "is_daytime_start": recommendation.get("is_daytime_start"),
+            "decision_policy": result.get("decision_policy"),
         }
         publish_entity(token, f"{prefix}_{intent}_recommendation", state or "not_ready", attributes)
     forecast_costs = [

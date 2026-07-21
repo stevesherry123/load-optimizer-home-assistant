@@ -695,6 +695,11 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(quick_diagnostic["status"], "excluded")
         self.assertEqual(quick_diagnostic["reason"], "cooldown_active")
         self.assertEqual(quick_diagnostic["cooldown_until"], "2026-07-07T10:00:00+00:00")
+        policy = result["decision_policy"]
+        self.assertEqual(policy["selected_program"], "Super60")
+        self.assertIn("cooldown_rotation_active", policy["selection_factors"])
+        self.assertEqual(policy["cooldown_programs"][0]["program"], "Quick65")
+        self.assertEqual(policy["cooldown_programs"][0]["reason"], "cooldown_active")
 
     def test_cooldown_allows_program_after_cooldown_expires_in_window(self):
         quick = {
@@ -727,6 +732,54 @@ class CostEstimationTests(unittest.TestCase):
         diagnostic = result["program_diagnostics"][0]
         self.assertEqual(diagnostic["status"], "included")
         self.assertEqual(diagnostic["rejected_cooldown_points"], 2)
+
+    def test_decision_policy_lists_alternative_programs(self):
+        quick = {
+            **self.model,
+            "program": "Quick65",
+            "expected_energy_kwh": 1.0,
+        }
+        eco = {
+            **self.model,
+            "program": "Eco50",
+            "expected_energy_kwh": 1.2,
+        }
+        policies = [
+            {
+                "program": "Quick65",
+                "enabled": True,
+                "allow_normal_recommendation": True,
+                "allow_negative_price_run": False,
+                "preference_rank": 10,
+                "minimum_hours_between_runs": 0,
+                "estimated_overhead_cost_pence": 0,
+            },
+            {
+                "program": "Eco50",
+                "enabled": True,
+                "allow_normal_recommendation": True,
+                "allow_negative_price_run": False,
+                "preference_rank": 20,
+                "minimum_hours_between_runs": 0,
+                "estimated_overhead_cost_pence": 0,
+            },
+        ]
+
+        result = recommend_cycle(
+            [quick, eco],
+            policies,
+            [self.period(0, 180, 10)],
+            reference_utc=self.start,
+            search_hours=2,
+            candidate_interval_minutes=30,
+        )
+
+        policy = result["decision_policy"]
+        self.assertEqual(policy["selected_program"], "Quick65")
+        self.assertEqual(policy["eligible_program_count"], 2)
+        self.assertEqual(policy["costed_program_count"], 2)
+        self.assertEqual(policy["alternative_programs"][0]["program"], "Eco50")
+        self.assertEqual(policy["alternative_programs"][0]["cost_pence"], 12.0)
 
 
 if __name__ == "__main__":
