@@ -4,6 +4,12 @@
 
 - No unreleased changes.
 
+## 0.8.33
+
+- Publish configured green-window source, green-window count, and matching
+  candidate count on the main cost entities so dashboards can distinguish
+  missing configuration from a configured source with no overlapping candidates.
+
 ## 0.8.32
 
 - Publish a compact `decision_policy` summary on cost, schedule, and intent
