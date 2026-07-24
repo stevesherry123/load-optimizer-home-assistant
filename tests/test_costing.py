@@ -648,6 +648,47 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["greenest_recommendation"]["program"], "Eco")
         self.assertTrue(result["cost_forecast"][2]["is_green_window_start"])
 
+    def test_blocked_window_excludes_recommendation_and_forecast_candidates(self):
+        model = {**self.model, "expected_runtime_minutes": 30}
+        policy = {
+            "program": "Eco",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+        periods = [
+            self.period(0, 30, 5),
+            self.period(30, 60, 20),
+            self.period(60, 90, 10),
+        ]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=self.start,
+            search_hours=1,
+            candidate_interval_minutes=30,
+            forecast_hours=1,
+            forecast_interval_minutes=30,
+            blocked_windows=[{
+                "start": self.start,
+                "end": self.start + timedelta(minutes=30),
+            }],
+        )
+
+        self.assertEqual(result["program"], "Eco")
+        self.assertEqual(result["start"], self.start + timedelta(minutes=60))
+        self.assertEqual(result["total_cost_pence"], 10.0)
+        self.assertEqual(result["cost_if_started_now_pence"], None)
+        self.assertEqual(result["blocked_window_count"], 1)
+        self.assertEqual(result["blocked_window_candidate_count"], 1)
+        self.assertEqual(result["forecast_diagnostics"][0]["rejected_blocked_points"], 1)
+        self.assertEqual(len(result["cost_forecast"]), 2)
+        self.assertEqual(result["cost_forecast"][0]["start"], "2026-07-06T00:30:00+00:00")
+
     def test_cooldown_excludes_recent_program_and_uses_next_candidate(self):
         quick = {
             **self.model,

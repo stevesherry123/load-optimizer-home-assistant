@@ -311,12 +311,17 @@ def best_window_candidate(candidates: list[dict], *, overnight: bool) -> dict | 
 
 def candidate_green_overlap_seconds(candidate: dict, green_windows: list[dict]) -> float:
     """Return how many seconds of a candidate cycle overlap preferred green windows."""
+    return candidate_window_overlap_seconds(candidate, green_windows)
+
+
+def candidate_window_overlap_seconds(candidate: dict, windows: list[dict]) -> float:
+    """Return how many seconds of a candidate cycle overlap supplied windows."""
     start = candidate.get("start")
     finish = candidate.get("finish")
-    if not start or not finish or not green_windows:
+    if not start or not finish or not windows:
         return 0.0
     overlap_seconds = 0.0
-    for window in green_windows:
+    for window in windows:
         window_start = window.get("start")
         window_end = window.get("end")
         if not window_start or not window_end:
@@ -326,6 +331,11 @@ def candidate_green_overlap_seconds(candidate: dict, green_windows: list[dict]) 
         if overlap_end > overlap_start:
             overlap_seconds += (overlap_end - overlap_start).total_seconds()
     return overlap_seconds
+
+
+def candidate_overlaps_windows(candidate: dict, windows: list[dict]) -> bool:
+    """Return true when any part of a candidate cycle falls inside a blocked window."""
+    return candidate_window_overlap_seconds(candidate, windows) > 0
 
 
 def annotate_green_context(candidate: dict, green_windows: list[dict]) -> dict:
@@ -610,6 +620,7 @@ def forecast_cycle_costs(
     schedule_timezone: str,
     forecast_limit: int,
     green_windows: list[dict] | None = None,
+    blocked_windows: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     policy_by_program = {policy["program"]: policy for policy in policies}
     forecast_end = reference_utc + timedelta(hours=max(0, forecast_hours))
@@ -625,6 +636,7 @@ def forecast_cycle_costs(
             "priced_points": 0,
             "rejected_points": 0,
             "rejected_cooldown_points": 0,
+            "rejected_blocked_points": 0,
             "runtime_minutes": model.get("expected_runtime_minutes"),
             "confidence": model.get("confidence"),
         }
@@ -654,6 +666,12 @@ def forecast_cycle_costs(
                 diagnostic["rejected_cooldown_points"] += 1
                 start += timedelta(minutes=forecast_interval_minutes)
                 continue
+            finish = start + timedelta(minutes=float(model["expected_runtime_minutes"]))
+            probe = {"start": start, "finish": finish}
+            if candidate_overlaps_windows(probe, blocked_windows or []):
+                diagnostic["rejected_blocked_points"] += 1
+                start += timedelta(minutes=forecast_interval_minutes)
+                continue
             try:
                 estimate = estimate_cycle_cost(start, model, periods)
             except ValueError:
@@ -668,7 +686,7 @@ def forecast_cycle_costs(
                 candidate = {
                     "program": model["program"],
                     "start": start,
-                    "finish": start + timedelta(minutes=float(model["expected_runtime_minutes"])),
+                    "finish": finish,
                     "total_cost_pence": estimate["total_cost_pence"],
                     "energy_cost_pence": estimate["energy_cost_pence"],
                     "non_energy_cost_pence": estimate["non_energy_cost_pence"],
@@ -680,7 +698,12 @@ def forecast_cycle_costs(
                 candidates.append(annotate_green_context(candidate, green_windows or []))
             start += timedelta(minutes=forecast_interval_minutes)
         if diagnostic["priced_points"] == 0:
-            reason = "cooldown_active" if diagnostic["rejected_cooldown_points"] else "no_fully_priced_forecast_points"
+            if diagnostic["rejected_cooldown_points"]:
+                reason = "cooldown_active"
+            elif diagnostic["rejected_blocked_points"]:
+                reason = "blocked_window"
+            else:
+                reason = "no_fully_priced_forecast_points"
             diagnostic.update(status="excluded", reason=reason)
         diagnostics.append(diagnostic)
     return summarize_forecast_candidates(candidates, forecast_limit), diagnostics
@@ -706,6 +729,7 @@ def recommend_cycle(
     forecast_interval_minutes: int = 30,
     forecast_limit: int = 300,
     green_windows: list[dict] | None = None,
+    blocked_windows: list[dict] | None = None,
 ) -> dict:
     """Find the least-cost policy-eligible program and start time."""
     if schedule_strategy not in SCHEDULE_STRATEGIES:
@@ -720,6 +744,7 @@ def recommend_cycle(
     rejected_profiles = 0
     rejected_constraints = 0
     rejected_cooldowns = 0
+    rejected_blocked = 0
     program_diagnostics = []
     search_end = reference_utc + timedelta(hours=search_hours)
     earliest_allowed_start = earliest_start_utc.astimezone(timezone.utc) if earliest_start_utc else reference_utc
@@ -734,6 +759,7 @@ def recommend_cycle(
             "priced_points": 0,
             "rejected_constraints": 0,
             "rejected_cooldown_points": 0,
+            "rejected_blocked_points": 0,
             "rejected_unpriced_points": 0,
             "runtime_minutes": model.get("expected_runtime_minutes"),
             "confidence": model.get("confidence"),
@@ -770,6 +796,11 @@ def recommend_cycle(
             if cooldown_until and start < cooldown_until:
                 rejected_cooldowns += 1
                 diagnostic["rejected_cooldown_points"] += 1
+                start += timedelta(minutes=candidate_interval_minutes)
+                continue
+            if candidate_overlaps_windows({"start": start, "finish": finish}, blocked_windows or []):
+                rejected_blocked += 1
+                diagnostic["rejected_blocked_points"] += 1
                 start += timedelta(minutes=candidate_interval_minutes)
                 continue
             is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
@@ -825,6 +856,8 @@ def recommend_cycle(
                 diagnostic.update(status="excluded", reason="cooldown_active")
             elif diagnostic["rejected_constraints"]:
                 diagnostic.update(status="excluded", reason="outside_schedule_constraints")
+            elif diagnostic["rejected_blocked_points"]:
+                diagnostic.update(status="excluded", reason="blocked_window")
             elif diagnostic["rejected_unpriced_points"]:
                 diagnostic.update(status="excluded", reason="no_fully_priced_points")
             else:
@@ -836,6 +869,11 @@ def recommend_cycle(
             "rejected_profiles": rejected_profiles,
             "rejected_constraints": rejected_constraints,
             "rejected_cooldowns": rejected_cooldowns,
+            "rejected_blocked": rejected_blocked,
+            "blocked_window_count": len(blocked_windows or []),
+            "blocked_window_candidate_count": rejected_blocked,
+            "green_window_count": len(green_windows or []),
+            "green_window_candidate_count": 0,
             "program_diagnostics": program_diagnostics,
             "earliest_allowed_start": earliest_allowed_start.isoformat() if earliest_allowed_start else None,
             "latest_allowed_finish": latest_allowed_finish.isoformat() if latest_allowed_finish else None,
@@ -853,12 +891,18 @@ def recommend_cycle(
         cheapest = min(candidates, key=lambda item: (item["total_cost_pence"], candidate_window_score(item, window_preference), item["preference_rank"], item["finish"]))
     selected_model = next(model for model in models if model["program"] == cheapest["program"])
     try:
-        now_estimate = estimate_cycle_cost(reference_utc, selected_model, periods)
-        policy = policy_by_program[cheapest["program"]]
-        now_estimate = apply_operating_costs(now_estimate, policy)
-        now_cost = now_estimate["total_cost_pence"]
-        now_breakdown = now_estimate["cost_breakdown"]
-        now_operating_breakdown = now_estimate["operating_cost_breakdown"]
+        now_finish = reference_utc + timedelta(minutes=float(selected_model["expected_runtime_minutes"]))
+        if candidate_overlaps_windows({"start": reference_utc, "finish": now_finish}, blocked_windows or []):
+            now_cost = None
+            now_breakdown = []
+            now_operating_breakdown = None
+        else:
+            now_estimate = estimate_cycle_cost(reference_utc, selected_model, periods)
+            policy = policy_by_program[cheapest["program"]]
+            now_estimate = apply_operating_costs(now_estimate, policy)
+            now_cost = now_estimate["total_cost_pence"]
+            now_breakdown = now_estimate["cost_breakdown"]
+            now_operating_breakdown = now_estimate["operating_cost_breakdown"]
     except ValueError:
         now_cost = None
         now_breakdown = []
@@ -901,6 +945,7 @@ def recommend_cycle(
         schedule_timezone=schedule_timezone,
         forecast_limit=forecast_limit,
         green_windows=green_windows,
+        blocked_windows=blocked_windows,
     )
     return {
         "status": "ready",
@@ -932,6 +977,8 @@ def recommend_cycle(
             if candidate.get("green_window_overlap_seconds", 0) > 0
         ]),
         "green_window_count": len(green_windows or []),
+        "blocked_window_count": len(blocked_windows or []),
+        "blocked_window_candidate_count": rejected_blocked,
         "now_recommendation": summarize_decision(
             intent="now",
             candidate=immediate_candidate,
@@ -981,6 +1028,7 @@ def recommend_cycle(
         "comparison_candidate_count": len(comparison_candidates),
         "rejected_constraints": rejected_constraints,
         "rejected_cooldowns": rejected_cooldowns,
+        "rejected_blocked": rejected_blocked,
         "program_diagnostics": program_diagnostics,
         "earliest_allowed_start": earliest_allowed_start.isoformat() if earliest_allowed_start else None,
         "latest_allowed_finish": latest_allowed_finish.isoformat() if latest_allowed_finish else None,

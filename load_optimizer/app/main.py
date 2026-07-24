@@ -21,7 +21,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.33"
+APP_VERSION = "0.8.34"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -225,6 +225,17 @@ def green_windows_from_entity(
     diagnostic["windows"] = len(windows)
     diagnostic["window_source_state"] = entity.get("state")
     return windows, diagnostic
+
+
+def blocked_windows_from_entity(
+    token: str,
+    entity_id: str,
+    *,
+    start: datetime,
+    end: datetime,
+) -> tuple[list[dict], dict | None]:
+    """Read provider-neutral no-run windows from a calendar or state entity."""
+    return green_windows_from_entity(token, entity_id, start=start, end=end)
 
 
 def tariff_state_from_entity(token: str, entity_id: str) -> dict | None:
@@ -790,6 +801,7 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "tariff_timezone": str(options.get("tariff_timezone", "Europe/London")).strip(),
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
         "green_window_entity": str(_option_or_env(options, f"{prefix}_green_window_entity", options.get("green_window_entity", ""))).strip(),
+        "blocked_window_entity": str(_option_or_env(options, f"{prefix}_blocked_window_entity", options.get("blocked_window_entity", ""))).strip(),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
         "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
@@ -835,6 +847,7 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "tariff_timezone": str(options.get("tariff_timezone", "Europe/London")).strip(),
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
         "green_window_entity": str(entry.get("green_window_entity", options.get("green_window_entity", ""))).strip(),
+        "blocked_window_entity": str(entry.get("blocked_window_entity", options.get("blocked_window_entity", ""))).strip(),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
         "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
@@ -1180,11 +1193,15 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
         "green_window_entity": result.get("green_window_entity"),
         "green_window_count": result.get("green_window_count", 0),
         "green_window_candidate_count": result.get("green_window_candidate_count", 0),
+        "blocked_window_entity": result.get("blocked_window_entity"),
+        "blocked_window_count": result.get("blocked_window_count", 0),
+        "blocked_window_candidate_count": result.get("blocked_window_candidate_count", 0),
         "constraints": {
             "earliest_allowed_start": result.get("earliest_allowed_start"),
             "latest_allowed_finish": result.get("latest_allowed_finish"),
             "rejected_constraints": result.get("rejected_constraints", 0),
             "rejected_cooldowns": result.get("rejected_cooldowns", 0),
+            "rejected_blocked": result.get("rejected_blocked", 0),
         },
         "decision_policy": result.get("decision_policy"),
         "program_diagnostics": result.get("program_diagnostics", []),
@@ -1215,10 +1232,14 @@ def publish_cost_entities(
             "latest_allowed_finish": result.get("latest_allowed_finish"),
             "rejected_constraints": result.get("rejected_constraints", 0),
             "rejected_cooldowns": result.get("rejected_cooldowns", 0),
+            "rejected_blocked": result.get("rejected_blocked", 0),
         },
         "green_window_entity": result.get("green_window_entity"),
         "green_window_count": result.get("green_window_count", 0),
         "green_window_candidate_count": result.get("green_window_candidate_count", 0),
+        "blocked_window_entity": result.get("blocked_window_entity"),
+        "blocked_window_count": result.get("blocked_window_count", 0),
+        "blocked_window_candidate_count": result.get("blocked_window_candidate_count", 0),
         "decision_policy": result.get("decision_policy"),
     }
     if publish_diagnostics:
@@ -1229,6 +1250,8 @@ def publish_cost_entities(
         common["tariff_parse_errors"] = result["tariff_parse_errors"]
     if publish_diagnostics and result.get("green_window_diagnostic") is not None:
         common["green_window_diagnostic"] = result["green_window_diagnostic"]
+    if publish_diagnostics and result.get("blocked_window_diagnostic") is not None:
+        common["blocked_window_diagnostic"] = result["blocked_window_diagnostic"]
     publish_entity(token, f"{prefix}_cost_status", status, {
         "friendly_name": f"{name} Cost Status",
         "icon": "mdi:currency-gbp",
@@ -1724,15 +1747,23 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     raise ValueError("No configured tariff entity produced a supported future-rate attribute")
                 periods.sort(key=lambda period: period["start"])
                 green_window_entity = config.get("green_window_entity", "")
+                blocked_window_entity = config.get("blocked_window_entity", "")
+                window_end = now.astimezone(timezone.utc) + timedelta(hours=max(
+                    config["cost_search_hours"],
+                    config.get("cost_forecast_hours", 12),
+                ))
                 green_windows, green_window_diagnostic = green_windows_from_entity(
                     token,
                     green_window_entity,
                     start=now.astimezone(timezone.utc),
-                    end=now.astimezone(timezone.utc) + timedelta(hours=max(
-                        config["cost_search_hours"],
-                        config.get("cost_forecast_hours", 12),
-                    )),
+                    end=window_end,
                 ) if green_window_entity else ([], None)
+                blocked_windows, blocked_window_diagnostic = blocked_windows_from_entity(
+                    token,
+                    blocked_window_entity,
+                    start=now.astimezone(timezone.utc),
+                    end=window_end,
+                ) if blocked_window_entity else ([], None)
                 cost_result = recommend_cycle(
                     summaries,
                     policies,
@@ -1751,6 +1782,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     forecast_hours=config.get("cost_forecast_hours", 12),
                     forecast_interval_minutes=config.get("cost_forecast_interval", 30),
                     green_windows=green_windows,
+                    blocked_windows=blocked_windows,
                 )
                 cost_result.update({
                     "tariff_entity": ", ".join(tariff_entities),
@@ -1764,6 +1796,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "schedule_latest_finish_entity": latest_finish_entity,
                     "green_window_entity": green_window_entity,
                     "green_window_diagnostic": green_window_diagnostic,
+                    "blocked_window_entity": blocked_window_entity,
+                    "blocked_window_diagnostic": blocked_window_diagnostic,
                 })
             except (TypeError, ValueError) as error:
                 cost_result = {

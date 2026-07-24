@@ -409,6 +409,22 @@ than the cheapest candidate. If no green-window entity is configured, or no
 candidate overlaps a green window, these entities remain `unknown` or
 `not_ready`.
 
+To prevent discretionary loads during provider events, set **Blocked window
+entity** to a Home Assistant calendar or entity that exposes no-run windows.
+This is intended for events such as Octoplus Saving Sessions, where the best
+financial outcome comes from reducing consumption compared with the household's
+normal usage during the event:
+
+```yaml
+blocked_window_entity: calendar.octopus_energy_xxx_octoplus_saving_sessions
+```
+
+Blocked windows are stricter than green windows. Any candidate that overlaps a
+blocked window is removed from normal recommendations and cost forecasts. Cost
+entities publish the configured blocked-window source, the number of windows
+found, and the number of rejected candidate starts so dashboards can explain
+why some normally good slots were skipped.
+
 Supported strategy values are:
 
 - `cheapest_absolute`: choose the mathematically cheapest candidate.
