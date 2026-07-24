@@ -22,6 +22,7 @@ from load_optimizer.app.main import (
     normalise_program_policy,
     parse_instances_yaml,
     public_program_summary,
+    publish_cost_entities,
     publish_entity,
     profile_energy_kwh,
     profile_sample,
@@ -100,6 +101,42 @@ class PublishingTests(unittest.TestCase):
         publish_entity("token", "sensor.test_storage", "changed", {"friendly_name": "Storage Test"})
 
         self.assertEqual(api_request.call_count, 2)
+
+    @patch("load_optimizer.app.main.api_request")
+    def test_cost_entities_publish_green_window_context(self, api_request):
+        api_request.return_value = {"state": "ready"}
+
+        publish_cost_entities("token", "sensor.load_optimizer_1", "Dishwasher 1", {
+            "status": "ready",
+            "program": "Eco",
+            "start": datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+            "finish": datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc),
+            "total_cost_pence": 12.0,
+            "cost_if_started_now_pence": 15.0,
+            "potential_saving_pence": 3.0,
+            "confidence": 20,
+            "energy_kwh": 1.0,
+            "energy_cost_pence": 12.0,
+            "green_window_entity": "calendar.greener_nights",
+            "green_window_count": 1,
+            "green_window_candidate_count": 2,
+            "greenest_comparison": {
+                "program": "Eco",
+                "start": "2026-01-01T00:00:00+00:00",
+                "finish": "2026-01-01T00:30:00+00:00",
+                "cost_pence": 12.0,
+                "green_window_overlap_percent": 100.0,
+            },
+        })
+
+        cost_status = next(
+            call for call in api_request.call_args_list
+            if call.args[1] == "/states/sensor.load_optimizer_1_cost_status"
+        )
+        attributes = cost_status.args[2]["attributes"]
+        self.assertEqual(attributes["green_window_entity"], "calendar.greener_nights")
+        self.assertEqual(attributes["green_window_count"], 1)
+        self.assertEqual(attributes["green_window_candidate_count"], 2)
 
 
 class ConfigurationTests(unittest.TestCase):

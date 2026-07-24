@@ -21,7 +21,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.32"
+APP_VERSION = "0.8.33"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -1216,6 +1216,9 @@ def publish_cost_entities(
             "rejected_constraints": result.get("rejected_constraints", 0),
             "rejected_cooldowns": result.get("rejected_cooldowns", 0),
         },
+        "green_window_entity": result.get("green_window_entity"),
+        "green_window_count": result.get("green_window_count", 0),
+        "green_window_candidate_count": result.get("green_window_candidate_count", 0),
         "decision_policy": result.get("decision_policy"),
     }
     if publish_diagnostics:
