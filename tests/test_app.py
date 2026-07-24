@@ -120,6 +120,9 @@ class PublishingTests(unittest.TestCase):
             "green_window_entity": "calendar.greener_nights",
             "green_window_count": 1,
             "green_window_candidate_count": 2,
+            "blocked_window_entity": "calendar.saving_sessions",
+            "blocked_window_count": 1,
+            "blocked_window_candidate_count": 3,
             "greenest_comparison": {
                 "program": "Eco",
                 "start": "2026-01-01T00:00:00+00:00",
@@ -137,6 +140,9 @@ class PublishingTests(unittest.TestCase):
         self.assertEqual(attributes["green_window_entity"], "calendar.greener_nights")
         self.assertEqual(attributes["green_window_count"], 1)
         self.assertEqual(attributes["green_window_candidate_count"], 2)
+        self.assertEqual(attributes["blocked_window_entity"], "calendar.saving_sessions")
+        self.assertEqual(attributes["blocked_window_count"], 1)
+        self.assertEqual(attributes["blocked_window_candidate_count"], 3)
 
 
 class ConfigurationTests(unittest.TestCase):
@@ -162,6 +168,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertTrue(config["publish_profile_data"])
         self.assertTrue(config["publish_cost_forecast"])
         self.assertEqual(config["green_window_entity"], "")
+        self.assertEqual(config["blocked_window_entity"], "")
 
     def test_instance_config_parses_storage_publish_options(self):
         config = instance_config("1", {
@@ -181,6 +188,14 @@ class ConfigurationTests(unittest.TestCase):
         })
 
         self.assertEqual(config["green_window_entity"], "calendar.appliance_green")
+
+    def test_instance_config_supports_blocked_window_override(self):
+        config = instance_config("1", {
+            "blocked_window_entity": "calendar.global_block",
+            "instance_1_blocked_window_entity": "calendar.appliance_block",
+        })
+
+        self.assertEqual(config["blocked_window_entity"], "calendar.appliance_block")
 
     def test_instance_config_does_not_duplicate_single_tariff_entity(self):
         config = instance_config("1", {

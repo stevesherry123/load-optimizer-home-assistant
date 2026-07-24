@@ -4,6 +4,15 @@
 
 - No unreleased changes.
 
+## 0.8.34
+
+- Add optional provider-neutral `blocked_window_entity` support for no-run
+  windows such as Octoplus Saving Sessions.
+- Exclude any recommendation or cost-forecast candidate that overlaps a
+  configured blocked window.
+- Publish blocked-window source, window count, and rejected candidate count on
+  cost entities for dashboard diagnostics.
+
 ## 0.8.33
 
 - Publish configured green-window source, green-window count, and matching
