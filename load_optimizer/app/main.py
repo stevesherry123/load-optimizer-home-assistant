@@ -21,7 +21,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.34"
+APP_VERSION = "0.8.35"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -1134,15 +1134,25 @@ def instance_configs(options: dict | None = None) -> list[dict]:
     return []
 
 
-def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
+def schedule_advice(
+    result: dict,
+    config: dict,
+    now: datetime,
+    *,
+    cycle_running: bool = False,
+    active_cycle_start: str | None = None,
+) -> dict:
     if result.get("status") != "ready" or not result.get("start"):
         return {
-            "status": result.get("status", "not_ready"),
+            "status": "cycle_running" if cycle_running else result.get("status", "not_ready"),
             "program": "none",
             "recommended_start": "unknown",
             "good_to_start": False,
             "automation_ready": False,
-            "reason": result.get("reason") or result.get("status", "not_ready"),
+            "reason": "cycle_already_running" if cycle_running else result.get("reason") or result.get("status", "not_ready"),
+            "cycle_running": cycle_running,
+            "blocked_by_active_capture": cycle_running,
+            "active_cycle_start": active_cycle_start,
         }
     start = result["start"].astimezone(timezone.utc)
     now = now.astimezone(timezone.utc)
@@ -1152,7 +1162,11 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
     seconds_until_start = round((start - now).total_seconds())
     good_to_start = abs(seconds_until_start) <= tolerance_minutes * 60
     automation_ready = good_to_start and confidence >= confidence_threshold
-    if confidence < confidence_threshold:
+    if cycle_running:
+        good_to_start = False
+        automation_ready = False
+        reason = "cycle_already_running"
+    elif confidence < confidence_threshold:
         reason = f"confidence_below_{confidence_threshold}"
     elif seconds_until_start > tolerance_minutes * 60:
         reason = "recommended_start_in_future"
@@ -1161,7 +1175,7 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
     else:
         reason = "ready"
     return {
-        "status": "ready",
+        "status": "cycle_running" if cycle_running else "ready",
         "program": result.get("program", "none"),
         "recommended_start": start.isoformat(),
         "recommended_finish": result.get("finish").isoformat() if result.get("finish") else None,
@@ -1169,6 +1183,9 @@ def schedule_advice(result: dict, config: dict, now: datetime) -> dict:
         "good_to_start": good_to_start,
         "automation_ready": automation_ready,
         "reason": reason,
+        "cycle_running": cycle_running,
+        "blocked_by_active_capture": cycle_running,
+        "active_cycle_start": active_cycle_start,
         "confidence": confidence,
         "confidence_threshold": confidence_threshold,
         "start_tolerance_minutes": tolerance_minutes,
@@ -1216,6 +1233,8 @@ def publish_cost_entities(
     *,
     publish_diagnostics: bool = False,
     publish_cost_forecast: bool = True,
+    cycle_running: bool = False,
+    active_cycle_start: str | None = None,
 ) -> None:
     status = result.get("status", "error")
     common = {
@@ -1361,15 +1380,28 @@ def publish_cost_entities(
     ):
         recommendation = result.get(f"{intent}_recommendation") or {}
         recommendation_ready = ready and recommendation.get("status") == "ready"
-        state = recommendation.get("program") if recommendation_ready else recommendation.get("status", "not_ready")
+        recommendation_status = recommendation.get("status", "not_ready")
+        recommendation_reason = recommendation.get("reason")
+        recommendation_ready_to_start = recommendation.get("ready_to_start", False)
+        if cycle_running and recommendation_ready:
+            recommendation_status = "cycle_running"
+            recommendation_reason = "cycle_already_running"
+            recommendation_ready_to_start = False
+        state = (
+            "cycle_running"
+            if cycle_running and recommendation_ready
+            else recommendation.get("program") if recommendation_ready
+            else recommendation_status
+        )
         attributes = {
             "friendly_name": f"{name} {intent.title()} Recommendation",
             "icon": icon,
             **common,
             "intent": intent,
-            "status": recommendation.get("status", "not_ready"),
-            "reason": recommendation.get("reason"),
+            "status": recommendation_status,
+            "reason": recommendation_reason,
             "program": recommendation.get("program"),
+            "candidate_program": recommendation.get("program"),
             "start": recommendation.get("start"),
             "finish": recommendation.get("finish"),
             "seconds_until_start": recommendation.get("seconds_until_start"),
@@ -1380,7 +1412,10 @@ def publish_cost_entities(
             "energy_kwh": recommendation.get("energy_kwh"),
             "energy_kwh_per_minute": recommendation.get("energy_kwh_per_minute"),
             "confidence": recommendation.get("confidence"),
-            "ready_to_start": recommendation.get("ready_to_start", False),
+            "ready_to_start": recommendation_ready_to_start,
+            "cycle_running": cycle_running,
+            "blocked_by_active_capture": cycle_running and recommendation_ready,
+            "active_cycle_start": active_cycle_start,
             "negative_price_run": recommendation.get("negative_price_run"),
             "is_overnight_start": recommendation.get("is_overnight_start"),
             "is_daytime_start": recommendation.get("is_daytime_start"),
@@ -1814,8 +1849,21 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         cost_result,
         publish_diagnostics=config.get("publish_diagnostics", False),
         publish_cost_forecast=config.get("publish_cost_forecast", True),
+        cycle_running=bool(instance.get("cycle_start")),
+        active_cycle_start=instance.get("cycle_start"),
     )
-    publish_schedule_entities(token, prefix, name, schedule_advice(cost_result, config, now))
+    publish_schedule_entities(
+        token,
+        prefix,
+        name,
+        schedule_advice(
+            cost_result,
+            config,
+            now,
+            cycle_running=bool(instance.get("cycle_start")),
+            active_cycle_start=instance.get("cycle_start"),
+        ),
+    )
     publish_execution_entities(token, prefix, name, instance_id)
     latest_program = normalise_program(last.get("program"))
     selected_program = latest_program if latest_program in models else (next(iter(sorted(models)), None))

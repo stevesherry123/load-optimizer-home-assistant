@@ -4,6 +4,17 @@
 
 - No unreleased changes.
 
+## 0.8.35
+
+- Block schedule and intent automation readiness while an appliance instance is
+  already running or being captured.
+- Keep cost forecasts visible during an active cycle, but publish
+  `cycle_running` and `reason: cycle_already_running` on automation-facing
+  recommendation entities so unattended automation cannot start the same load
+  twice.
+- Document the current decision flow, including tariff, green-window,
+  blocked-window, deadline, cooldown, negative-price, and active-cycle guards.
+
 ## 0.8.34
 
 - Add optional provider-neutral `blocked_window_entity` support for no-run

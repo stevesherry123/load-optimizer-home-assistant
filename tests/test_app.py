@@ -144,6 +144,50 @@ class PublishingTests(unittest.TestCase):
         self.assertEqual(attributes["blocked_window_count"], 1)
         self.assertEqual(attributes["blocked_window_candidate_count"], 3)
 
+    @patch("load_optimizer.app.main.api_request")
+    def test_intent_recommendations_are_blocked_while_cycle_is_running(self, api_request):
+        api_request.return_value = {"state": "ready"}
+        start = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+        publish_cost_entities(
+            "token",
+            "sensor.load_optimizer_1",
+            "Dishwasher 1",
+            {
+                "status": "ready",
+                "program": "Quick65",
+                "start": start,
+                "finish": start + timedelta(minutes=45),
+                "total_cost_pence": -4.2,
+                "cost_if_started_now_pence": -4.0,
+                "potential_saving_pence": 0.2,
+                "confidence": 90,
+                "negative_price_recommendation": {
+                    "status": "ready",
+                    "program": "Quick45",
+                    "start": start.isoformat(),
+                    "finish": (start + timedelta(minutes=30)).isoformat(),
+                    "cost_pence": -2.9,
+                    "ready_to_start": True,
+                    "reason": "best_negative_price_energy_intensity",
+                },
+            },
+            cycle_running=True,
+            active_cycle_start="2026-01-01T11:45:00+00:00",
+        )
+
+        negative_recommendation = next(
+            call for call in api_request.call_args_list
+            if call.args[1] == "/states/sensor.load_optimizer_1_negative_price_recommendation"
+        )
+        payload = negative_recommendation.args[2]
+        self.assertEqual(payload["state"], "cycle_running")
+        self.assertEqual(payload["attributes"]["status"], "cycle_running")
+        self.assertEqual(payload["attributes"]["reason"], "cycle_already_running")
+        self.assertEqual(payload["attributes"]["program"], "Quick45")
+        self.assertFalse(payload["attributes"]["ready_to_start"])
+        self.assertTrue(payload["attributes"]["blocked_by_active_capture"])
+
 
 class ConfigurationTests(unittest.TestCase):
     def test_bool_option_accepts_common_string_values(self):
@@ -1101,6 +1145,26 @@ class ScheduleAdviceTests(unittest.TestCase):
         self.assertFalse(advice["good_to_start"])
         self.assertFalse(advice["automation_ready"])
         self.assertEqual(advice["reason"], "recommended_start_in_future")
+
+    def test_running_cycle_blocks_schedule_automation(self):
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        advice = schedule_advice({
+            "status": "ready",
+            "program": "Quick65",
+            "start": now,
+            "confidence": 90,
+            "total_cost_pence": -4.2,
+        }, {
+            "schedule_confidence_threshold": 20,
+            "schedule_start_tolerance_minutes": 5,
+        }, now, cycle_running=True, active_cycle_start="2026-01-01T11:30:00+00:00")
+
+        self.assertEqual(advice["status"], "cycle_running")
+        self.assertFalse(advice["good_to_start"])
+        self.assertFalse(advice["automation_ready"])
+        self.assertEqual(advice["reason"], "cycle_already_running")
+        self.assertTrue(advice["blocked_by_active_capture"])
+        self.assertEqual(advice["active_cycle_start"], "2026-01-01T11:30:00+00:00")
 
     @patch("load_optimizer.app.main.publish_entity")
     def test_schedule_publishes_recommended_finish_entity(self, publish_entity):
