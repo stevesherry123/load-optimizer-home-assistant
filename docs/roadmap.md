@@ -22,8 +22,8 @@ implementation architecture in `docs/architecture.md`.
   effective cost of running a cycle
 - add optional greener-window scheduling that compares the cheapest candidate
   with a lower-carbon or provider-highlighted green candidate
-- add automatic negative-price opportunity handling for programs explicitly
-  allowed by policy
+- continue hardening automatic negative-price opportunity handling for programs
+  explicitly allowed by policy
 
 ## Scheduling And Cost Estimation
 

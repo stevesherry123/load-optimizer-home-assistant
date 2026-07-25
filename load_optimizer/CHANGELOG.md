@@ -4,6 +4,16 @@
 
 - No unreleased changes.
 
+## 0.8.36
+
+- Add an opt-in Dishwasher 1 automatic negative-price request switch to the
+  Home Assistant automation package.
+- Route automatic negative-price opportunities through the same request helpers
+  and Bosch execution safety checks as manual `now`, `soon`, and `overnight`
+  requests.
+- Add a short auto-request cooldown so a failed or missed automatic opportunity
+  does not immediately loop every scheduler tick.
+
 ## 0.8.35
 
 - Block schedule and intent automation readiness while an appliance instance is
