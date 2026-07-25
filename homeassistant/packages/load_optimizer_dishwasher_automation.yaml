@@ -21,7 +21,14 @@ input_select:
       - now
       - soon
       - overnight
+      - negative_price
     initial: none
+
+input_boolean:
+  load_optimizer_1_auto_negative_price_enabled:
+    name: Dishwasher 1 Auto Negative Price
+    icon: mdi:transmission-tower-export
+    initial: false
 
 input_text:
   load_optimizer_1_requested_program:
@@ -67,6 +74,11 @@ input_datetime:
 
   load_optimizer_1_last_start_attempt:
     name: Dishwasher 1 Last Start Attempt
+    has_date: true
+    has_time: true
+
+  load_optimizer_1_last_auto_negative_price_request:
+    name: Dishwasher 1 Last Auto Negative Price Request
     has_date: true
     has_time: true
 
@@ -147,6 +159,86 @@ automation:
         target:
           entity_id: script.load_optimizer_announce
 
+  - id: load_optimizer_1_auto_negative_price_request
+    alias: Load Optimizer 1 - Auto Negative Price Request
+    description: Opt-in unattended request creation when Load Optimizer finds a ready negative-price run.
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+      - trigger: state
+        entity_id: sensor.load_optimizer_1_negative_price_recommendation
+    variables:
+      recommendation_entity: sensor.load_optimizer_1_negative_price_recommendation
+      recommendation_status: "{{ state_attr(recommendation_entity, 'status') }}"
+      recommendation_program: >-
+        {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
+      recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
+      recommendation_ready_to_start: "{{ state_attr(recommendation_entity, 'ready_to_start') }}"
+      recommendation_reason: "{{ state_attr(recommendation_entity, 'reason') }}"
+      auto_cooldown_minutes: 30
+      last_auto_request: "{{ states('input_datetime.load_optimizer_1_last_auto_negative_price_request') }}"
+      auto_cooldown_elapsed: >-
+        {{ last_auto_request in ['unknown', 'unavailable', 'none', None, '']
+           or as_timestamp(now()) >= as_timestamp(as_datetime(last_auto_request)) + (auto_cooldown_minutes * 60) }}
+      message: >-
+        Dishwasher automatic negative-price request captured:
+        {{ recommendation_program }} at {{ recommendation_start }}.
+    conditions:
+      - condition: state
+        entity_id: input_boolean.load_optimizer_1_auto_negative_price_enabled
+        state: "on"
+      - condition: state
+        entity_id: sensor.load_optimizer_restart_safety
+        state: safe
+      - condition: state
+        entity_id: sensor.load_optimizer_1_cycle_state
+        state: idle
+      - condition: state
+        entity_id: input_select.load_optimizer_1_requested_mode
+        state: none
+      - condition: template
+        value_template: >-
+          {{ recommendation_status == 'ready'
+             and recommendation_ready_to_start == true
+             and recommendation_program not in ['unknown', 'unavailable', 'none', None, '']
+             and recommendation_start not in ['unknown', 'unavailable', 'none', None, '']
+             and auto_cooldown_elapsed }}
+    actions:
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.load_optimizer_1_requested_mode
+        data:
+          option: negative_price
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_requested_program
+        data:
+          value: "{{ recommendation_program }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.load_optimizer_1_requested_start
+        data:
+          datetime: "{{ as_local(as_datetime(recommendation_start)).strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.load_optimizer_1_last_auto_negative_price_request
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_scheduler_message
+        data:
+          value: "{{ message[:255] }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.announce_text
+        data:
+          value: "{{ message[:255] }}"
+      - action: script.turn_on
+        target:
+          entity_id: script.load_optimizer_announce
+
   - id: load_optimizer_1_cancel_user_request
     alias: Load Optimizer 1 - Cancel User Request
     description: Clear the dishwasher scheduler helpers.
@@ -186,6 +278,7 @@ automation:
           - sensor.load_optimizer_1_now_recommendation
           - sensor.load_optimizer_1_soon_recommendation
           - sensor.load_optimizer_1_overnight_recommendation
+          - sensor.load_optimizer_1_negative_price_recommendation
           - input_select.load_optimizer_1_requested_mode
           - input_datetime.load_optimizer_1_requested_start
     variables:
@@ -203,7 +296,7 @@ automation:
       bosch_operation_state_sensor: sensor.bosch_406010547033018437_bsh_common_status_operationstate
       recommendation_entity: >-
         {{ 'sensor.load_optimizer_1_' ~ requested_mode ~ '_recommendation'
-           if requested_mode in ['now', 'soon', 'overnight']
+           if requested_mode in ['now', 'soon', 'overnight', 'negative_price']
            else '' }}
       recommendation_status: "{{ state_attr(recommendation_entity, 'status') }}"
       recommendation_program: >-
@@ -254,7 +347,7 @@ automation:
         {{ requested_mode == 'now'
            and (recommendation_ready_to_start == true or due_by_time) }}
       due_scheduled: >-
-        {{ requested_mode in ['soon', 'overnight'] and due_by_time }}
+        {{ requested_mode in ['soon', 'overnight', 'negative_price'] and due_by_time }}
       start_message: >-
         Dishwasher start requested by Load Optimizer:
         {{ selected_program }}.
@@ -302,7 +395,7 @@ automation:
         operation={{ states(bosch_operation_state_sensor) }}
     conditions:
       - condition: template
-        value_template: "{{ requested_mode in ['now', 'soon', 'overnight'] }}"
+        value_template: "{{ requested_mode in ['now', 'soon', 'overnight', 'negative_price'] }}"
       - condition: template
         value_template: "{{ recommendation_status == 'ready' or stale_request }}"
       - condition: template

@@ -258,6 +258,15 @@ automation should only act when the chosen intent sensor says it is ready, the
 instance is idle, the recommendation is still current, and any household safety
 checks pass immediately before execution.
 
+The first automatic-mode implementation follows the same helper contract as
+manual dashboard or voice requests. For Dishwasher 1, the optional
+`input_boolean.load_optimizer_1_auto_negative_price_enabled` helper can allow a
+ready negative-price recommendation to populate the requested mode, program, and
+start helpers. The existing execution automation then performs the Bosch checks,
+attempts the start, records the result, announces failures, and clears the
+request. This keeps unattended operation opt-in and avoids a separate privileged
+start path.
+
 ## Local Energy Context
 
 Status: Future design principle
