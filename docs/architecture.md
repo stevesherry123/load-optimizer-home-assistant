@@ -208,6 +208,56 @@ The current App runtime exposes advisory scheduling entities only. It should not
 start appliances until constraints, confidence thresholds, and user permissions
 have been proven through read-only operation.
 
+## Decision Flow
+
+Status: Active implementation contract
+
+The optimiser separates recommendation maths from automation permission. A cost
+forecast can remain valid while an appliance is already running, but
+automation-facing entities must not advertise `ready_to_start` or
+`good_to_start` during an active capture.
+
+```mermaid
+flowchart TD
+    A["Load live appliance state"] --> B{"Cycle already running?"}
+    B -- "Yes" --> C["Keep sampling power profile"]
+    C --> D["Publish forecasts for visibility"]
+    D --> E["Publish schedule/intent status: cycle_running"]
+    E --> F["Automation readiness: false"]
+
+    B -- "No" --> G["Load learned program models"]
+    G --> H["Resolve program policies"]
+    H --> I["Load provider context"]
+    I --> I1["Tariff rates"]
+    I --> I2["Green windows"]
+    I --> I3["Blocked windows such as saving sessions"]
+    I --> I4["Earliest-start and latest-finish helpers"]
+
+    I1 --> J["Generate candidate starts"]
+    I2 --> J
+    I3 --> J
+    I4 --> J
+    J --> K{"Candidate allowed?"}
+    K -- "No: disabled, cooldown, deadline, blocked window, or no profile" --> L["Record program diagnostics"]
+    K -- "Yes" --> M["Cost candidate using learned power profile"]
+
+    M --> N{"Negative price available?"}
+    N -- "Yes" --> O["Rank eligible negative-price programs by policy, useful energy intensity, cooldown, and cost"]
+    N -- "No" --> P["Rank normal candidates by strategy, preference, cost, and windows"]
+    O --> Q["Publish negative-price recommendation"]
+    P --> R["Publish now, soon, overnight, cheapest, and greenest recommendations"]
+    Q --> S{"Chosen start is due and confidence is high enough?"}
+    R --> S
+    S -- "No" --> T["Automation readiness: false"]
+    S -- "Yes" --> U["Automation readiness: true"]
+    U --> V["Home Assistant automation may execute if user/request/auto-mode policy allows it"]
+```
+
+Automatic mode must sit after this flow, not beside it. That means an unattended
+automation should only act when the chosen intent sensor says it is ready, the
+instance is idle, the recommendation is still current, and any household safety
+checks pass immediately before execution.
+
 ## Local Energy Context
 
 Status: Future design principle
