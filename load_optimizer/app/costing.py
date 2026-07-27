@@ -432,6 +432,7 @@ def summarize_decision(
     now_cost: float | None,
     ready_to_start: bool = False,
     reason: str | None = None,
+    program_options: list[dict] | None = None,
 ) -> dict:
     if not candidate:
         return {
@@ -439,6 +440,7 @@ def summarize_decision(
             "status": "not_ready",
             "reason": reason or "no_candidate",
             "ready_to_start": False,
+            "program_options": program_options or [],
         }
     cost = candidate.get("total_cost_pence")
     saving = None
@@ -470,7 +472,108 @@ def summarize_decision(
         "green_window_overlap_seconds": candidate.get("green_window_overlap_seconds"),
         "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
         "is_green_window_start": candidate.get("is_green_window_start"),
+        "program_options": program_options or [],
     }
+
+
+def summarize_program_option(candidate: dict, reference_utc: datetime, now_cost: float | None) -> dict:
+    """Return a dashboard/automation-safe summary of one selectable program option."""
+    start = candidate.get("start")
+    finish = candidate.get("finish")
+    seconds_until_start = None
+    if start:
+        seconds_until_start = max(0, round((start - reference_utc).total_seconds()))
+    saving = None
+    cost = candidate.get("total_cost_pence")
+    if now_cost is not None and cost is not None:
+        saving = round(max(0.0, now_cost - cost), 4)
+    return {
+        "program": candidate.get("program"),
+        "start": start.isoformat() if start else None,
+        "finish": finish.isoformat() if finish else None,
+        "seconds_until_start": seconds_until_start,
+        "cost_pence": cost,
+        "energy_cost_pence": candidate.get("energy_cost_pence"),
+        "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
+        "saving_vs_now_pence": saving,
+        "energy_kwh": candidate.get("energy_kwh"),
+        "confidence": candidate.get("confidence"),
+        "preference_rank": candidate.get("preference_rank"),
+        "negative_price_priority": candidate.get("negative_price_priority"),
+        "negative_price_run": candidate.get("negative_price_run"),
+        "energy_kwh_per_minute": candidate.get("energy_kwh_per_minute"),
+        "is_overnight_start": candidate.get("is_overnight_start"),
+        "is_daytime_start": candidate.get("is_daytime_start"),
+        "green_window_overlap_seconds": candidate.get("green_window_overlap_seconds"),
+        "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
+        "is_green_window_start": candidate.get("is_green_window_start"),
+    }
+
+
+def summarize_program_options(
+    candidates: list[dict],
+    *,
+    reference_utc: datetime,
+    now_cost: float | None,
+    intent: str,
+    limit: int = 20,
+) -> list[dict]:
+    """Return the best candidate for each program for a given front-end intent."""
+    if intent == "now":
+        eligible = list(candidates)
+
+        def sort_key(item: dict) -> tuple:
+            return (
+                abs((item["start"] - reference_utc).total_seconds()),
+                item["total_cost_pence"],
+                item.get("preference_rank", 50),
+                item["finish"],
+            )
+    elif intent == "soon":
+        soon_end = reference_utc + timedelta(hours=2)
+        eligible = [item for item in candidates if reference_utc <= item["start"] <= soon_end]
+
+        def sort_key(item: dict) -> tuple:
+            return (item["total_cost_pence"], item.get("preference_rank", 50), item["finish"])
+    elif intent == "overnight":
+        eligible = [item for item in candidates if item.get("is_overnight_start")]
+
+        def sort_key(item: dict) -> tuple:
+            return (item["total_cost_pence"], item.get("preference_rank", 50), item["finish"])
+    elif intent == "negative_price":
+        eligible = [item for item in candidates if item.get("negative_price_run")]
+
+        def sort_key(item: dict) -> tuple:
+            return (
+                -item.get("negative_price_priority", 50),
+                -item.get("energy_kwh_per_minute", 0),
+                -item.get("energy_kwh", 0),
+                item["total_cost_pence"],
+                item.get("preference_rank", 50),
+            )
+    elif intent == "greenest":
+        eligible = [item for item in candidates if item.get("green_window_overlap_seconds", 0) > 0]
+
+        def sort_key(item: dict) -> tuple:
+            return (
+                -item.get("green_window_overlap_percent", 0),
+                item["total_cost_pence"],
+                item.get("preference_rank", 50),
+                item["finish"],
+            )
+    else:
+        eligible = []
+
+        def sort_key(item: dict) -> tuple:
+            return (item["total_cost_pence"], item.get("preference_rank", 50), item["finish"])
+
+    best_by_program = {}
+    for candidate in sorted(eligible, key=sort_key):
+        best_by_program.setdefault(candidate.get("program"), candidate)
+    return [
+        summarize_program_option(candidate, reference_utc, now_cost)
+        for candidate in sorted(best_by_program.values(), key=sort_key)[:limit]
+    ]
 
 
 def summarize_program_rotation(program_diagnostics: list[dict], limit: int = 10) -> dict:
@@ -933,6 +1036,36 @@ def recommend_cycle(
             -item["preference_rank"],
         ),
     ) if negative_candidates else None
+    now_program_options = summarize_program_options(
+        comparison_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="now",
+    )
+    soon_program_options = summarize_program_options(
+        comparison_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="soon",
+    )
+    overnight_program_options = summarize_program_options(
+        comparison_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="overnight",
+    )
+    negative_price_program_options = summarize_program_options(
+        comparison_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="negative_price",
+    )
+    greenest_program_options = summarize_program_options(
+        comparison_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="greenest",
+    )
     cost_forecast, forecast_diagnostics = forecast_cycle_costs(
         models,
         policies,
@@ -986,6 +1119,7 @@ def recommend_cycle(
             now_cost=now_cost,
             ready_to_start=True,
             reason="start_immediately",
+            program_options=now_program_options,
         ),
         "soon_recommendation": summarize_decision(
             intent="soon",
@@ -994,6 +1128,7 @@ def recommend_cycle(
             now_cost=now_cost,
             ready_to_start=False,
             reason="best_within_2_hours",
+            program_options=soon_program_options,
         ),
         "overnight_recommendation": summarize_decision(
             intent="overnight",
@@ -1002,6 +1137,7 @@ def recommend_cycle(
             now_cost=now_cost,
             ready_to_start=False,
             reason="best_overnight",
+            program_options=overnight_program_options,
         ),
         "negative_price_recommendation": summarize_decision(
             intent="negative_price",
@@ -1010,6 +1146,7 @@ def recommend_cycle(
             now_cost=now_cost,
             ready_to_start=bool(best_negative and best_negative["start"] <= reference_utc),
             reason="best_negative_price_energy_intensity" if best_negative else "no_negative_price_candidate",
+            program_options=negative_price_program_options,
         ),
         "greenest_recommendation": summarize_decision(
             intent="greenest",
@@ -1018,6 +1155,7 @@ def recommend_cycle(
             now_cost=now_cost,
             ready_to_start=bool(greenest and greenest["start"] <= reference_utc),
             reason="best_green_window" if greenest else "no_green_window_candidate",
+            program_options=greenest_program_options,
         ),
         "negative_price_candidate_count": len(negative_candidates),
         "cost_forecast": cost_forecast,
