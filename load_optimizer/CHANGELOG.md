@@ -4,6 +4,16 @@
 
 - No unreleased changes.
 
+## 0.8.45
+
+- Publish a Dishwasher 1 automation package status sensor so Home Assistant can
+  show whether the optional package YAML is missing, current, or stale after an
+  app upgrade.
+- Add an automation package version helper to the optional Dishwasher 1 Home
+  Assistant package.
+- Align the runtime app version reported by `sensor.load_optimizer_status` with
+  the installable app manifest version.
+
 ## 0.8.44
 
 - Stop the optional Home Assistant Bosch helper package from resetting
