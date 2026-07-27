@@ -4,7 +4,8 @@
 # automations let dashboards, voice assistants, and household automations request
 # a run without duplicating scheduling logic.
 #
-# Before using this package, set the Bosch helper values below and replace
+# Before using this package, load it into Home Assistant, populate the Bosch
+# helper values with your own appliance entities, and replace
 # `script.load_optimizer_announce` with the equivalent from your own Home
 # Assistant instance.
 #
@@ -45,6 +46,12 @@ input_boolean:
     initial: false
 
 input_text:
+  load_optimizer_1_automation_package_version:
+    name: Dishwasher 1 Automation Package Version
+    icon: mdi:package-variant
+    initial: "0.8.45"
+    max: 32
+
   load_optimizer_1_bosch_device_id:
     name: Dishwasher 1 Bosch Device ID
     icon: mdi:identifier
