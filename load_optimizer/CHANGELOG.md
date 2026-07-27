@@ -4,6 +4,14 @@
 
 - No unreleased changes.
 
+## 0.8.41
+
+- Allow the Dishwasher 1 `Start Selected Now` dashboard action to capture the
+  selected override program immediately, even when that program is intentionally
+  excluded from normal optimizer recommendations.
+- Keep scheduled selected-program overrides tied to optimizer-provided candidate
+  start times, while immediate selected-program overrides use the current time.
+
 ## 0.8.40
 
 - Add Bosch dishwasher control helpers to the optional Home Assistant automation

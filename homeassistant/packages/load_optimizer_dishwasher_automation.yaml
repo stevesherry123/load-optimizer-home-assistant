@@ -219,6 +219,9 @@ automation:
       override_request: "{{ trigger.id.endswith('_override') }}"
       requested_mode: "{{ trigger.id | replace('_override', '') }}"
       requested_override_program: "{{ states('input_select.load_optimizer_1_override_program') }}"
+      override_program_requested: >-
+        {{ override_request
+           and requested_override_program not in ['engine', 'unknown', 'unavailable', 'none', None, ''] }}
       recommendation_entity: "{{ 'sensor.load_optimizer_1_' ~ requested_mode ~ '_recommendation' }}"
       recommendation_status: "{{ state_attr(recommendation_entity, 'status') }}"
       engine_program: >-
@@ -226,8 +229,8 @@ automation:
       engine_start: "{{ state_attr(recommendation_entity, 'start') }}"
       program_options: "{{ state_attr(recommendation_entity, 'program_options') or [] }}"
       recommendation_program: >-
-        {% if override_request and requested_override_program not in ['engine', 'unknown', 'unavailable', 'none', None, ''] %}
-          {% set ns = namespace(program='') %}
+        {% if override_program_requested %}
+          {% set ns = namespace(program=requested_override_program) %}
           {% for option in program_options %}
             {% if option.program == requested_override_program %}
               {% set ns.program = option.program %}
@@ -238,7 +241,9 @@ automation:
           {{ engine_program }}
         {% endif %}
       recommendation_start: >-
-        {% if override_request and requested_override_program not in ['engine', 'unknown', 'unavailable', 'none', None, ''] %}
+        {% if override_program_requested and requested_mode == 'now' %}
+          {{ now().isoformat() }}
+        {% elif override_program_requested %}
           {% set ns = namespace(start='') %}
           {% for option in program_options %}
             {% if option.program == requested_override_program %}
@@ -255,7 +260,7 @@ automation:
     actions:
       - condition: template
         value_template: >-
-          {{ recommendation_status == 'ready'
+          {{ (recommendation_status == 'ready' or (override_program_requested and requested_mode == 'now'))
              and recommendation_program not in ['unknown', 'unavailable', 'none', None, '']
              and recommendation_start not in ['unknown', 'unavailable', 'none', None, ''] }}
       - action: input_select.select_option
