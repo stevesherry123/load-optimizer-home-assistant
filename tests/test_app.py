@@ -30,6 +30,7 @@ from load_optimizer.app.main import (
     publish_restart_safety,
     publish_schedule_entities,
     publish_execution_entities,
+    green_windows_from_entity,
     program_summary,
     publish_restart_warning,
     repair_learning_quality,
@@ -40,6 +41,7 @@ from load_optimizer.app.main import (
     resolve_program_policies,
     running_instances,
     schedule_advice,
+    blocked_windows_from_entity,
     tariff_entity_diagnostic,
     tariff_state_from_entity,
     update_instance,
@@ -240,6 +242,99 @@ class ConfigurationTests(unittest.TestCase):
         })
 
         self.assertEqual(config["blocked_window_entity"], "calendar.appliance_block")
+
+    @patch("load_optimizer.app.main.api_request")
+    @patch("load_optimizer.app.main.source_state")
+    def test_blocked_window_entity_parses_octoplus_saving_session_events(self, source_state, api_request):
+        api_request.return_value = None
+        source_state.return_value = {
+            "entity_id": "event.octopus_energy_saving_session_events",
+            "state": "2026-07-24T15:33:24.759+00:00",
+            "attributes": {
+                "joined_events": [
+                    {
+                        "id": 4512,
+                        "start": "2026-07-09T20:00:00+01:00",
+                        "end": "2026-07-09T21:00:00+01:00",
+                        "octopoints_per_kwh": 137,
+                    },
+                    {
+                        "id": 4710,
+                        "start": "2026-07-24T18:00:00+01:00",
+                        "end": "2026-07-24T19:00:00+01:00",
+                        "duration_in_minutes": 60,
+                        "rewarded_octopoints": None,
+                        "octopoints_per_kwh": 96,
+                    },
+                ],
+            },
+        }
+        start = datetime(2026, 7, 24, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 7, 25, 0, 0, tzinfo=timezone.utc)
+
+        windows, diagnostics = blocked_windows_from_entity(
+            "token",
+            "event.octopus_energy_saving_session_events",
+            start=start,
+            end=end,
+        )
+
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(windows[0]["start"], datetime(2026, 7, 24, 17, 0, tzinfo=timezone.utc))
+        self.assertEqual(windows[0]["end"], datetime(2026, 7, 24, 18, 0, tzinfo=timezone.utc))
+        self.assertEqual(windows[0]["summary"], "4710")
+        self.assertEqual(windows[0]["metadata"]["id"], 4710)
+        self.assertEqual(diagnostics["event_list_counts"]["joined_events"], 2)
+        self.assertEqual(diagnostics["windows"], 1)
+
+    @patch("load_optimizer.app.main.api_request")
+    @patch("load_optimizer.app.main.source_state")
+    def test_green_window_entity_merges_multiple_window_entities(self, source_state, api_request):
+        api_request.return_value = []
+
+        def state_for(_token, entity_id):
+            return {
+                "calendar.green": {
+                    "entity_id": "calendar.green",
+                    "state": "off",
+                    "attributes": {
+                        "start_time": "2026-07-24T23:00:00+01:00",
+                        "end_time": "2026-07-25T06:00:00+01:00",
+                        "greenness_score": 48,
+                    },
+                },
+                "event.saving_sessions": {
+                    "entity_id": "event.saving_sessions",
+                    "state": "2026-07-24T15:33:24.759+00:00",
+                    "attributes": {
+                        "available_events": [{
+                            "id": 4710,
+                            "start": "2026-07-24T18:00:00+01:00",
+                            "end": "2026-07-24T19:00:00+01:00",
+                        }],
+                    },
+                },
+            }.get(entity_id)
+
+        source_state.side_effect = state_for
+        start = datetime(2026, 7, 24, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 7, 25, 12, 0, tzinfo=timezone.utc)
+
+        windows, diagnostics = green_windows_from_entity(
+            "token",
+            "calendar.green, event.saving_sessions",
+            start=start,
+            end=end,
+        )
+
+        self.assertEqual(len(windows), 2)
+        self.assertEqual(diagnostics["source"], "multiple_entities")
+        self.assertEqual(len(diagnostics["entities"]), 2)
+        self.assertEqual(diagnostics["windows"], 2)
+        self.assertEqual([item["entity_id"] for item in diagnostics["entities"]], [
+            "calendar.green",
+            "event.saving_sessions",
+        ])
 
     def test_instance_config_does_not_duplicate_single_tariff_entity(self):
         config = instance_config("1", {

@@ -419,6 +419,26 @@ normal usage during the event:
 blocked_window_entity: calendar.octopus_energy_xxx_octoplus_saving_sessions
 ```
 
+Event-style feeds are also supported. For example, BottlecapDave's Octopus
+Energy integration can expose Octoplus Saving Session history and upcoming
+joined events through an `event` entity:
+
+```yaml
+blocked_window_entity: event.octopus_energy_xxx_octoplus_saving_session_events
+```
+
+Multiple sources can be combined with commas when a household wants to block
+both the calendar's currently exposed event and any event-list feed:
+
+```yaml
+blocked_window_entity: calendar.octopus_energy_xxx_octoplus_saving_sessions,event.octopus_energy_xxx_octoplus_saving_session_events
+```
+
+The app recognises direct `start_time` / `end_time` attributes and event-list
+attributes named `events`, `available_events`, `joined_events`,
+`saving_sessions`, or `windows`. Event-list entries should expose `start` and
+`end` timestamps.
+
 Blocked windows are stricter than green windows. Any candidate that overlaps a
 blocked window is removed from normal recommendations and cost forecasts. Cost
 entities publish the configured blocked-window source, the number of windows
