@@ -49,7 +49,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.45"
+    initial: "0.8.46"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -142,6 +142,36 @@ input_text:
     icon: mdi:alert-circle-outline
     max: 255
 
+  load_optimizer_1_last_start_mode:
+    name: Dishwasher 1 Last Start Mode
+    icon: mdi:gesture-tap-button
+    max: 64
+
+  load_optimizer_1_last_start_program_key:
+    name: Dishwasher 1 Last Start Program Key
+    icon: mdi:key-chain
+    max: 128
+
+  load_optimizer_1_last_start_selected_program:
+    name: Dishwasher 1 Last Start Selected Program
+    icon: mdi:format-list-checks
+    max: 128
+
+  load_optimizer_1_last_start_operation_state:
+    name: Dishwasher 1 Last Start Operation State
+    icon: mdi:state-machine
+    max: 128
+
+  load_optimizer_1_last_start_readiness:
+    name: Dishwasher 1 Last Start Readiness
+    icon: mdi:shield-check
+    max: 255
+
+  load_optimizer_1_remote_start_blocked_programs:
+    name: Dishwasher 1 Remote Start Blocked Programs
+    icon: mdi:playlist-remove
+    max: 255
+
 input_datetime:
   load_optimizer_1_requested_start:
     name: Dishwasher 1 Requested Start
@@ -188,6 +218,22 @@ input_button:
     icon: mdi:weather-night
 
 automation:
+  - id: load_optimizer_1_register_automation_package_version
+    alias: Load Optimizer 1 - Register Automation Package Version
+    description: Keep the package version helper aligned after package updates.
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: time_pattern
+        hours: "/6"
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_automation_package_version
+        data:
+          value: "0.8.46"
+
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
     description: Store a dishwasher run request from dashboard, voice, or automation controls.
@@ -535,6 +581,16 @@ automation:
         not_running_after_start key={{ selected_program_key }}
         selected={{ states(bosch_selected_program_sensor) }}
         operation={{ states(bosch_operation_state_sensor) }}
+      blocked_programs_after_failure: >-
+        {% set raw = states('input_text.load_optimizer_1_remote_start_blocked_programs') %}
+        {% set existing = raw.split(',') | map('trim') | reject('eq', '') | list
+           if raw not in ['unknown', 'unavailable', 'none', None, ''] else [] %}
+        {{ (existing + [selected_program]) | unique | join(',') }}
+      blocked_programs_after_success: >-
+        {% set raw = states('input_text.load_optimizer_1_remote_start_blocked_programs') %}
+        {% set existing = raw.split(',') | map('trim') | reject('eq', '') | list
+           if raw not in ['unknown', 'unavailable', 'none', None, ''] else [] %}
+        {{ existing | reject('eq', selected_program) | list | join(',') }}
     conditions:
       - condition: template
         value_template: "{{ requested_mode in ['now', 'soon', 'overnight', 'negative_price'] }}"
@@ -567,6 +623,21 @@ automation:
           entity_id: input_text.load_optimizer_1_last_start_failure_reason
         data:
           value: ""
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_start_mode
+        data:
+          value: "{{ requested_mode }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_start_program_key
+        data:
+          value: "{{ selected_program_key[:128] }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_start_readiness
+        data:
+          value: "{{ bosch_ready_summary[:255] }}"
       - action: input_datetime.set_datetime
         target:
           entity_id: input_datetime.load_optimizer_1_last_start_attempt
@@ -700,6 +771,11 @@ automation:
                   entity_id: input_text.load_optimizer_1_start_attempt_message
                 data:
                   value: "{{ not_startable_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_remote_start_blocked_programs
+                data:
+                  value: "{{ blocked_programs_after_failure[:255] }}"
               - action: script.turn_on
                 target:
                   entity_id: script.load_optimizer_announce
@@ -734,6 +810,11 @@ automation:
                 Dishwasher program step complete.
                 requested={{ selected_program_key }},
                 selected={{ states(bosch_selected_program_sensor) }}.
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_last_start_selected_program
+            data:
+              value: "{{ states(bosch_selected_program_sensor)[:128] }}"
           - action: button.press
             continue_on_error: true
             target:
@@ -748,6 +829,11 @@ automation:
                 Dishwasher button start attempted.
                 operation={{ states(bosch_operation_state_sensor) }},
                 cycle={{ states('sensor.load_optimizer_1_cycle_state') }}.
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_last_start_operation_state
+            data:
+              value: "{{ states(bosch_operation_state_sensor)[:128] }}"
           - if:
               - condition: template
                 value_template: >-
@@ -821,6 +907,11 @@ automation:
                     operation={{ states(bosch_operation_state_sensor) }}.
               - action: input_text.set_value
                 target:
+                  entity_id: input_text.load_optimizer_1_remote_start_blocked_programs
+                data:
+                  value: "{{ blocked_programs_after_success[:255] }}"
+              - action: input_text.set_value
+                target:
                   entity_id: input_text.load_optimizer_1_scheduler_message
                 data:
                   value: >-
@@ -863,6 +954,11 @@ automation:
                   entity_id: input_text.load_optimizer_1_scheduler_message
                 data:
                   value: "{{ failed_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_remote_start_blocked_programs
+                data:
+                  value: "{{ blocked_programs_after_failure[:255] }}"
               - action: script.turn_on
                 target:
                   entity_id: script.load_optimizer_announce

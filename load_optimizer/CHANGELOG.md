@@ -4,6 +4,17 @@
 
 - No unreleased changes.
 
+## 0.8.46
+
+- Track Bosch start diagnostics in dedicated helper-backed sensors, including
+  requested mode, Bosch program key, selected program, operation state, and
+  readiness checks.
+- Remember programs that fail remote-start validation and exclude them from
+  automatic optimizer recommendations until a successful start clears them.
+- Publish per-program automation capabilities so dashboards can show which
+  learned programs are recommendable, negative-price eligible, or blocked from
+  remote start.
+
 ## 0.8.45
 
 - Publish a Dishwasher 1 automation package status sensor so Home Assistant can

@@ -724,8 +724,10 @@ def forecast_cycle_costs(
     forecast_limit: int,
     green_windows: list[dict] | None = None,
     blocked_windows: list[dict] | None = None,
+    excluded_programs: list[str] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     policy_by_program = {policy["program"]: policy for policy in policies}
+    excluded = set(excluded_programs or [])
     forecast_end = reference_utc + timedelta(hours=max(0, forecast_hours))
     start_at = _next_candidate(reference_utc, forecast_interval_minutes)
     candidates = []
@@ -743,6 +745,10 @@ def forecast_cycle_costs(
             "runtime_minutes": model.get("expected_runtime_minutes"),
             "confidence": model.get("confidence"),
         }
+        if model.get("program") in excluded:
+            diagnostic.update(status="excluded", reason="remote_start_blocked")
+            diagnostics.append(diagnostic)
+            continue
         policy = policy_by_program.get(model["program"])
         if not policy or not policy["enabled"]:
             diagnostic.update(status="excluded", reason="policy_missing_or_disabled")
@@ -833,6 +839,7 @@ def recommend_cycle(
     forecast_limit: int = 300,
     green_windows: list[dict] | None = None,
     blocked_windows: list[dict] | None = None,
+    excluded_programs: list[str] | None = None,
 ) -> dict:
     """Find the least-cost policy-eligible program and start time."""
     if schedule_strategy not in SCHEDULE_STRATEGIES:
@@ -841,6 +848,7 @@ def recommend_cycle(
         raise ValueError(f"Unsupported window preference: {window_preference}")
     equivalent_cost_tolerance_pence = max(0.0, float(equivalent_cost_tolerance_pence))
     policy_by_program = {policy["program"]: policy for policy in policies}
+    excluded = set(excluded_programs or [])
     candidates = []
     comparison_candidates = []
     negative_candidates = []
@@ -867,6 +875,10 @@ def recommend_cycle(
             "runtime_minutes": model.get("expected_runtime_minutes"),
             "confidence": model.get("confidence"),
         }
+        if model.get("program") in excluded:
+            diagnostic.update(status="excluded", reason="remote_start_blocked")
+            program_diagnostics.append(diagnostic)
+            continue
         policy = policy_by_program.get(model["program"])
         if not policy or not policy["enabled"]:
             diagnostic.update(status="excluded", reason="policy_missing_or_disabled")
@@ -975,6 +987,7 @@ def recommend_cycle(
             "rejected_blocked": rejected_blocked,
             "blocked_window_count": len(blocked_windows or []),
             "blocked_window_candidate_count": rejected_blocked,
+            "remote_start_blocked_programs": sorted(excluded),
             "green_window_count": len(green_windows or []),
             "green_window_candidate_count": 0,
             "program_diagnostics": program_diagnostics,
@@ -1079,6 +1092,7 @@ def recommend_cycle(
         forecast_limit=forecast_limit,
         green_windows=green_windows,
         blocked_windows=blocked_windows,
+        excluded_programs=excluded_programs,
     )
     return {
         "status": "ready",
@@ -1112,6 +1126,7 @@ def recommend_cycle(
         "green_window_count": len(green_windows or []),
         "blocked_window_count": len(blocked_windows or []),
         "blocked_window_candidate_count": rejected_blocked,
+        "remote_start_blocked_programs": sorted(excluded),
         "now_recommendation": summarize_decision(
             intent="now",
             candidate=immediate_candidate,
