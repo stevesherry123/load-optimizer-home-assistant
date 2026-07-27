@@ -4,6 +4,15 @@
 
 - No unreleased changes.
 
+## 0.8.38
+
+- Parse event-list blocked-window entities such as Octoplus Saving Session
+  event feeds with `joined_events` and `available_events` attributes.
+- Allow comma-separated green and blocked window entities so calendar and event
+  sources can be combined.
+- Publish clearer window-source diagnostics for event-list based green and
+  blocked window sources.
+
 ## 0.8.37
 
 - Publish per-program options on the `now`, `soon`, `overnight`, `greenest`,

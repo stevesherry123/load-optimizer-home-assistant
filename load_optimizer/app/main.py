@@ -21,7 +21,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.37"
+APP_VERSION = "0.8.38"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -168,6 +168,86 @@ def datetime_from_value(value: object) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+WINDOW_EVENT_KEYS = (
+    "events",
+    "available_events",
+    "joined_events",
+    "saving_sessions",
+    "windows",
+)
+
+
+def _state_window_from_values(
+    *,
+    start_value: object,
+    end_value: object,
+    range_start: datetime,
+    range_end: datetime,
+    summary: object = None,
+) -> dict | None:
+    window_start = datetime_from_value(start_value)
+    window_end = datetime_from_value(end_value)
+    if not window_start or not window_end:
+        return None
+    if window_end <= range_start or window_start >= range_end:
+        return None
+    return {
+        "start": max(window_start, range_start),
+        "end": min(window_end, range_end),
+        "summary": str(summary or "").strip() or None,
+    }
+
+
+def _state_windows_from_event_lists(attributes: dict, *, start: datetime, end: datetime) -> tuple[list[dict], dict]:
+    """Extract no-run or green windows from common event-list attributes."""
+    windows = []
+    list_counts = {}
+    for key in WINDOW_EVENT_KEYS:
+        items = attributes.get(key)
+        if not isinstance(items, list):
+            continue
+        list_counts[key] = len(items)
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            window = _state_window_from_values(
+                start_value=item.get("start") or item.get("start_time") or item.get("from"),
+                end_value=item.get("end") or item.get("end_time") or item.get("to"),
+                range_start=start,
+                range_end=end,
+                summary=item.get("summary") or item.get("message") or item.get("name") or item.get("id"),
+            )
+            if window:
+                metadata = {
+                    extra_key: item.get(extra_key)
+                    for extra_key in (
+                        "id",
+                        "duration_in_minutes",
+                        "rewarded_octopoints",
+                        "octopoints_per_kwh",
+                        "greenness_index",
+                        "greenness_score",
+                    )
+                    if item.get(extra_key) is not None
+                }
+                if metadata:
+                    window["metadata"] = metadata
+                windows.append(window)
+    return windows, {"event_list_counts": list_counts}
+
+
+def _deduplicate_windows(windows: list[dict]) -> list[dict]:
+    deduplicated = {}
+    for window in windows:
+        key = (
+            window["start"].isoformat(),
+            window["end"].isoformat(),
+            window.get("summary"),
+        )
+        deduplicated[key] = window
+    return sorted(deduplicated.values(), key=lambda item: item["start"])
+
+
 def green_windows_from_entity(
     token: str,
     entity_id: str,
@@ -178,6 +258,23 @@ def green_windows_from_entity(
     """Read provider-neutral green windows from a calendar or state entity."""
     if not entity_id:
         return [], None
+    entity_ids = entity_list(entity_id)
+    if len(entity_ids) > 1:
+        all_windows = []
+        diagnostics = []
+        for item_id in entity_ids:
+            windows, diagnostic = green_windows_from_entity(token, item_id, start=start, end=end)
+            all_windows.extend(windows)
+            if diagnostic:
+                diagnostics.append(diagnostic)
+        windows = _deduplicate_windows(all_windows)
+        return windows, {
+            "entity_id": entity_id,
+            "readable": all(diagnostic.get("readable") for diagnostic in diagnostics) if diagnostics else False,
+            "source": "multiple_entities",
+            "entities": diagnostics,
+            "windows": len(windows),
+        }
     entity = source_state(token, entity_id)
     diagnostic = {
         "entity_id": entity_id,
@@ -221,7 +318,11 @@ def green_windows_from_entity(
             "summary": attributes.get("friendly_name") or entity_id,
         })
 
-    windows.sort(key=lambda window: window["start"])
+    event_windows, event_diagnostic = _state_windows_from_event_lists(attributes, start=start, end=end)
+    windows.extend(event_windows)
+    diagnostic.update(event_diagnostic)
+
+    windows = _deduplicate_windows(windows)
     diagnostic["windows"] = len(windows)
     diagnostic["window_source_state"] = entity.get("state")
     return windows, diagnostic
