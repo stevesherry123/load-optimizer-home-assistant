@@ -4,6 +4,17 @@
 
 - No unreleased changes.
 
+## 0.8.39
+
+- Sanitize the public Bosch dishwasher automation package so it no longer
+  includes user-specific entity IDs.
+- Keep a last-good backup of the persisted learning database and quarantine
+  unreadable state files instead of silently overwriting learned history.
+- Interpret Home Assistant `input_datetime` schedule helpers in the configured
+  tariff timezone when the helper value has no timezone offset.
+- Log app option read failures clearly so configuration problems are easier to
+  diagnose.
+
 ## 0.8.38
 
 - Parse event-list blocked-window entities such as Octoplus Saving Session

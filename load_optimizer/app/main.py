@@ -15,18 +15,20 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
     from .costing import recommend_cycle, tariff_periods_from_entity
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.38"
+APP_VERSION = "0.8.39"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
 STATUS_ENTITY = "sensor.load_optimizer_status"
 RESTART_SAFETY_ENTITY = "sensor.load_optimizer_restart_safety"
+EMPTY_STATE = {"schema_version": 1, "instances": {}}
 
 PROGRAM_CLASSIFICATIONS = {
     "unclassified",
@@ -54,16 +56,44 @@ def configure_logging() -> None:
 
 def load_state(path: Path = DATA_PATH) -> dict:
     if not path.exists():
-        return {"schema_version": 1, "instances": {}}
+        return dict(EMPTY_STATE)
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        LOGGER.warning("Could not read persisted state: %s", error)
-        return {"schema_version": 1, "instances": {}}
+        LOGGER.error("Could not read persisted state: %s", error)
+        backup_path = path.with_suffix(f"{path.suffix}.bak")
+        try:
+            if backup_path.exists():
+                restored = json.loads(backup_path.read_text(encoding="utf-8"))
+                quarantine_corrupt_state(path)
+                LOGGER.warning("Restored persisted state from backup %s", backup_path)
+                return restored
+        except (OSError, json.JSONDecodeError) as backup_error:
+            LOGGER.error("Could not restore persisted state backup: %s", backup_error)
+        quarantine_corrupt_state(path)
+        return dict(EMPTY_STATE)
+
+
+def quarantine_corrupt_state(path: Path) -> None:
+    if not path.exists():
+        return
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    quarantine_path = path.with_suffix(f"{path.suffix}.corrupt-{timestamp}")
+    try:
+        path.replace(quarantine_path)
+        LOGGER.warning("Moved unreadable persisted state to %s", quarantine_path)
+    except OSError as error:
+        LOGGER.error("Could not quarantine unreadable persisted state: %s", error)
 
 
 def save_state(data: dict, path: Path = DATA_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    backup_path = path.with_suffix(f"{path.suffix}.bak")
+    if path.exists():
+        try:
+            backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        except OSError as error:
+            LOGGER.warning("Could not refresh persisted state backup: %s", error)
     temporary_path = path.with_suffix(".tmp")
     temporary_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     temporary_path.replace(path)
@@ -83,7 +113,8 @@ def save_state_if_changed(data: dict, previous_signature: str | None, path: Path
 def load_options(path: Path = OPTIONS_PATH) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as error:
+        LOGGER.error("Could not read app options from %s: %s", path, error)
         return {}
 
 
@@ -136,7 +167,20 @@ def source_state(token: str, entity_id: str) -> dict | None:
     return api_request(token, f"/states/{entity_id}")
 
 
-def datetime_from_entity_state(entity_state: dict | None) -> datetime | None:
+def configured_timezone(name: object, default: str = "UTC") -> timezone | ZoneInfo:
+    timezone_name = str(name or default).strip() or default
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        LOGGER.warning("Unknown timezone %s; falling back to %s", timezone_name, default)
+        return ZoneInfo(default)
+
+
+def datetime_from_entity_state(
+    entity_state: dict | None,
+    *,
+    naive_timezone: str | timezone | ZoneInfo = timezone.utc,
+) -> datetime | None:
     if not entity_state:
         return None
     value = str(entity_state.get("state") or "").strip()
@@ -147,11 +191,17 @@ def datetime_from_entity_state(entity_state: dict | None) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None or parsed.utcoffset() is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(
+            tzinfo=configured_timezone(naive_timezone) if isinstance(naive_timezone, str) else naive_timezone
+        )
     return parsed.astimezone(timezone.utc)
 
 
-def datetime_from_value(value: object) -> datetime | None:
+def datetime_from_value(
+    value: object,
+    *,
+    naive_timezone: str | timezone | ZoneInfo = timezone.utc,
+) -> datetime | None:
     if isinstance(value, dict):
         value = value.get("dateTime") or value.get("date")
     if value is None:
@@ -164,7 +214,9 @@ def datetime_from_value(value: object) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None or parsed.utcoffset() is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(
+            tzinfo=configured_timezone(naive_timezone) if isinstance(naive_timezone, str) else naive_timezone
+        )
     return parsed.astimezone(timezone.utc)
 
 
@@ -1841,8 +1893,15 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     if tariff_entities:
         earliest_start_entity = config.get("schedule_earliest_start_entity")
         latest_finish_entity = config.get("schedule_latest_finish_entity")
-        earliest_start_utc = datetime_from_entity_state(source_state(token, earliest_start_entity)) if earliest_start_entity else None
-        latest_finish_utc = datetime_from_entity_state(source_state(token, latest_finish_entity)) if latest_finish_entity else None
+        schedule_timezone = config.get("tariff_timezone", "Europe/London")
+        earliest_start_utc = (
+            datetime_from_entity_state(source_state(token, earliest_start_entity), naive_timezone=schedule_timezone)
+            if earliest_start_entity else None
+        )
+        latest_finish_utc = (
+            datetime_from_entity_state(source_state(token, latest_finish_entity), naive_timezone=schedule_timezone)
+            if latest_finish_entity else None
+        )
         if earliest_start_utc and earliest_start_utc <= now.astimezone(timezone.utc):
             earliest_start_utc = None
         if latest_finish_utc and latest_finish_utc <= now.astimezone(timezone.utc):

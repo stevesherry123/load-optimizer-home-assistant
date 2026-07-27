@@ -12,6 +12,7 @@ from load_optimizer.app.main import (
     bootstrap_program_models,
     bool_option,
     compact_profile_data,
+    datetime_from_entity_state,
     instance_config,
     instance_configs,
     load_state,
@@ -78,6 +79,42 @@ class StateStorageTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), expected)
             self.assertEqual(load_state(path), expected)
 
+    def test_corrupt_state_restores_last_good_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            backup_path = path.with_suffix(".json.bak")
+            expected = {
+                "schema_version": 1,
+                "instances": {"1": {"name": "Dishwasher 1"}},
+            }
+            backup_path.write_text(json.dumps(expected), encoding="utf-8")
+            path.write_text("{not-json", encoding="utf-8")
+
+            self.assertEqual(load_state(path), expected)
+            self.assertFalse(path.exists())
+            self.assertEqual(len(list(Path(directory).glob("state.json.corrupt-*"))), 1)
+
+    def test_corrupt_state_is_quarantined_before_empty_state_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text("{not-json", encoding="utf-8")
+
+            self.assertEqual(load_state(path), {"schema_version": 1, "instances": {}})
+            self.assertFalse(path.exists())
+            self.assertEqual(len(list(Path(directory).glob("state.json.corrupt-*"))), 1)
+
+    def test_save_state_refreshes_last_good_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            first = {"schema_version": 1, "instances": {"1": {"runs": 1}}}
+            second = {"schema_version": 1, "instances": {"1": {"runs": 2}}}
+
+            save_state(first, path)
+            save_state(second, path)
+
+            self.assertEqual(json.loads(path.read_text()), second)
+            self.assertEqual(json.loads(path.with_suffix(".json.bak").read_text()), first)
+
     @patch("load_optimizer.app.main.save_state")
     def test_state_is_saved_only_when_signature_changes(self, save_state_mock):
         data = {"schema_version": 1, "instances": {"1": {"runs": 1}}}
@@ -88,6 +125,24 @@ class StateStorageTests(unittest.TestCase):
         save_state_if_changed(data, signature)
 
         self.assertEqual(save_state_mock.call_count, 2)
+
+
+class DateTimeParsingTests(unittest.TestCase):
+    def test_naive_input_datetime_uses_configured_timezone(self):
+        parsed = datetime_from_entity_state(
+            {"state": "2026-07-14 06:00:00"},
+            naive_timezone="Europe/London",
+        )
+
+        self.assertEqual(parsed, datetime(2026, 7, 14, 5, 0, tzinfo=timezone.utc))
+
+    def test_timezone_aware_input_datetime_keeps_own_offset(self):
+        parsed = datetime_from_entity_state(
+            {"state": "2026-07-14T06:00:00+00:00"},
+            naive_timezone="Europe/London",
+        )
+
+        self.assertEqual(parsed, datetime(2026, 7, 14, 6, 0, tzinfo=timezone.utc))
 
 
 class PublishingTests(unittest.TestCase):
