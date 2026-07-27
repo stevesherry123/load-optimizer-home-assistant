@@ -22,8 +22,8 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.45"
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.45"
+APP_VERSION = "0.8.46"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.46"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -1668,13 +1668,40 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
     helper_prefix = f"load_optimizer_{instance_id}"
     snapshot = render_template(token, """
 {% set helper_prefix = 'load_optimizer_""" + instance_id.replace("'", "\\'") + """' %}
+{% set connected_entity = states('input_text.' ~ helper_prefix ~ '_bosch_connected_sensor') %}
+{% set door_entity = states('input_text.' ~ helper_prefix ~ '_bosch_door_sensor') %}
+{% set remote_control_entity = states('input_text.' ~ helper_prefix ~ '_bosch_remote_control_sensor') %}
+{% set remote_start_entity = states('input_text.' ~ helper_prefix ~ '_bosch_remote_start_sensor') %}
+{% set operation_entity = states('input_text.' ~ helper_prefix ~ '_bosch_operation_state_sensor') %}
+{% set selected_program_entity = states('input_text.' ~ helper_prefix ~ '_bosch_selected_program_sensor') %}
+{% set power_state_entity = states('input_text.' ~ helper_prefix ~ '_bosch_power_state_sensor') %}
 {{ {
   'status': states('input_text.' ~ helper_prefix ~ '_start_attempt_status'),
   'message': states('input_text.' ~ helper_prefix ~ '_start_attempt_message'),
   'result': states('input_text.' ~ helper_prefix ~ '_last_start_result'),
   'failure_reason': states('input_text.' ~ helper_prefix ~ '_last_start_failure_reason'),
   'program': states('input_text.' ~ helper_prefix ~ '_last_start_program'),
-  'attempt': states('input_datetime.' ~ helper_prefix ~ '_last_start_attempt')
+  'attempt': states('input_datetime.' ~ helper_prefix ~ '_last_start_attempt'),
+  'mode': states('input_text.' ~ helper_prefix ~ '_last_start_mode'),
+  'program_key': states('input_text.' ~ helper_prefix ~ '_last_start_program_key'),
+  'selected_program_state': states('input_text.' ~ helper_prefix ~ '_last_start_selected_program'),
+  'operation_state': states('input_text.' ~ helper_prefix ~ '_last_start_operation_state'),
+  'readiness': states('input_text.' ~ helper_prefix ~ '_last_start_readiness'),
+  'remote_blocked_programs': states('input_text.' ~ helper_prefix ~ '_remote_start_blocked_programs'),
+  'bosch_connected_entity': connected_entity,
+  'bosch_connected_state': states(connected_entity),
+  'bosch_door_entity': door_entity,
+  'bosch_door_state': states(door_entity),
+  'bosch_remote_control_entity': remote_control_entity,
+  'bosch_remote_control_state': states(remote_control_entity),
+  'bosch_remote_start_entity': remote_start_entity,
+  'bosch_remote_start_state': states(remote_start_entity),
+  'bosch_operation_entity': operation_entity,
+  'bosch_operation_state': states(operation_entity),
+  'bosch_selected_program_entity': selected_program_entity,
+  'bosch_selected_program_state_current': states(selected_program_entity),
+  'bosch_power_state_entity': power_state_entity,
+  'bosch_power_state': states(power_state_entity)
 } | to_json }}
 """)
     if not isinstance(snapshot, dict):
@@ -1691,6 +1718,16 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
     result = text_value("result")
     failure_reason = text_value("failure_reason")
     program = text_value("program")
+    mode = text_value("mode")
+    program_key = text_value("program_key")
+    selected_program_state = text_value("selected_program_state")
+    operation_state = text_value("operation_state")
+    readiness = text_value("readiness")
+    remote_blocked_programs = [
+        item.strip()
+        for item in (text_value("remote_blocked_programs") or "").split(",")
+        if item.strip()
+    ]
     attempt_at = datetime_from_entity_state({"state": text_value("attempt")})
     attempt_value = attempt_at.isoformat() if attempt_at else "unknown"
     common = {
@@ -1704,6 +1741,26 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
         "last_start_program": program,
         "last_start_result": result,
         "last_start_failure_reason": failure_reason,
+        "last_start_mode": mode,
+        "last_start_program_key": program_key,
+        "last_start_selected_program": selected_program_state,
+        "last_start_operation_state": operation_state,
+        "last_start_readiness": readiness,
+        "remote_start_blocked_programs": remote_blocked_programs,
+        "bosch_connected_entity": text_value("bosch_connected_entity"),
+        "bosch_connected_state": text_value("bosch_connected_state"),
+        "bosch_door_entity": text_value("bosch_door_entity"),
+        "bosch_door_state": text_value("bosch_door_state"),
+        "bosch_remote_control_entity": text_value("bosch_remote_control_entity"),
+        "bosch_remote_control_state": text_value("bosch_remote_control_state"),
+        "bosch_remote_start_entity": text_value("bosch_remote_start_entity"),
+        "bosch_remote_start_state": text_value("bosch_remote_start_state"),
+        "bosch_operation_entity": text_value("bosch_operation_entity"),
+        "bosch_operation_state": text_value("bosch_operation_state"),
+        "bosch_selected_program_entity": text_value("bosch_selected_program_entity"),
+        "bosch_selected_program_state_current": text_value("bosch_selected_program_state_current"),
+        "bosch_power_state_entity": text_value("bosch_power_state_entity"),
+        "bosch_power_state": text_value("bosch_power_state"),
         "message": message,
     }
     publish_entity(token, f"{prefix}_execution_status", status, {
@@ -1731,6 +1788,75 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
         "friendly_name": f"{name} Last Start Failure Reason",
         "icon": "mdi:alert-circle",
         **common,
+    })
+    publish_entity(token, f"{prefix}_remote_start_blocked_programs", len(remote_blocked_programs), {
+        "friendly_name": f"{name} Remote Start Blocked Programs",
+        "icon": "mdi:playlist-remove",
+        "blocked_programs": remote_blocked_programs,
+        **common,
+    })
+
+
+def remote_start_blocked_programs(token: str, instance_id: str) -> list[str]:
+    helper = f"input_text.load_optimizer_{instance_id}_remote_start_blocked_programs"
+    state = source_state(token, helper) or {}
+    raw = str(state.get("state") or "").strip()
+    if raw in {"", "unknown", "unavailable", "none", "None"}:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def publish_program_capabilities(
+    token: str,
+    prefix: str,
+    name: str,
+    summaries: list[dict],
+    policies: list[dict],
+    blocked_programs: list[str],
+) -> None:
+    policy_by_program = {policy["program"]: policy for policy in policies}
+    blocked = set(blocked_programs)
+    capabilities = []
+    auto_startable = 0
+    for summary in sorted(summaries, key=lambda item: str(item.get("program", ""))):
+        program = summary.get("program")
+        policy = policy_by_program.get(program, default_program_policy(program))
+        learned = int(summary.get("runs") or 0) > 0
+        remote_blocked = program in blocked
+        can_recommend = bool(
+            learned
+            and policy.get("enabled")
+            and policy.get("allow_normal_recommendation")
+            and not remote_blocked
+        )
+        can_negative_price = bool(
+            learned
+            and policy.get("enabled")
+            and policy.get("allow_negative_price_run")
+            and not remote_blocked
+        )
+        can_auto_start = can_recommend or can_negative_price
+        if can_auto_start:
+            auto_startable += 1
+        capabilities.append({
+            "program": program,
+            "runs": summary.get("runs", 0),
+            "confidence": summary.get("confidence", 0),
+            "classification": policy.get("classification"),
+            "enabled": policy.get("enabled"),
+            "allow_normal_recommendation": policy.get("allow_normal_recommendation"),
+            "allow_negative_price_run": policy.get("allow_negative_price_run"),
+            "remote_start_status": "blocked_by_last_failure" if remote_blocked else "available",
+            "can_recommend": can_recommend,
+            "can_negative_price": can_negative_price,
+            "can_auto_start": can_auto_start,
+        })
+    publish_entity(token, f"{prefix}_program_capabilities", auto_startable, {
+        "friendly_name": f"{name} Program Capabilities",
+        "icon": "mdi:shield-check",
+        "auto_startable_programs": auto_startable,
+        "remote_start_blocked_programs": blocked_programs,
+        "programs": capabilities,
     })
 
 
@@ -1920,6 +2046,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         ),
     })
     summaries = [program_summary(program_name, model) for program_name, model in sorted(models.items())]
+    blocked_remote_start_programs = remote_start_blocked_programs(token, instance_id)
     tariff_entities = config.get("tariff_entities", [])
     cost_result = {
         "status": "tariff_not_configured",
@@ -2015,6 +2142,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     forecast_interval_minutes=config.get("cost_forecast_interval", 30),
                     green_windows=green_windows,
                     blocked_windows=blocked_windows,
+                    excluded_programs=blocked_remote_start_programs,
                 )
                 cost_result.update({
                     "tariff_entity": ", ".join(tariff_entities),
@@ -2030,6 +2158,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "green_window_diagnostic": green_window_diagnostic,
                     "blocked_window_entity": blocked_window_entity,
                     "blocked_window_diagnostic": blocked_window_diagnostic,
+                    "remote_start_blocked_programs": blocked_remote_start_programs,
                 })
             except (TypeError, ValueError) as error:
                 cost_result = {
@@ -2062,6 +2191,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         ),
     )
     publish_execution_entities(token, prefix, name, instance_id)
+    publish_program_capabilities(token, prefix, name, summaries, policies, blocked_remote_start_programs)
     if instance_id == "1":
         publish_automation_package_status(token, prefix, name, instance_id)
     latest_program = normalise_program(last.get("program"))
