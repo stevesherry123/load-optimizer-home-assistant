@@ -4,6 +4,14 @@
 
 - No unreleased changes.
 
+## 0.8.37
+
+- Publish per-program options on the `now`, `soon`, `overnight`, `greenest`,
+  and `negative_price` recommendation entities.
+- Add Dishwasher 1 override controls to the Home Assistant automation package
+  so a selected program can use its own optimized start time.
+- Keep the existing generic request buttons as engine-selected defaults.
+
 ## 0.8.36
 
 - Add an opt-in Dishwasher 1 automatic negative-price request switch to the

@@ -571,6 +571,70 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["overnight_recommendation"]["cost_pence"], 5.0)
         self.assertEqual(result["overnight_recommendation"]["seconds_until_start"], 28800)
 
+    def test_recommendation_includes_per_program_intent_options(self):
+        quick = {
+            **self.model,
+            "program": "Quick45",
+            "expected_runtime_minutes": 30,
+            "expected_energy_kwh": 1.0,
+        }
+        super60 = {
+            **self.model,
+            "program": "Super60",
+            "expected_runtime_minutes": 60,
+            "expected_energy_kwh": 2.0,
+        }
+        policies = [
+            {
+                "program": "Quick45",
+                "enabled": True,
+                "allow_normal_recommendation": True,
+                "allow_negative_price_run": False,
+                "preference_rank": 10,
+                "estimated_overhead_cost_pence": 0,
+            },
+            {
+                "program": "Super60",
+                "enabled": True,
+                "allow_normal_recommendation": True,
+                "allow_negative_price_run": False,
+                "preference_rank": 20,
+                "estimated_overhead_cost_pence": 0,
+            },
+        ]
+        periods = [
+            self.period(0, 30, 20),
+            self.period(30, 60, 10),
+            self.period(60, 90, 5),
+            self.period(90, 120, 5),
+            self.period(1200, 1230, 2),
+            self.period(1230, 1260, 2),
+        ]
+
+        result = recommend_cycle(
+            [quick, super60],
+            policies,
+            periods,
+            reference_utc=self.start,
+            search_hours=22,
+            candidate_interval_minutes=30,
+            overnight_start="20:00",
+            overnight_end="08:00",
+            schedule_timezone="UTC",
+        )
+
+        now_options = result["now_recommendation"]["program_options"]
+        self.assertEqual({item["program"] for item in now_options}, {"Quick45", "Super60"})
+        quick_now = next(item for item in now_options if item["program"] == "Quick45")
+        super_now = next(item for item in now_options if item["program"] == "Super60")
+        self.assertEqual(quick_now["start"], "2026-07-06T00:00:00+00:00")
+        self.assertEqual(super_now["start"], "2026-07-06T00:00:00+00:00")
+        self.assertEqual(quick_now["cost_pence"], 20.0)
+        self.assertEqual(super_now["cost_pence"], 30.0)
+        overnight_options = result["overnight_recommendation"]["program_options"]
+        self.assertEqual({item["program"] for item in overnight_options}, {"Quick45", "Super60"})
+        self.assertEqual(overnight_options[0]["start"], "2026-07-06T20:00:00+00:00")
+
     def test_recommendation_includes_cost_forecast(self):
         model = {**self.model, "expected_runtime_minutes": 30}
         policy = {

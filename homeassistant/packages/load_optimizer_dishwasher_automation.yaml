@@ -24,6 +24,20 @@ input_select:
       - negative_price
     initial: none
 
+  load_optimizer_1_override_program:
+    name: Dishwasher 1 Override Program
+    icon: mdi:format-list-bulleted
+    options:
+      - engine
+      - PreRinse
+      - Quick45
+      - Quick65
+      - QuickD
+      - Eco50
+      - Super60
+      - MachineCare
+    initial: engine
+
 input_boolean:
   load_optimizer_1_auto_negative_price_enabled:
     name: Dishwasher 1 Auto Negative Price
@@ -99,6 +113,18 @@ input_button:
     name: Dishwasher 1 Cancel Schedule
     icon: mdi:cancel
 
+  load_optimizer_1_request_now_override:
+    name: Dishwasher 1 Request Selected Program Now
+    icon: mdi:play-circle-outline
+
+  load_optimizer_1_request_soon_override:
+    name: Dishwasher 1 Request Selected Program Soon
+    icon: mdi:clock-fast
+
+  load_optimizer_1_request_overnight_override:
+    name: Dishwasher 1 Request Selected Program Overnight
+    icon: mdi:weather-night
+
 automation:
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
@@ -114,13 +140,49 @@ automation:
       - trigger: state
         entity_id: input_button.load_optimizer_1_request_overnight
         id: overnight
+      - trigger: state
+        entity_id: input_button.load_optimizer_1_request_now_override
+        id: now_override
+      - trigger: state
+        entity_id: input_button.load_optimizer_1_request_soon_override
+        id: soon_override
+      - trigger: state
+        entity_id: input_button.load_optimizer_1_request_overnight_override
+        id: overnight_override
     variables:
-      requested_mode: "{{ trigger.id }}"
-      recommendation_entity: "{{ 'sensor.load_optimizer_1_' ~ trigger.id ~ '_recommendation' }}"
+      override_request: "{{ trigger.id.endswith('_override') }}"
+      requested_mode: "{{ trigger.id | replace('_override', '') }}"
+      requested_override_program: "{{ states('input_select.load_optimizer_1_override_program') }}"
+      recommendation_entity: "{{ 'sensor.load_optimizer_1_' ~ requested_mode ~ '_recommendation' }}"
       recommendation_status: "{{ state_attr(recommendation_entity, 'status') }}"
-      recommendation_program: >-
+      engine_program: >-
         {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
-      recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
+      engine_start: "{{ state_attr(recommendation_entity, 'start') }}"
+      program_options: "{{ state_attr(recommendation_entity, 'program_options') or [] }}"
+      recommendation_program: >-
+        {% if override_request and requested_override_program not in ['engine', 'unknown', 'unavailable', 'none', None, ''] %}
+          {% set ns = namespace(program='') %}
+          {% for option in program_options %}
+            {% if option.program == requested_override_program %}
+              {% set ns.program = option.program %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.program }}
+        {% else %}
+          {{ engine_program }}
+        {% endif %}
+      recommendation_start: >-
+        {% if override_request and requested_override_program not in ['engine', 'unknown', 'unavailable', 'none', None, ''] %}
+          {% set ns = namespace(start='') %}
+          {% for option in program_options %}
+            {% if option.program == requested_override_program %}
+              {% set ns.start = option.start %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.start }}
+        {% else %}
+          {{ engine_start }}
+        {% endif %}
       message: >-
         Dishwasher {{ requested_mode }} request captured:
         {{ recommendation_program }} at {{ recommendation_start }}.
