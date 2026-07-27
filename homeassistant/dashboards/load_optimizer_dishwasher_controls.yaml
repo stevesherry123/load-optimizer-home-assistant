@@ -3,7 +3,7 @@
 # Paste this card stack into the Dishwasher 1 dashboard view after installing
 # `homeassistant/packages/load_optimizer_dishwasher_automation.yaml`.
 #
-# Requires Load Optimizer 0.8.32 or later for the decision-policy attributes.
+# Requires Load Optimizer 0.8.46 or later for the remote-start diagnostics.
 
 type: vertical-stack
 cards:
@@ -21,6 +21,8 @@ cards:
         name: Scheduler Message
       - entity: sensor.load_optimizer_1_execution_status
         name: Execution Status
+      - entity: sensor.load_optimizer_1_automation_package_status
+        name: Automation Package Status
       - entity: sensor.load_optimizer_1_last_start_result
         name: Last Start Result
       - entity: sensor.load_optimizer_1_last_start_program
@@ -29,6 +31,8 @@ cards:
         name: Last Failure Reason
       - entity: sensor.load_optimizer_1_last_start_attempt
         name: Last Start Attempt
+      - entity: sensor.load_optimizer_1_remote_start_blocked_programs
+        name: Remote Start Blocked Programs
 
   - type: horizontal-stack
     cards:
@@ -145,16 +149,51 @@ cards:
       {% endif -%}
 
   - type: entities
-    title: Automation Safety
+    title: Automation Reliability
     show_header_toggle: false
     entities:
       - entity: sensor.load_optimizer_restart_safety
         name: Restart Safety
+      - entity: sensor.load_optimizer_1_automation_package_status
+        name: Automation Package Status
       - entity: sensor.load_optimizer_1_execution_status
         name: Execution Status
       - entity: sensor.load_optimizer_1_last_start_result
         name: Last Start Result
+      - entity: sensor.load_optimizer_1_last_start_program
+        name: Last Start Program
       - entity: sensor.load_optimizer_1_last_start_failure_reason
         name: Last Failure Reason
       - entity: sensor.load_optimizer_1_last_start_attempt
         name: Last Start Attempt
+      - entity: sensor.load_optimizer_1_remote_start_blocked_programs
+        name: Blocked Programs
+
+  - type: markdown
+    title: Remote Start Diagnostics
+    content: |-
+      {% set attrs = state_attr('sensor.load_optimizer_1_execution_status', 'last_start_readiness') %}
+      {% set blocked = state_attr('sensor.load_optimizer_1_remote_start_blocked_programs', 'blocked_programs') or [] %}
+      | Check | Value |
+      |---|---|
+      | Mode | {{ state_attr('sensor.load_optimizer_1_execution_status', 'last_start_mode') or 'unknown' }} |
+      | Requested program | {{ state_attr('sensor.load_optimizer_1_execution_status', 'last_start_program') or 'unknown' }} |
+      | Bosch program key | {{ state_attr('sensor.load_optimizer_1_execution_status', 'last_start_program_key') or 'unknown' }} |
+      | Bosch selected program | {{ state_attr('sensor.load_optimizer_1_execution_status', 'last_start_selected_program') or 'unknown' }} |
+      | Operation state | {{ state_attr('sensor.load_optimizer_1_execution_status', 'last_start_operation_state') or 'unknown' }} |
+      | Readiness | {{ attrs or 'unknown' }} |
+      | Blocked programs | {{ blocked | join(', ') if blocked else 'none' }} |
+
+  - type: markdown
+    title: Program Automation Capabilities
+    content: |-
+      {% set programs = state_attr('sensor.load_optimizer_1_program_capabilities', 'programs') or [] %}
+      {% if programs | length == 0 %}
+      No program capability data has been published yet.
+      {% else %}
+      | Program | Auto | Normal | Negative | Remote |
+      |---|---:|---:|---:|---|
+      {% for item in programs %}
+      | {{ item.program }} | {{ 'yes' if item.can_auto_start else 'no' }} | {{ 'yes' if item.can_recommend else 'no' }} | {{ 'yes' if item.can_negative_price else 'no' }} | {{ item.remote_start_status }} |
+      {% endfor %}
+      {% endif %}
