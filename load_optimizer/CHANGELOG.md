@@ -4,6 +4,20 @@
 
 - No unreleased changes.
 
+## 0.8.44
+
+- Stop the optional Home Assistant Bosch helper package from resetting
+  user-configured Bosch entity helper values back to placeholder examples on
+  reload or restart.
+- Keep Bosch helper diagnostics from 0.8.43 so start failures show the exact
+  configured entity IDs and states.
+
+## 0.8.43
+
+- Include the configured Bosch readiness entity IDs in dishwasher start failure
+  messages so incorrect helper values are visible from Home Assistant entities
+  and announcements.
+
 ## 0.8.42
 
 - Allow manual `Start Selected Now` dishwasher requests to execute without

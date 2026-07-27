@@ -48,67 +48,56 @@ input_text:
   load_optimizer_1_bosch_device_id:
     name: Dishwasher 1 Bosch Device ID
     icon: mdi:identifier
-    initial: YOUR_BOSCH_DISHWASHER_DEVICE_ID
     max: 255
 
   load_optimizer_1_bosch_power_switch:
     name: Dishwasher 1 Bosch Power Switch
     icon: mdi:power
-    initial: switch.YOUR_BOSCH_DISHWASHER_POWERSTATE
     max: 255
 
   load_optimizer_1_bosch_program_select:
     name: Dishwasher 1 Bosch Program Select
     icon: mdi:format-list-bulleted-square
-    initial: select.YOUR_BOSCH_DISHWASHER_PROGRAMS
     max: 255
 
   load_optimizer_1_bosch_start_button:
     name: Dishwasher 1 Bosch Start Button
     icon: mdi:play-box-outline
-    initial: button.YOUR_BOSCH_DISHWASHER_START_PAUSE
     max: 255
 
   load_optimizer_1_bosch_selected_program_sensor:
     name: Dishwasher 1 Bosch Selected Program Sensor
     icon: mdi:format-list-checks
-    initial: sensor.YOUR_BOSCH_DISHWASHER_SELECTED_PROGRAM
     max: 255
 
   load_optimizer_1_bosch_power_state_sensor:
     name: Dishwasher 1 Bosch Power State Sensor
     icon: mdi:power-plug
-    initial: sensor.YOUR_BOSCH_DISHWASHER_POWERSTATE
     max: 255
 
   load_optimizer_1_bosch_connected_sensor:
     name: Dishwasher 1 Bosch Connected Sensor
     icon: mdi:wifi-check
-    initial: binary_sensor.YOUR_BOSCH_DISHWASHER_CONNECTED
     max: 255
 
   load_optimizer_1_bosch_door_sensor:
     name: Dishwasher 1 Bosch Door Sensor
     icon: mdi:dishwasher
-    initial: binary_sensor.YOUR_BOSCH_DISHWASHER_DOORSTATE
     max: 255
 
   load_optimizer_1_bosch_remote_control_sensor:
     name: Dishwasher 1 Bosch Remote Control Sensor
     icon: mdi:remote
-    initial: binary_sensor.YOUR_BOSCH_DISHWASHER_REMOTECONTROLACTIVE
     max: 255
 
   load_optimizer_1_bosch_remote_start_sensor:
     name: Dishwasher 1 Bosch Remote Start Sensor
     icon: mdi:play-network
-    initial: binary_sensor.YOUR_BOSCH_DISHWASHER_REMOTECONTROLSTARTALLOWED
     max: 255
 
   load_optimizer_1_bosch_operation_state_sensor:
     name: Dishwasher 1 Bosch Operation State Sensor
     icon: mdi:state-machine
-    initial: sensor.YOUR_BOSCH_DISHWASHER_OPERATIONSTATE
     max: 255
 
   load_optimizer_1_requested_program:
@@ -480,6 +469,11 @@ automation:
            and states(bosch_door_sensor) == 'off'
            and states(bosch_remote_control_sensor) == 'on'
            and states(bosch_remote_start_sensor) == 'on' }}
+      bosch_ready_summary: >-
+        connected={{ bosch_connected_sensor }}={{ states(bosch_connected_sensor) }};
+        door={{ bosch_door_sensor }}={{ states(bosch_door_sensor) }};
+        remote={{ bosch_remote_control_sensor }}={{ states(bosch_remote_control_sensor) }};
+        remote_start={{ bosch_remote_start_sensor }}={{ states(bosch_remote_start_sensor) }}
       due_by_time: >-
         {{ selected_start not in ['unknown', 'unavailable', 'none', None, '']
            and as_timestamp(now()) >= as_timestamp(as_datetime(selected_start)) }}
@@ -512,15 +506,9 @@ automation:
         lag_limit_minutes={{ maximum_start_lag_minutes }}
       not_ready_message: >-
         Dishwasher is not ready to start {{ selected_program }}.
-        Connected={{ states(bosch_connected_sensor) }},
-        door={{ states(bosch_door_sensor) }},
-        remote control={{ states(bosch_remote_control_sensor) }},
-        remote start={{ states(bosch_remote_start_sensor) }}.
+        {{ bosch_ready_summary }}.
       not_ready_reason: >-
-        not_ready connected={{ states(bosch_connected_sensor) }}
-        door={{ states(bosch_door_sensor) }}
-        remote_control={{ states(bosch_remote_control_sensor) }}
-        remote_start={{ states(bosch_remote_start_sensor) }}
+        not_ready {{ bosch_ready_summary }}
       not_startable_message: >-
         Dishwasher program is not selectable from Home Assistant:
         program={{ selected_program }},
