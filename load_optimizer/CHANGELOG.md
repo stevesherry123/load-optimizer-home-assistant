@@ -4,6 +4,13 @@
 
 - No unreleased changes.
 
+## 0.8.42
+
+- Allow manual `Start Selected Now` dishwasher requests to execute without
+  requiring the corresponding optimizer recommendation entity to be ready.
+- Mark captured dishwasher user requests as pending immediately so the
+  execution status sensor no longer appears unconfigured while waiting to run.
+
 ## 0.8.41
 
 - Allow the Dishwasher 1 `Start Selected Now` dashboard action to capture the

@@ -285,6 +285,16 @@ automation:
           value: "{{ message[:255] }}"
       - action: input_text.set_value
         target:
+          entity_id: input_text.load_optimizer_1_start_attempt_status
+        data:
+          value: pending
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_start_attempt_message
+        data:
+          value: "{{ message[:255] }}"
+      - action: input_text.set_value
+        target:
           entity_id: input_text.announce_text
         data:
           value: "{{ message[:255] }}"
@@ -481,6 +491,10 @@ automation:
            and (recommendation_ready_to_start == true or due_by_time) }}
       due_scheduled: >-
         {{ requested_mode in ['soon', 'overnight', 'negative_price'] and due_by_time }}
+      manual_now_override: >-
+        {{ requested_mode == 'now'
+           and requested_program not in ['unknown', 'unavailable', 'none', None, '']
+           and selected_start not in ['unknown', 'unavailable', 'none', None, ''] }}
       start_message: >-
         Dishwasher start requested by Load Optimizer:
         {{ selected_program }}.
@@ -530,7 +544,7 @@ automation:
       - condition: template
         value_template: "{{ requested_mode in ['now', 'soon', 'overnight', 'negative_price'] }}"
       - condition: template
-        value_template: "{{ recommendation_status == 'ready' or stale_request }}"
+        value_template: "{{ recommendation_status == 'ready' or manual_now_override or stale_request }}"
       - condition: template
         value_template: "{{ selected_program not in ['unknown', 'unavailable', 'none', None, ''] }}"
       - condition: template
