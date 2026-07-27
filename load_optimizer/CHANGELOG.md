@@ -4,6 +4,14 @@
 
 - No unreleased changes.
 
+## 0.8.40
+
+- Add Bosch dishwasher control helpers to the optional Home Assistant automation
+  package so private appliance entity IDs can be configured locally without
+  hardcoding them into public automation logic.
+- Update dishwasher start automation variables to read the Bosch device, switch,
+  select, button, and status entities from those helper values.
+
 ## 0.8.39
 
 - Sanitize the public Bosch dishwasher automation package so it no longer
