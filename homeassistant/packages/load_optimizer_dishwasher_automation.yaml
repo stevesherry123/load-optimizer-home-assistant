@@ -4,8 +4,8 @@
 # automations let dashboards, voice assistants, and household automations request
 # a run without duplicating scheduling logic.
 #
-# Before using this package, replace the Bosch entity ids and
-# `script.load_optimizer_announce` with the equivalents from your own Home
+# Before using this package, set the Bosch helper values below and replace
+# `script.load_optimizer_announce` with the equivalent from your own Home
 # Assistant instance.
 #
 # The announcement script should speak or notify the current value of
@@ -45,6 +45,72 @@ input_boolean:
     initial: false
 
 input_text:
+  load_optimizer_1_bosch_device_id:
+    name: Dishwasher 1 Bosch Device ID
+    icon: mdi:identifier
+    initial: YOUR_BOSCH_DISHWASHER_DEVICE_ID
+    max: 255
+
+  load_optimizer_1_bosch_power_switch:
+    name: Dishwasher 1 Bosch Power Switch
+    icon: mdi:power
+    initial: switch.YOUR_BOSCH_DISHWASHER_POWERSTATE
+    max: 255
+
+  load_optimizer_1_bosch_program_select:
+    name: Dishwasher 1 Bosch Program Select
+    icon: mdi:format-list-bulleted-square
+    initial: select.YOUR_BOSCH_DISHWASHER_PROGRAMS
+    max: 255
+
+  load_optimizer_1_bosch_start_button:
+    name: Dishwasher 1 Bosch Start Button
+    icon: mdi:play-box-outline
+    initial: button.YOUR_BOSCH_DISHWASHER_START_PAUSE
+    max: 255
+
+  load_optimizer_1_bosch_selected_program_sensor:
+    name: Dishwasher 1 Bosch Selected Program Sensor
+    icon: mdi:format-list-checks
+    initial: sensor.YOUR_BOSCH_DISHWASHER_SELECTED_PROGRAM
+    max: 255
+
+  load_optimizer_1_bosch_power_state_sensor:
+    name: Dishwasher 1 Bosch Power State Sensor
+    icon: mdi:power-plug
+    initial: sensor.YOUR_BOSCH_DISHWASHER_POWERSTATE
+    max: 255
+
+  load_optimizer_1_bosch_connected_sensor:
+    name: Dishwasher 1 Bosch Connected Sensor
+    icon: mdi:wifi-check
+    initial: binary_sensor.YOUR_BOSCH_DISHWASHER_CONNECTED
+    max: 255
+
+  load_optimizer_1_bosch_door_sensor:
+    name: Dishwasher 1 Bosch Door Sensor
+    icon: mdi:dishwasher
+    initial: binary_sensor.YOUR_BOSCH_DISHWASHER_DOORSTATE
+    max: 255
+
+  load_optimizer_1_bosch_remote_control_sensor:
+    name: Dishwasher 1 Bosch Remote Control Sensor
+    icon: mdi:remote
+    initial: binary_sensor.YOUR_BOSCH_DISHWASHER_REMOTECONTROLACTIVE
+    max: 255
+
+  load_optimizer_1_bosch_remote_start_sensor:
+    name: Dishwasher 1 Bosch Remote Start Sensor
+    icon: mdi:play-network
+    initial: binary_sensor.YOUR_BOSCH_DISHWASHER_REMOTECONTROLSTARTALLOWED
+    max: 255
+
+  load_optimizer_1_bosch_operation_state_sensor:
+    name: Dishwasher 1 Bosch Operation State Sensor
+    icon: mdi:state-machine
+    initial: sensor.YOUR_BOSCH_DISHWASHER_OPERATIONSTATE
+    max: 255
+
   load_optimizer_1_requested_program:
     name: Dishwasher 1 Requested Program
     icon: mdi:format-list-bulleted
@@ -345,17 +411,17 @@ automation:
           - input_datetime.load_optimizer_1_requested_start
     variables:
       requested_mode: "{{ states('input_select.load_optimizer_1_requested_mode') }}"
-      bosch_device_id: YOUR_BOSCH_DISHWASHER_DEVICE_ID
-      bosch_power_switch: switch.YOUR_BOSCH_DISHWASHER_POWERSTATE
-      bosch_program_select: select.YOUR_BOSCH_DISHWASHER_PROGRAMS
-      bosch_start_button: button.YOUR_BOSCH_DISHWASHER_START_PAUSE
-      bosch_selected_program_sensor: sensor.YOUR_BOSCH_DISHWASHER_SELECTED_PROGRAM
-      bosch_power_state_sensor: sensor.YOUR_BOSCH_DISHWASHER_POWERSTATE
-      bosch_connected_sensor: binary_sensor.YOUR_BOSCH_DISHWASHER_CONNECTED
-      bosch_door_sensor: binary_sensor.YOUR_BOSCH_DISHWASHER_DOORSTATE
-      bosch_remote_control_sensor: binary_sensor.YOUR_BOSCH_DISHWASHER_REMOTECONTROLACTIVE
-      bosch_remote_start_sensor: binary_sensor.YOUR_BOSCH_DISHWASHER_REMOTECONTROLSTARTALLOWED
-      bosch_operation_state_sensor: sensor.YOUR_BOSCH_DISHWASHER_OPERATIONSTATE
+      bosch_device_id: "{{ states('input_text.load_optimizer_1_bosch_device_id') }}"
+      bosch_power_switch: "{{ states('input_text.load_optimizer_1_bosch_power_switch') }}"
+      bosch_program_select: "{{ states('input_text.load_optimizer_1_bosch_program_select') }}"
+      bosch_start_button: "{{ states('input_text.load_optimizer_1_bosch_start_button') }}"
+      bosch_selected_program_sensor: "{{ states('input_text.load_optimizer_1_bosch_selected_program_sensor') }}"
+      bosch_power_state_sensor: "{{ states('input_text.load_optimizer_1_bosch_power_state_sensor') }}"
+      bosch_connected_sensor: "{{ states('input_text.load_optimizer_1_bosch_connected_sensor') }}"
+      bosch_door_sensor: "{{ states('input_text.load_optimizer_1_bosch_door_sensor') }}"
+      bosch_remote_control_sensor: "{{ states('input_text.load_optimizer_1_bosch_remote_control_sensor') }}"
+      bosch_remote_start_sensor: "{{ states('input_text.load_optimizer_1_bosch_remote_start_sensor') }}"
+      bosch_operation_state_sensor: "{{ states('input_text.load_optimizer_1_bosch_operation_state_sensor') }}"
       recommendation_entity: >-
         {{ 'sensor.load_optimizer_1_' ~ requested_mode ~ '_recommendation'
            if requested_mode in ['now', 'soon', 'overnight', 'negative_price']
