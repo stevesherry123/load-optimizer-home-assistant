@@ -43,8 +43,8 @@ views:
             header:
               show: true
               title: Octopus Prices
-              show_states: false
-              colorize_states: false
+              show_states: true
+              colorize_states: true
             graph_span: 24h
             span:
               start: day
@@ -100,8 +100,22 @@ views:
               unit: p/kWh
               float_precision: 2
             series:
+              - entity: sensor.load_optimizer_1_current_energy_price
+                name: Current
+                type: line
+                unit: p/kWh
+                float_precision: 2
+                show:
+                  in_chart: false
+                  in_header: true
+                  legend_value: false
+                transform: |
+                  return Number(x);
               - entity: sensor.load_optimizer_status
                 name: Import price
+                show:
+                  in_header: false
+                  legend_value: false
                 color_threshold:
                   - value: -50
                     color: "#00b050"
