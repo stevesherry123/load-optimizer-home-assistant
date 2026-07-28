@@ -4,6 +4,12 @@
 
 - No unreleased changes.
 
+## 0.8.47
+
+- Publish the current tariff price as a dedicated per-instance sensor so
+  dashboards can show the live import price without duplicating tariff parsing
+  logic.
+
 ## 0.8.46
 
 - Track Bosch start diagnostics in dedicated helper-backed sensors, including

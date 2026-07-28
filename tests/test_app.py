@@ -12,6 +12,7 @@ from load_optimizer.app.main import (
     bootstrap_program_models,
     bool_option,
     compact_profile_data,
+    current_tariff_period,
     datetime_from_entity_state,
     instance_config,
     instance_configs,
@@ -145,6 +146,38 @@ class DateTimeParsingTests(unittest.TestCase):
         self.assertEqual(parsed, datetime(2026, 7, 14, 6, 0, tzinfo=timezone.utc))
 
 
+class CurrentTariffPeriodTests(unittest.TestCase):
+    def test_current_tariff_period_returns_period_containing_reference_time(self):
+        periods = [
+            {
+                "start": datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "end": datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc),
+                "price_p_per_kwh": 10.0,
+            },
+            {
+                "start": datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc),
+                "end": datetime(2026, 1, 1, 1, 0, tzinfo=timezone.utc),
+                "price_p_per_kwh": 12.5,
+            },
+        ]
+
+        self.assertEqual(
+            current_tariff_period(periods, datetime(2026, 1, 1, 0, 45, tzinfo=timezone.utc)),
+            periods[1],
+        )
+
+    def test_current_tariff_period_returns_none_when_reference_is_outside_periods(self):
+        periods = [{
+            "start": datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+            "end": datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc),
+            "price_p_per_kwh": 10.0,
+        }]
+
+        self.assertIsNone(
+            current_tariff_period(periods, datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc)),
+        )
+
+
 class PublishingTests(unittest.TestCase):
     def tearDown(self):
         PUBLISHED_ENTITY_CACHE.clear()
@@ -158,6 +191,37 @@ class PublishingTests(unittest.TestCase):
         publish_entity("token", "sensor.test_storage", "changed", {"friendly_name": "Storage Test"})
 
         self.assertEqual(api_request.call_count, 2)
+
+    @patch("load_optimizer.app.main.api_request")
+    def test_cost_entities_publish_current_energy_price(self, api_request):
+        api_request.return_value = {"state": "ready"}
+
+        publish_cost_entities("token", "sensor.load_optimizer_1", "Dishwasher 1", {
+            "status": "ready",
+            "program": "Eco",
+            "start": datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+            "finish": datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc),
+            "total_cost_pence": 12.0,
+            "cost_if_started_now_pence": 15.0,
+            "potential_saving_pence": 3.0,
+            "confidence": 20,
+            "energy_kwh": 1.0,
+            "energy_cost_pence": 12.0,
+            "current_price_p_per_kwh": 17.456,
+            "current_price_start": "2026-01-01T00:00:00+00:00",
+            "current_price_end": "2026-01-01T00:30:00+00:00",
+        })
+
+        current_price = next(
+            call for call in api_request.call_args_list
+            if call.args[1] == "/states/sensor.load_optimizer_1_current_energy_price"
+        )
+        payload = current_price.args[2]
+        self.assertEqual(payload["state"], "17.46")
+        self.assertEqual(payload["attributes"]["unit_of_measurement"], "p/kWh")
+        self.assertEqual(payload["attributes"]["current_price_p_per_kwh"], 17.46)
+        self.assertEqual(payload["attributes"]["current_price_start"], "2026-01-01T00:00:00+00:00")
+        self.assertEqual(payload["attributes"]["current_price_end"], "2026-01-01T00:30:00+00:00")
 
     @patch("load_optimizer.app.main.api_request")
     def test_cost_entities_publish_green_window_context(self, api_request):

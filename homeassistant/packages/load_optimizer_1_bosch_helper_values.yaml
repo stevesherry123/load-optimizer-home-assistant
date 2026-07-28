@@ -1,0 +1,61 @@
+script:
+  load_optimizer_1_set_bosch_helpers:
+    alias: Load Optimizer 1 - Set Bosch Helper Values
+    description: Populate Dishwasher 1 Bosch helper entities with your local Home Connect entity IDs.
+    mode: single
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_device_id
+        data:
+          value: YOUR_BOSCH_DISHWASHER_DEVICE_ID
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_connected_sensor
+        data:
+          value: binary_sensor.YOUR_BOSCH_DISHWASHER_CONNECTED
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_door_sensor
+        data:
+          value: binary_sensor.YOUR_BOSCH_DISHWASHER_DOORSTATE
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_operation_state_sensor
+        data:
+          value: sensor.YOUR_BOSCH_DISHWASHER_OPERATIONSTATE
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_power_state_sensor
+        data:
+          value: sensor.YOUR_BOSCH_DISHWASHER_POWERSTATE
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_power_switch
+        data:
+          value: switch.YOUR_BOSCH_DISHWASHER_POWERSTATE
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_program_select
+        data:
+          value: select.YOUR_BOSCH_DISHWASHER_PROGRAMS
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_remote_control_sensor
+        data:
+          value: binary_sensor.YOUR_BOSCH_DISHWASHER_REMOTECONTROLACTIVE
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_remote_start_sensor
+        data:
+          value: binary_sensor.YOUR_BOSCH_DISHWASHER_REMOTECONTROLSTARTALLOWED
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_selected_program_sensor
+        data:
+          value: sensor.YOUR_BOSCH_DISHWASHER_SELECTED_PROGRAM
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_bosch_start_button
+        data:
+          value: button.YOUR_BOSCH_DISHWASHER_START_PAUSE

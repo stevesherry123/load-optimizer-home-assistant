@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.46"
+APP_VERSION = "0.8.47"
 DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.46"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -219,6 +219,18 @@ def datetime_from_value(
             tzinfo=configured_timezone(naive_timezone) if isinstance(naive_timezone, str) else naive_timezone
         )
     return parsed.astimezone(timezone.utc)
+
+
+def current_tariff_period(periods: list[dict], reference_utc: datetime) -> dict | None:
+    now_utc = reference_utc.astimezone(timezone.utc)
+    for period in periods:
+        start = period.get("start")
+        end = period.get("end")
+        if not isinstance(start, datetime) or not isinstance(end, datetime):
+            continue
+        if start.astimezone(timezone.utc) <= now_utc < end.astimezone(timezone.utc):
+            return period
+    return None
 
 
 WINDOW_EVENT_KEYS = (
@@ -1425,6 +1437,25 @@ def publish_cost_entities(
         common["green_window_diagnostic"] = result["green_window_diagnostic"]
     if publish_diagnostics and result.get("blocked_window_diagnostic") is not None:
         common["blocked_window_diagnostic"] = result["blocked_window_diagnostic"]
+    current_price = result.get("current_price_p_per_kwh")
+    current_price_state = "unknown"
+    current_price_attribute: float | str = "unknown"
+    if current_price is not None and current_price != "unknown":
+        try:
+            current_price_attribute = round(float(current_price), 2)
+            current_price_state = current_price_attribute
+        except (TypeError, ValueError):
+            current_price_attribute = "unknown"
+    publish_entity(token, f"{prefix}_current_energy_price", current_price_state, {
+        "friendly_name": f"{name} Current Energy Price",
+        "icon": "mdi:cash-clock",
+        "unit_of_measurement": "p/kWh",
+        "price_unit": "p/kWh",
+        "current_price_p_per_kwh": current_price_attribute,
+        "current_price_start": result.get("current_price_start"),
+        "current_price_end": result.get("current_price_end"),
+        **common,
+    })
     publish_entity(token, f"{prefix}_cost_status", status, {
         "friendly_name": f"{name} Cost Status",
         "icon": "mdi:currency-gbp",
@@ -2105,6 +2136,12 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 if not periods:
                     raise ValueError("No configured tariff entity produced a supported future-rate attribute")
                 periods.sort(key=lambda period: period["start"])
+                current_period = current_tariff_period(periods, now)
+                current_price_p_per_kwh = (
+                    current_period.get("price_p_per_kwh")
+                    if current_period
+                    else None
+                )
                 green_window_entity = config.get("green_window_entity", "")
                 blocked_window_entity = config.get("blocked_window_entity", "")
                 window_end = now.astimezone(timezone.utc) + timedelta(hours=max(
@@ -2150,6 +2187,9 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "tariff_periods": len(periods),
                     "tariff_start": periods[0]["start"].isoformat(),
                     "tariff_end": periods[-1]["end"].isoformat(),
+                    "current_price_p_per_kwh": current_price_p_per_kwh,
+                    "current_price_start": current_period["start"].isoformat() if current_period else None,
+                    "current_price_end": current_period["end"].isoformat() if current_period else None,
                     "tariff_diagnostics": tariff_diagnostics,
                     "tariff_parse_errors": tariff_parse_errors,
                     "schedule_earliest_start_entity": earliest_start_entity,
