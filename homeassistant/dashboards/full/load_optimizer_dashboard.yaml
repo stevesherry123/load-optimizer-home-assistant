@@ -1027,8 +1027,7 @@ views:
 
                 |---|---|
 
-                {% for item in blocked %} | {{ item.program }} | {{ item.reason
-                or 'unknown' }} |
+                {% for item in blocked %} | {% if item is mapping %}{{ item.program | default('unknown', true) }} | {{ item.reason | default('blocked by Bosch', true) }}{% else %}{{ item }} | blocked by Bosch{% endif %} |
 
                 {% endfor %}
     cards: []
