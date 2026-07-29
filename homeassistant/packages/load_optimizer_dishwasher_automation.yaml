@@ -55,7 +55,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.49"
+    initial: "0.8.50"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -238,7 +238,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.49"
+          value: "0.8.50"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request

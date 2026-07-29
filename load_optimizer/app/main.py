@@ -22,8 +22,9 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.49"
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.49"
+APP_VERSION = "0.8.50"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.50"
+MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
@@ -681,6 +682,34 @@ def program_summary(program: str, model: dict) -> dict:
     }
 
 
+def bounded_cost_breakdown(rows: object) -> tuple[list[dict], int, bool]:
+    """Publish enough cost detail for a dashboard without retaining a long history."""
+    if not isinstance(rows, list):
+        return [], 0, False
+    clean_rows = [row for row in rows if isinstance(row, dict)]
+    total = len(clean_rows)
+    return clean_rows[:MAX_PUBLISHED_COST_BREAKDOWN_ROWS], total, total > MAX_PUBLISHED_COST_BREAKDOWN_ROWS
+
+
+def estimated_cycle_finish(instance: dict) -> tuple[str | None, int | None]:
+    """Estimate a running cycle's finish from its learned program duration."""
+    cycle_start = instance.get("cycle_start")
+    program = instance.get("program")
+    model = instance.get("program_models", {}).get(program, {})
+    runtime_minutes, _ = stat_summary(model, "runtime_minutes", 1)
+    if not cycle_start or not runtime_minutes:
+        return None, None
+    try:
+        started = datetime.fromisoformat(str(cycle_start).replace("Z", "+00:00"))
+    except ValueError:
+        return None, None
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    finish = started + timedelta(minutes=float(runtime_minutes))
+    remaining = max(0, math.ceil((finish - datetime.now(timezone.utc)).total_seconds() / 60))
+    return finish.astimezone(timezone.utc).isoformat(), remaining
+
+
 def public_program_summary(summary: dict) -> dict:
     """Remove large internal profile/history fields before publishing to HA."""
     public_keys = (
@@ -1230,11 +1259,17 @@ def running_instances(database: dict, configs: list[dict]) -> list[dict]:
         instance_id = str(config["instance_id"])
         instance = instances.get(instance_id, {})
         if instance.get("cycle_start"):
-            running.append({
+            estimated_finish, remaining_minutes = estimated_cycle_finish(instance)
+            item = {
                 "instance_id": instance_id,
                 "name": config["name"],
                 "cycle_start": instance["cycle_start"],
-            })
+            }
+            if estimated_finish:
+                item["program"] = instance.get("program") or "unknown"
+                item["estimated_finish"] = estimated_finish
+                item["estimated_remaining_minutes"] = remaining_minutes
+            running.append(item)
     return running
 
 
@@ -1461,6 +1496,21 @@ def publish_cost_entities(
         "icon": "mdi:currency-gbp",
         **common,
     })
+    tariff_hours = 0.0
+    try:
+        tariff_start = datetime.fromisoformat(str(result.get("tariff_start") or "").replace("Z", "+00:00"))
+        tariff_end = datetime.fromisoformat(str(result.get("tariff_end") or "").replace("Z", "+00:00"))
+        tariff_hours = max(0.0, (tariff_end - tariff_start).total_seconds() / 3600)
+    except ValueError:
+        pass
+    tariff_horizon_hours = 48 if tariff_hours > 24.5 else 24
+    publish_entity(token, f"{prefix}_tariff_horizon", f"{tariff_horizon_hours}h", {
+        "friendly_name": f"{name} Tariff Horizon",
+        "icon": "mdi:calendar-range",
+        "available_hours": round(tariff_hours, 1),
+        "available_until": result.get("tariff_end"),
+        **common,
+    })
     ready = status == "ready"
     overnight_comparison = result.get("overnight_comparison") or {}
     daytime_comparison = result.get("daytime_comparison") or {}
@@ -1548,13 +1598,19 @@ def publish_cost_entities(
                     0.0,
                     result["greenest_comparison"].get("cost_pence", 0) - result.get("total_cost_pence", 0),
                 ))
-            if publish_diagnostics and suffix in {"cheapest_cost", "cheapest_start", "recommended_program"}:
-                attributes["cost_breakdown"] = result.get("cost_breakdown", [])
+            if suffix in {"cheapest_cost", "cost_if_started_now"}:
+                source_rows = (
+                    result.get("cost_breakdown", [])
+                    if suffix == "cheapest_cost"
+                    else result.get("cost_if_started_now_breakdown", [])
+                )
+                rows, total_rows, truncated = bounded_cost_breakdown(source_rows)
+                attributes["cost_breakdown"] = rows
+                attributes["cost_breakdown_total_rows"] = total_rows
+                attributes["cost_breakdown_truncated"] = truncated
                 attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
-            if publish_diagnostics and suffix == "cost_if_started_now":
-                attributes["cost_breakdown"] = result.get("cost_if_started_now_breakdown", [])
-                attributes["operating_cost_breakdown"] = result.get("cost_if_started_now_operating_breakdown")
-                attributes["breakdown_format"] = "start, end, price_p_per_kwh, energy_kwh, energy_cost_pence"
+                if suffix == "cost_if_started_now":
+                    attributes["operating_cost_breakdown"] = result.get("cost_if_started_now_operating_breakdown")
         publish_entity(token, f"{prefix}_{suffix}", value if value is not None else "unknown", attributes)
     for intent, icon in (
         ("now", "mdi:play-circle"),

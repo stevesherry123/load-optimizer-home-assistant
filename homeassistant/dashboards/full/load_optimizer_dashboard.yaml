@@ -27,8 +27,13 @@ views:
               'instances') }}
 
 
-              **Active captures:** {{ state_attr('sensor.load_optimizer_status',
-              'active_capture_instances') or 'none' }}
+              {% set captures = state_attr('sensor.load_optimizer_status',
+              'active_capture_instances') or [] %}
+
+              **Active captures:** {% if captures | count == 0 %}none{% else %}
+              {% for capture in captures %}
+              - **{{ capture.name }}**{% if capture.program and capture.program != 'unknown' %} ({{ capture.program }}){% endif %}: started {{ (capture.cycle_start | as_datetime | as_local).strftime('%a %d %b %H:%M') if capture.cycle_start else 'unknown' }}{% if capture.estimated_finish %}; estimated finish {{ (capture.estimated_finish | as_datetime | as_local).strftime('%a %d %b %H:%M') }}{% endif %} ({% if capture.estimated_remaining_minutes is not none %}{{ capture.estimated_remaining_minutes }} min remaining{% else %}learning duration{% endif %})
+              {% endfor %}{% endif %}
 
 
               **Reset status:** {{ state_attr('sensor.load_optimizer_status',
@@ -64,6 +69,10 @@ views:
                 labels:
                   datetimeUTC: false
               yaxis:
+                min: |
+                  EVAL:function(min) {
+                    return min < 0 ? Math.floor(min) : 0;
+                  }
                 decimalsInFloat: 2
                 title:
                   text: Import price (p/kWh)
@@ -997,6 +1006,10 @@ views:
             conditions:
               - entity: sensor.load_optimizer_1_remote_start_blocked_programs
                 state_not: "0"
+              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
+                state_not: unknown
+              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
+                state_not: unavailable
             card:
               type: markdown
               title: Programs Blocked From Remote Start
