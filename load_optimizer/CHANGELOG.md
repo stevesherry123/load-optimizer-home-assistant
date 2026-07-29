@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.50
+- Publish an estimated completion time for active captures when a learned runtime is available.
+- Always publish a bounded cost breakdown for the recommended and start-now options.
+- Add a tariff-horizon sensor so dashboards can match the available price horizon.
+
 ## Unreleased
 
 - No unreleased changes.
