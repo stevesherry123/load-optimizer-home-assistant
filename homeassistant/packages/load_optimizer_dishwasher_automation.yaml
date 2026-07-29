@@ -42,7 +42,7 @@ input_select:
 
 input_boolean:
   load_optimizer_1_auto_mode_enabled:
-    name: Dishwasher 1 Automatic Mode
+    name: Dishwasher 1 Automatic Overnight Mode
     icon: mdi:robot
     # Normal automatic starts stay off until the household explicitly opts in.
     initial: false
@@ -62,7 +62,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.51"
+    initial: "0.8.52"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -443,33 +443,33 @@ automation:
           entity_id: script.load_optimizer_announce
 
   - id: load_optimizer_1_auto_normal_request
-    alias: Load Optimizer 1 - Auto Normal Request
+    alias: Load Optimizer 1 - Auto Overnight Request
     description: >-
-      Opt-in unattended normal-run request after a fresh dishwasher door opening
-      and a ready-to-start Load Optimizer recommendation.
+      Opt-in unattended normal-run request for the overnight recommendation
+      after a fresh dishwasher door opening. This never creates a daytime
+      immediate start.
     mode: single
     triggers:
       - trigger: time_pattern
         minutes: "/1"
       - trigger: state
         entity_id:
-          - sensor.load_optimizer_1_now_recommendation
+          - sensor.load_optimizer_1_overnight_recommendation
           - sensor.load_optimizer_1_cycle_state
           - input_boolean.load_optimizer_1_door_opened_since_last_cycle
     variables:
-      recommendation_entity: sensor.load_optimizer_1_now_recommendation
+      recommendation_entity: sensor.load_optimizer_1_overnight_recommendation
       recommendation_status: "{{ state_attr(recommendation_entity, 'status') }}"
       recommendation_program: >-
         {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
       recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
-      recommendation_ready_to_start: "{{ state_attr(recommendation_entity, 'ready_to_start') }}"
       auto_cooldown_minutes: 30
       last_auto_request: "{{ states('input_datetime.load_optimizer_1_last_auto_normal_request') }}"
       auto_cooldown_elapsed: >-
         {{ last_auto_request in ['unknown', 'unavailable', 'none', None, '']
            or as_timestamp(now()) >= as_timestamp(as_datetime(last_auto_request)) + (auto_cooldown_minutes * 60) }}
       message: >-
-        Dishwasher automatic normal request captured:
+        Dishwasher automatic overnight request queued:
         {{ recommendation_program }} at {{ recommendation_start }}.
     conditions:
       - condition: state
@@ -490,9 +490,9 @@ automation:
       - condition: template
         value_template: >-
           {{ recommendation_status == 'ready'
-             and recommendation_ready_to_start == true
              and recommendation_program not in ['unknown', 'unavailable', 'none', None, '']
              and recommendation_start not in ['unknown', 'unavailable', 'none', None, '']
+             and as_timestamp(as_datetime(recommendation_start)) > as_timestamp(now())
              and auto_cooldown_elapsed }}
     actions:
       - action: input_select.select_option
@@ -604,7 +604,7 @@ automation:
       bosch_remote_start_sensor: "{{ states('input_text.load_optimizer_1_bosch_remote_start_sensor') }}"
       bosch_operation_state_sensor: "{{ states('input_text.load_optimizer_1_bosch_operation_state_sensor') }}"
       recommendation_entity: >-
-        {{ 'sensor.load_optimizer_1_now_recommendation'
+        {{ 'sensor.load_optimizer_1_overnight_recommendation'
            if requested_mode == 'automatic'
            else ('sensor.load_optimizer_1_' ~ requested_mode ~ '_recommendation'
                  if requested_mode in ['now', 'soon', 'overnight', 'negative_price'] else '') }}
@@ -666,10 +666,10 @@ automation:
         {{ selected_start not in ['unknown', 'unavailable', 'none', None, '']
            and as_timestamp(now()) > as_timestamp(as_datetime(selected_start)) + (maximum_start_lag_minutes * 60) }}
       due_now: >-
-        {{ requested_mode in ['now', 'automatic']
+        {{ requested_mode == 'now'
            and (recommendation_ready_to_start == true or due_by_time) }}
       due_scheduled: >-
-        {{ requested_mode in ['soon', 'overnight', 'negative_price'] and due_by_time }}
+        {{ requested_mode in ['soon', 'overnight', 'negative_price', 'automatic'] and due_by_time }}
       manual_now_override: >-
         {{ requested_mode == 'now'
            and requested_program not in ['unknown', 'unavailable', 'none', None, '']

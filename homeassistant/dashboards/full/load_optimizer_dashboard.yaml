@@ -69,13 +69,13 @@ views:
                 labels:
                   datetimeUTC: false
               yaxis:
-                min: |
-                  EVAL:function(min) {
-                    return min < 0 ? Math.floor(min) : 0;
-                  }
-                decimalsInFloat: 2
-                title:
-                  text: Import price (p/kWh)
+                - min: |
+                    EVAL:function(min) {
+                      return Math.min(0, min);
+                    }
+                  decimalsInFloat: 2
+                  title:
+                    text: Import price (p/kWh)
               stroke:
                 curve: stepline
                 width: 2
@@ -901,15 +901,20 @@ views:
               type: markdown
               title: Cost Breakdown
               content: >
+                {% set recommendation = 'sensor.load_optimizer_1_cheapest_cost' %}
                 {% set rows =
-                state_attr('sensor.load_optimizer_1_cheapest_cost',
+                state_attr(recommendation,
                 'cost_breakdown') or [] %}
+
+                {% set program = state_attr(recommendation, 'program') or 'unknown' %}
 
                 {% if rows | count == 0 %}
 
                 No cost breakdown is currently available.
 
                 {% else %}
+
+                **Program:** {{ program }}
 
                 | Start | Price | Energy | Cost |
 
@@ -969,8 +974,6 @@ views:
                 name: Last Failure Reason
               - entity: sensor.load_optimizer_1_last_start_attempt
                 name: Last Start Attempt
-              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
-                name: Blocked Programs
               - entity: sensor.load_optimizer_1_program_capabilities
                 name: Auto-startable Programs
           - type: markdown
