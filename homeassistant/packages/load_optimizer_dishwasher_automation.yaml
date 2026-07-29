@@ -23,6 +23,7 @@ input_select:
       - soon
       - overnight
       - negative_price
+      - automatic
     initial: none
 
   load_optimizer_1_override_program:
@@ -40,6 +41,12 @@ input_select:
     initial: engine
 
 input_boolean:
+  load_optimizer_1_auto_mode_enabled:
+    name: Dishwasher 1 Automatic Mode
+    icon: mdi:robot
+    # Normal automatic starts stay off until the household explicitly opts in.
+    initial: false
+
   load_optimizer_1_auto_negative_price_enabled:
     name: Dishwasher 1 Auto Negative Price
     icon: mdi:transmission-tower-export
@@ -55,7 +62,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.50"
+    initial: "0.8.51"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -194,6 +201,11 @@ input_datetime:
     has_date: true
     has_time: true
 
+  load_optimizer_1_last_auto_normal_request:
+    name: Dishwasher 1 Last Automatic Normal Request
+    has_date: true
+    has_time: true
+
 input_button:
   load_optimizer_1_request_now:
     name: Dishwasher 1 Request Start Now
@@ -238,7 +250,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.50"
+          value: "0.8.51"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
@@ -430,6 +442,85 @@ automation:
         target:
           entity_id: script.load_optimizer_announce
 
+  - id: load_optimizer_1_auto_normal_request
+    alias: Load Optimizer 1 - Auto Normal Request
+    description: >-
+      Opt-in unattended normal-run request after a fresh dishwasher door opening
+      and a ready-to-start Load Optimizer recommendation.
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/1"
+      - trigger: state
+        entity_id:
+          - sensor.load_optimizer_1_now_recommendation
+          - sensor.load_optimizer_1_cycle_state
+          - input_boolean.load_optimizer_1_door_opened_since_last_cycle
+    variables:
+      recommendation_entity: sensor.load_optimizer_1_now_recommendation
+      recommendation_status: "{{ state_attr(recommendation_entity, 'status') }}"
+      recommendation_program: >-
+        {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
+      recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
+      recommendation_ready_to_start: "{{ state_attr(recommendation_entity, 'ready_to_start') }}"
+      auto_cooldown_minutes: 30
+      last_auto_request: "{{ states('input_datetime.load_optimizer_1_last_auto_normal_request') }}"
+      auto_cooldown_elapsed: >-
+        {{ last_auto_request in ['unknown', 'unavailable', 'none', None, '']
+           or as_timestamp(now()) >= as_timestamp(as_datetime(last_auto_request)) + (auto_cooldown_minutes * 60) }}
+      message: >-
+        Dishwasher automatic normal request captured:
+        {{ recommendation_program }} at {{ recommendation_start }}.
+    conditions:
+      - condition: state
+        entity_id: input_boolean.load_optimizer_1_auto_mode_enabled
+        state: "on"
+      - condition: state
+        entity_id: sensor.load_optimizer_restart_safety
+        state: safe
+      - condition: state
+        entity_id: sensor.load_optimizer_1_cycle_state
+        state: idle
+      - condition: state
+        entity_id: input_select.load_optimizer_1_requested_mode
+        state: none
+      - condition: state
+        entity_id: input_boolean.load_optimizer_1_door_opened_since_last_cycle
+        state: "on"
+      - condition: template
+        value_template: >-
+          {{ recommendation_status == 'ready'
+             and recommendation_ready_to_start == true
+             and recommendation_program not in ['unknown', 'unavailable', 'none', None, '']
+             and recommendation_start not in ['unknown', 'unavailable', 'none', None, '']
+             and auto_cooldown_elapsed }}
+    actions:
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.load_optimizer_1_requested_mode
+        data:
+          option: automatic
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_requested_program
+        data:
+          value: "{{ recommendation_program }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.load_optimizer_1_requested_start
+        data:
+          datetime: "{{ as_local(as_datetime(recommendation_start)).strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.load_optimizer_1_last_auto_normal_request
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_scheduler_message
+        data:
+          value: "{{ message[:255] }}"
+
   - id: load_optimizer_1_cancel_user_request
     alias: Load Optimizer 1 - Cancel User Request
     description: Clear the dishwasher scheduler helpers.
@@ -477,19 +568,12 @@ automation:
       - condition: template
         value_template: >-
           {{ door_sensor not in ['unknown', 'unavailable', 'none', '']
-             and states(door_sensor) in ['on', 'open'] }}
+             and states(door_sensor) in ['on', 'open']
+             and is_state('input_boolean.load_optimizer_1_door_opened_since_last_cycle', 'off') }}
     actions:
       - action: input_boolean.turn_on
         target:
           entity_id: input_boolean.load_optimizer_1_door_opened_since_last_cycle
-      - action: input_text.set_value
-        target:
-          entity_id: input_text.announce_text
-        data:
-          value: Dishwasher schedule cancelled.
-      - action: script.turn_on
-        target:
-          entity_id: script.load_optimizer_announce
 
   - id: load_optimizer_1_execute_user_request
     alias: Load Optimizer 1 - Execute User Request
@@ -520,9 +604,10 @@ automation:
       bosch_remote_start_sensor: "{{ states('input_text.load_optimizer_1_bosch_remote_start_sensor') }}"
       bosch_operation_state_sensor: "{{ states('input_text.load_optimizer_1_bosch_operation_state_sensor') }}"
       recommendation_entity: >-
-        {{ 'sensor.load_optimizer_1_' ~ requested_mode ~ '_recommendation'
-           if requested_mode in ['now', 'soon', 'overnight', 'negative_price']
-           else '' }}
+        {{ 'sensor.load_optimizer_1_now_recommendation'
+           if requested_mode == 'automatic'
+           else ('sensor.load_optimizer_1_' ~ requested_mode ~ '_recommendation'
+                 if requested_mode in ['now', 'soon', 'overnight', 'negative_price'] else '') }}
       recommendation_status: "{{ state_attr(recommendation_entity, 'status') }}"
       recommendation_program: >-
         {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
@@ -581,7 +666,7 @@ automation:
         {{ selected_start not in ['unknown', 'unavailable', 'none', None, '']
            and as_timestamp(now()) > as_timestamp(as_datetime(selected_start)) + (maximum_start_lag_minutes * 60) }}
       due_now: >-
-        {{ requested_mode == 'now'
+        {{ requested_mode in ['now', 'automatic']
            and (recommendation_ready_to_start == true or due_by_time) }}
       due_scheduled: >-
         {{ requested_mode in ['soon', 'overnight', 'negative_price'] and due_by_time }}
@@ -646,7 +731,7 @@ automation:
         {{ existing | reject('eq', selected_program) | list | join(',') }}
     conditions:
       - condition: template
-        value_template: "{{ requested_mode in ['now', 'soon', 'overnight', 'negative_price'] }}"
+        value_template: "{{ requested_mode in ['now', 'soon', 'overnight', 'negative_price', 'automatic'] }}"
       - condition: template
         value_template: "{{ recommendation_status == 'ready' or manual_now_override or stale_request }}"
       - condition: template

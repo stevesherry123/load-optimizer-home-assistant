@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.51
+- Add an explicitly opt-in automatic normal-cycle mode for Dishwasher 1.
+- Require restart safety, an idle dishwasher, a fresh door opening, a ready
+  immediate recommendation, and a 30-minute request cooldown before an
+  unattended normal start is requested.
+- Keep negative-price automation separately opt-in and retain its high-power
+  window safety check.
+- Stop sending a misleading cancellation announcement whenever the dishwasher
+  door is opened.
+
 ## 0.8.50
 - Publish an estimated completion time for active captures when a learned runtime is available.
 - Always publish a bounded cost breakdown for the recommended and start-now options.
