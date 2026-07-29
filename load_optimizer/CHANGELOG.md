@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.52
+- Queue opt-in unattended normal dishwasher runs from the overnight
+  recommendation only, and only after a fresh door opening since the previous
+  cycle. Automatic normal mode no longer creates daytime immediate starts.
+- Keep negative-price automation independent of the normal door and cooldown
+  safeguards, while retaining its high-power-window fit check.
+- Improve the dashboard's tariff axis baseline, show the program in the cost
+  breakdown, and hide the zero-count remote-start-blocked list.
+
 ## 0.8.51
 - Add an explicitly opt-in automatic normal-cycle mode for Dishwasher 1.
 - Require restart safety, an idle dishwasher, a fresh door opening, a ready
