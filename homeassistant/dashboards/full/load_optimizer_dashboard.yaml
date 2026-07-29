@@ -1012,16 +1012,9 @@ views:
               | Message | {{ state_attr(execution, 'message') or 'none' }} |
           - type: conditional
             conditions:
-              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
-                state_not: "0"
-              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
-                state_not: unknown
-              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
-                state_not: unavailable
-              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
-                state_not: ""
-              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
-                state_not: "none"
+              - condition: numeric_state
+                entity: sensor.load_optimizer_1_remote_start_blocked_programs
+                above: 0
             card:
               type: markdown
               title: Programs Blocked From Remote Start
