@@ -15,7 +15,7 @@ views:
                 name: App Status
           - type: markdown
             title: Global Status
-            content: >
+            content: |
               **Status:** {{ states('sensor.load_optimizer_status') }}
 
 
@@ -32,7 +32,12 @@ views:
 
               **Active captures:** {% if captures | count == 0 %}none{% else %}
               {% for capture in captures %}
-              - **{{ capture.name }}**{% if capture.program and capture.program != 'unknown' %} ({{ capture.program }}){% endif %}: started {{ (capture.cycle_start | as_datetime | as_local).strftime('%a %d %b %H:%M') if capture.cycle_start else 'unknown' }}{% if capture.estimated_finish %}; estimated finish {{ (capture.estimated_finish | as_datetime | as_local).strftime('%a %d %b %H:%M') }}{% endif %} ({% if capture.estimated_remaining_minutes is not none %}{{ capture.estimated_remaining_minutes }} min remaining{% else %}learning duration{% endif %})
+              {% set capture_name = capture.name | default('Instance ' ~ (capture.instance_id | default('unknown')), true) %}
+              {% set capture_program = capture.program | default('unknown', true) %}
+              {% set capture_start = capture.cycle_start | default(none, true) %}
+              {% set capture_finish = capture.estimated_finish | default(none, true) %}
+              {% set remaining = capture.estimated_remaining_minutes | default(none, true) %}
+              - **{{ capture_name }}**{% if capture_program not in ['', 'unknown', 'none', 'None'] %} ({{ capture_program }}){% endif %}: started {{ (capture_start | as_datetime | as_local).strftime('%a %d %b %H:%M') if capture_start else 'unknown' }}{% if capture_finish %}; estimated finish {{ (capture_finish | as_datetime | as_local).strftime('%a %d %b %H:%M') }}{% endif %} ({% if remaining is not none %}{{ remaining }} min remaining{% else %}learning duration{% endif %})
               {% endfor %}{% endif %}
 
 
@@ -1013,6 +1018,10 @@ views:
                 state_not: unknown
               - entity: sensor.load_optimizer_1_remote_start_blocked_programs
                 state_not: unavailable
+              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
+                state_not: ""
+              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
+                state_not: "none"
             card:
               type: markdown
               title: Programs Blocked From Remote Start
