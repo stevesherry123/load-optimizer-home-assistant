@@ -4,6 +4,11 @@
 
 - No unreleased changes.
 
+## 0.8.49
+
+- Fail closed after a Home Assistant restart: normal automatic dishwasher starts
+  remain blocked until the door has genuinely been opened since the prior cycle.
+
 ## 0.8.48
 
 - Block normal automatic starts until the dishwasher door has been opened since

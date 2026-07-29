@@ -22,8 +22,8 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.48"
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.48"
+APP_VERSION = "0.8.49"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.49"
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
