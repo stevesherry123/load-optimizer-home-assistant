@@ -4,6 +4,14 @@
 
 - No unreleased changes.
 
+## 0.8.48
+
+- Block normal automatic starts until the dishwasher door has been opened since
+  the previous cycle.
+- Require the learned high-power portion of a negative-price cycle to fit
+  inside a negative-price window before allowing an automatic start.
+- Publish the safety decision details for diagnostics and automation feedback.
+
 ## 0.8.47
 
 - Publish the current tariff price as a dedicated per-instance sensor so
