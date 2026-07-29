@@ -202,6 +202,38 @@ def _profile_segments(model: dict) -> list[dict]:
     ]
 
 
+def _negative_power_window_fit(start: datetime, model: dict, periods: list[dict]) -> dict:
+    """Check that the profile's high-power section fits inside one negative window."""
+    segments = _profile_segments(model)
+    peak = max(segment["power_w"] for segment in segments)
+    threshold = max(1.0, peak * 0.5)
+    high_power = [segment for segment in segments if segment["power_w"] >= threshold]
+    if not high_power:
+        return {"fits": False, "reason": "no_high_power_segment", "peak_power_w": peak, "threshold_w": threshold}
+    required_start = start + timedelta(seconds=high_power[0]["offset_start"])
+    required_end = start + timedelta(seconds=high_power[-1]["offset_end"])
+    negative_windows = []
+    for period in sorted(periods, key=lambda item: item["start"]):
+        if float(period["price_p_per_kwh"]) >= 0:
+            continue
+        if negative_windows and period["start"] <= negative_windows[-1]["end"]:
+            negative_windows[-1]["end"] = max(negative_windows[-1]["end"], period["end"])
+        else:
+            negative_windows.append({"start": period["start"], "end": period["end"]})
+    fits = next((window for window in negative_windows
+                 if required_start >= window["start"] and required_end <= window["end"]), None)
+    return {
+        "fits": fits is not None,
+        "reason": None if fits else "high_power_section_outside_negative_window",
+        "required_start": required_start.isoformat(),
+        "required_end": required_end.isoformat(),
+        "duration_seconds": round((required_end - required_start).total_seconds()),
+        "negative_window_count": len(negative_windows),
+        "peak_power_w": round(peak, 3),
+        "threshold_w": round(threshold, 3),
+    }
+
+
 def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> dict:
     """Overlay a scaled learned profile on tariff periods."""
     if start.tzinfo is None or start.utcoffset() is None:
@@ -466,6 +498,8 @@ def summarize_decision(
         "energy_kwh": candidate.get("energy_kwh"),
         "confidence": candidate.get("confidence"),
         "negative_price_run": candidate.get("negative_price_run"),
+        "power_hungry_window_fits_negative_price": candidate.get("negative_power_window", {}).get("fits"),
+        "power_hungry_window_reason": candidate.get("negative_power_window", {}).get("reason"),
         "is_overnight_start": candidate.get("is_overnight_start"),
         "is_daytime_start": candidate.get("is_daytime_start"),
         "energy_kwh_per_minute": candidate.get("energy_kwh_per_minute"),
@@ -742,6 +776,7 @@ def forecast_cycle_costs(
             "rejected_points": 0,
             "rejected_cooldown_points": 0,
             "rejected_blocked_points": 0,
+            "rejected_negative_power_window_points": 0,
             "runtime_minutes": model.get("expected_runtime_minutes"),
             "confidence": model.get("confidence"),
         }
@@ -788,7 +823,11 @@ def forecast_cycle_costs(
                 start += timedelta(minutes=forecast_interval_minutes)
                 continue
             negative = estimate["energy_cost_pence"] < 0
-            if policy["allow_normal_recommendation"] or (negative and policy["allow_negative_price_run"]):
+            negative_fit = _negative_power_window_fit(start, model, periods) if negative else {"fits": False}
+            negative_eligible = negative and policy["allow_negative_price_run"] and negative_fit["fits"]
+            if negative and policy["allow_negative_price_run"] and not negative_fit["fits"]:
+                diagnostic["rejected_negative_power_window_points"] += 1
+            if policy["allow_normal_recommendation"] or negative_eligible:
                 estimate = apply_operating_costs(estimate, policy)
                 diagnostic["priced_points"] += 1
                 is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
@@ -803,6 +842,8 @@ def forecast_cycle_costs(
                     "confidence": model.get("confidence", 0),
                     "is_overnight_start": is_overnight,
                     "is_daytime_start": not is_overnight,
+                    "negative_price_run": negative_eligible,
+                    "negative_power_window": negative_fit,
                 }
                 candidates.append(annotate_green_context(candidate, green_windows or []))
             start += timedelta(minutes=forecast_interval_minutes)
@@ -811,6 +852,8 @@ def forecast_cycle_costs(
                 reason = "cooldown_active"
             elif diagnostic["rejected_blocked_points"]:
                 reason = "blocked_window"
+            elif diagnostic["rejected_negative_power_window_points"]:
+                reason = "negative_power_window_mismatch"
             else:
                 reason = "no_fully_priced_forecast_points"
             diagnostic.update(status="excluded", reason=reason)
@@ -872,6 +915,7 @@ def recommend_cycle(
             "rejected_cooldown_points": 0,
             "rejected_blocked_points": 0,
             "rejected_unpriced_points": 0,
+            "rejected_negative_power_window_points": 0,
             "runtime_minutes": model.get("expected_runtime_minutes"),
             "confidence": model.get("confidence"),
         }
@@ -927,7 +971,11 @@ def recommend_cycle(
                 start += timedelta(minutes=candidate_interval_minutes)
                 continue
             negative = estimate["energy_cost_pence"] < 0
-            if policy["allow_normal_recommendation"] or (negative and policy["allow_negative_price_run"]):
+            negative_fit = _negative_power_window_fit(start, model, periods) if negative else {"fits": False}
+            negative_eligible = negative and policy["allow_negative_price_run"] and negative_fit["fits"]
+            if negative and policy["allow_negative_price_run"] and not negative_fit["fits"]:
+                diagnostic["rejected_negative_power_window_points"] += 1
+            if policy["allow_normal_recommendation"] or negative_eligible:
                 estimate = apply_operating_costs(estimate, policy)
                 diagnostic["priced_points"] += 1
                 candidate = {
@@ -949,14 +997,15 @@ def recommend_cycle(
                     "confidence": model.get("confidence", 0),
                     "preference_rank": policy["preference_rank"],
                     "negative_price_priority": policy.get("negative_price_priority", 50),
-                    "negative_price_run": negative,
+                    "negative_price_run": negative_eligible,
+                    "negative_power_window": negative_fit,
                     "energy_kwh_per_minute": round(estimate["energy_kwh"] / float(model["expected_runtime_minutes"]), 6),
                     "is_overnight_start": is_overnight,
                     "is_daytime_start": is_daytime,
                 }
                 candidate = annotate_green_context(candidate, green_windows or [])
                 comparison_candidates.append(candidate)
-                if negative and policy["allow_negative_price_run"]:
+                if negative_eligible:
                     negative_candidates.append(candidate)
                 if window_preference == "overnight_only" and not is_overnight:
                     start += timedelta(minutes=candidate_interval_minutes)
@@ -975,6 +1024,8 @@ def recommend_cycle(
                 diagnostic.update(status="excluded", reason="blocked_window")
             elif diagnostic["rejected_unpriced_points"]:
                 diagnostic.update(status="excluded", reason="no_fully_priced_points")
+            elif diagnostic["rejected_negative_power_window_points"]:
+                diagnostic.update(status="excluded", reason="negative_power_window_mismatch")
             else:
                 diagnostic.update(status="excluded", reason="no_eligible_candidates")
         program_diagnostics.append(diagnostic)

@@ -45,11 +45,16 @@ input_boolean:
     icon: mdi:transmission-tower-export
     initial: false
 
+  load_optimizer_1_door_opened_since_last_cycle:
+    name: Dishwasher 1 Door Opened Since Last Cycle
+    icon: mdi:door-open
+    initial: true
+
 input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.46"
+    initial: "0.8.48"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -232,7 +237,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.46"
+          value: "0.8.48"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
@@ -442,6 +447,40 @@ automation:
           entity_id: input_text.load_optimizer_1_requested_program
         data:
           value: ""
+
+  - id: load_optimizer_1_reset_door_open_flag_on_cycle_start
+    alias: Load Optimizer 1 - Reset Door Open Flag On Cycle Start
+    description: Require a fresh door opening before another normal cycle.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.load_optimizer_1_cycle_state
+        to: running
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.load_optimizer_1_door_opened_since_last_cycle
+
+  - id: load_optimizer_1_track_door_open
+    alias: Load Optimizer 1 - Track Door Open
+    description: Record that the dishwasher door has been opened since the last cycle.
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/1"
+      - trigger: state
+        entity_id: input_text.load_optimizer_1_bosch_door_sensor
+    variables:
+      door_sensor: "{{ states('input_text.load_optimizer_1_bosch_door_sensor') }}"
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ door_sensor not in ['unknown', 'unavailable', 'none', '']
+             and states(door_sensor) in ['on', 'open'] }}
+    actions:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.load_optimizer_1_door_opened_since_last_cycle
       - action: input_text.set_value
         target:
           entity_id: input_text.announce_text
@@ -527,6 +566,13 @@ automation:
         door={{ bosch_door_sensor }}={{ states(bosch_door_sensor) }};
         remote={{ bosch_remote_control_sensor }}={{ states(bosch_remote_control_sensor) }};
         remote_start={{ bosch_remote_start_sensor }}={{ states(bosch_remote_start_sensor) }}
+      negative_price_mode: "{{ requested_mode == 'negative_price' }}"
+      negative_power_window_fit: >-
+        {{ requested_mode != 'negative_price'
+           or state_attr(recommendation_entity, 'power_hungry_window_fits_negative_price') == true }}
+      door_opened_since_last_cycle: >-
+        {{ is_state('input_boolean.load_optimizer_1_door_opened_since_last_cycle', 'on') }}
+      door_gate_failed: "{{ not negative_price_mode and not door_opened_since_last_cycle }}"
       due_by_time: >-
         {{ selected_start not in ['unknown', 'unavailable', 'none', None, '']
            and as_timestamp(now()) >= as_timestamp(as_datetime(selected_start)) }}
@@ -562,6 +608,12 @@ automation:
         {{ bosch_ready_summary }}.
       not_ready_reason: >-
         not_ready {{ bosch_ready_summary }}
+      door_gate_message: >-
+        Dishwasher start blocked because the door has not been opened since the
+        previous cycle. Open the door and submit a fresh request.
+      negative_window_message: >-
+        Negative-price start blocked because the power-hungry part of
+        {{ selected_program }} does not fit inside the negative-price window.
       not_startable_message: >-
         Dishwasher program is not selectable from Home Assistant:
         program={{ selected_program }},
@@ -662,6 +714,64 @@ automation:
         target:
           entity_id: script.load_optimizer_announce
       - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ negative_price_mode and not negative_power_window_fit }}"
+            sequence:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_scheduler_message
+                data:
+                  value: "{{ negative_window_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_status
+                data:
+                  value: blocked
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: blocked
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_failure_reason
+                data:
+                  value: negative_power_window_mismatch
+              - action: input_select.select_option
+                target:
+                  entity_id: input_select.load_optimizer_1_requested_mode
+                data:
+                  option: none
+          - conditions:
+              - condition: template
+                value_template: "{{ door_gate_failed }}"
+            sequence:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_scheduler_message
+                data:
+                  value: "{{ door_gate_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_status
+                data:
+                  value: blocked
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: blocked
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_failure_reason
+                data:
+                  value: door_not_opened_since_last_cycle
+              - action: input_select.select_option
+                target:
+                  entity_id: input_select.load_optimizer_1_requested_mode
+                data:
+                  option: none
           - conditions:
               - condition: template
                 value_template: "{{ stale_request }}"

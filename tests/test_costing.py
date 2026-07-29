@@ -2,12 +2,36 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from load_optimizer.app.costing import (
+    _negative_power_window_fit,
     estimate_cycle_cost,
     parse_ai_feed,
     parse_structured_rates,
     recommend_cycle,
     tariff_periods_from_entity,
 )
+
+
+class NegativePriceSafetyTests(unittest.TestCase):
+    def test_high_power_profile_must_fit_inside_negative_window(self):
+        start = datetime(2026, 7, 28, tzinfo=timezone.utc)
+        model = {
+            "representative_profile_w": [10, 100, 10],
+            "expected_runtime_minutes": 30,
+            "expected_energy_kwh": 1.0,
+        }
+        full_window = [{
+            "start": start,
+            "end": start + timedelta(minutes=30),
+            "price_p_per_kwh": -1,
+        }]
+        partial_window = [{
+            "start": start,
+            "end": start + timedelta(minutes=10),
+            "price_p_per_kwh": -1,
+        }]
+
+        self.assertTrue(_negative_power_window_fit(start, model, full_window)["fits"])
+        self.assertFalse(_negative_power_window_fit(start, model, partial_window)["fits"])
 
 
 class TariffParsingTests(unittest.TestCase):
