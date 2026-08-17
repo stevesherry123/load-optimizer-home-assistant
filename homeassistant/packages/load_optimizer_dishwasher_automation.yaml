@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.64.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.65.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -59,7 +59,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.64"
+    initial: "0.8.65"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -339,6 +339,25 @@ template:
             {% elif this.state == 'ready_power_on_required' %}Prerequisites are present; the engine will power the dishwasher on when needed.
             {% else %}Remote activation prerequisites are unavailable.{% endif %}
 
+      - name: Load Optimizer 1 Data Freshness
+        unique_id: load_optimizer_1_data_freshness
+        icon: mdi:database-clock
+        state: >-
+          {% set completed = state_attr('sensor.load_optimizer_status', 'last_scan_completed') %}
+          {% if completed in [none, '', 'unknown', 'unavailable'] %}
+            unknown
+          {% elif (as_timestamp(now()) - as_timestamp(as_datetime(completed), 0)) > 420 %}
+            stale
+          {% else %}
+            fresh
+          {% endif %}
+        attributes:
+          last_scan_completed: "{{ state_attr('sensor.load_optimizer_status', 'last_scan_completed') }}"
+          age_minutes: >-
+            {% set completed = state_attr('sensor.load_optimizer_status', 'last_scan_completed') %}
+            {{ ((as_timestamp(now()) - as_timestamp(as_datetime(completed), 0)) / 60) | round(1) if completed not in [none, '', 'unknown', 'unavailable'] else none }}
+          stale_after_minutes: 7
+
       - name: Load Optimizer 1 Negative Price Readiness
         unique_id: load_optimizer_1_negative_price_readiness
         icon: mdi:traffic-light
@@ -428,7 +447,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.64"
+          value: "0.8.65"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request

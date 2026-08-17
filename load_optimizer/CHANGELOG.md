@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.65
+
+- Add a dashboard-visible data-freshness sensor based on the last completed
+  app scan, marked stale after seven minutes.
+
 ## 0.8.64
 
 - Notify Home Assistant when a dishwasher start is confirmed successfully.
