@@ -74,10 +74,8 @@ class VersionTests(unittest.TestCase):
             self.assertIn(f"sensor.load_optimizer_1_{suffix}", dashboard)
         self.assertIn('minutes: "/1"', package)
         self.assertIn("- trigger: template", package)
-        door_helper = package.split("load_optimizer_1_door_opened_since_last_cycle:", 1)[1].split(
-            "input_text:", 1
-        )[0]
-        self.assertNotIn("initial: false", door_helper)
+        input_booleans = package.split("input_boolean:", 1)[1].split("input_text:", 1)[0]
+        self.assertNotIn("initial: false", input_booleans)
         self.assertIn("sensor.load_optimizer_1_program_catalogue", dashboard)
 
 

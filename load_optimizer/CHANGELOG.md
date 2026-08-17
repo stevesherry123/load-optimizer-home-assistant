@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.59
+
+- Preserve the household's automatic overnight and automatic negative-price
+  opt-in choices across Home Assistant restarts instead of forcing both helpers
+  off at every startup.
+
 ## 0.8.58
 
 - Detect configured Bosch door openings immediately instead of relying on a

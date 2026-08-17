@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.58.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.59.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -44,13 +44,12 @@ input_boolean:
   load_optimizer_1_auto_mode_enabled:
     name: Dishwasher 1 Automatic Overnight Mode
     icon: mdi:robot
-    # Normal automatic starts stay off until the household explicitly opts in.
-    initial: false
+    # Home Assistant restores the household's explicit opt-in after restarts.
 
   load_optimizer_1_auto_negative_price_enabled:
     name: Dishwasher 1 Auto Negative Price
     icon: mdi:transmission-tower-export
-    initial: false
+    # Home Assistant restores the household's explicit opt-in after restarts.
 
   load_optimizer_1_door_opened_since_last_cycle:
     name: Dishwasher 1 Door Opened Since Last Cycle
@@ -62,7 +61,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.58"
+    initial: "0.8.59"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -408,7 +407,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.58"
+          value: "0.8.59"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
