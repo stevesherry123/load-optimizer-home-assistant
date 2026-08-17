@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.57.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.58.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -55,14 +55,14 @@ input_boolean:
   load_optimizer_1_door_opened_since_last_cycle:
     name: Dishwasher 1 Door Opened Since Last Cycle
     icon: mdi:door-open
-    # Fail closed after a restart until a real door-open state is observed.
-    initial: false
+    # Preserve this safety fact across Home Assistant restarts. It is reset when
+    # the next dishwasher cycle starts, not when Home Assistant restarts.
 
 input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.57"
+    initial: "0.8.58"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -408,7 +408,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.57"
+          value: "0.8.58"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
@@ -722,6 +722,11 @@ automation:
     description: Record that the dishwasher door has been opened since the last cycle.
     mode: single
     triggers:
+      - trigger: template
+        value_template: >-
+          {% set door_sensor = states('input_text.load_optimizer_1_bosch_door_sensor') %}
+          {{ door_sensor not in ['unknown', 'unavailable', 'none', '']
+             and states(door_sensor) in ['on', 'open'] }}
       - trigger: time_pattern
         minutes: "/1"
       - trigger: state

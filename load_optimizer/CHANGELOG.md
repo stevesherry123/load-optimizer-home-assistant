@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.58
+
+- Detect configured Bosch door openings immediately instead of relying on a
+  once-per-minute sample that could miss a short open-and-close event.
+- Preserve the door-opened-since-last-cycle safety fact across Home Assistant
+  restarts; it is still cleared whenever a new dishwasher cycle starts.
+
 ## 0.8.57
 
 - Refresh automatic readiness traffic lights every minute and on direct engine
