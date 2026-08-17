@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.64
+
+- Notify Home Assistant when a dishwasher start is confirmed successfully.
+
 ## 0.8.63
 
 - Notify Home Assistant when a requested dishwasher start fails, is blocked,

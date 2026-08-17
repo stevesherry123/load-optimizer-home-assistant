@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.63.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.64.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -59,7 +59,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.63"
+    initial: "0.8.64"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -428,7 +428,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.63"
+          value: "0.8.64"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
@@ -747,6 +747,23 @@ automation:
           message: >-
             Dishwasher program {{ program or 'unknown' }} did not start.
             Result: {{ result }}. Reason: {{ reason or 'not provided' }}.
+
+  - id: load_optimizer_1_notify_successful_start
+    alias: Load Optimizer 1 - Notify Successful Start
+    description: Notify when the dishwasher confirms that a requested cycle started.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_text.load_optimizer_1_last_start_result
+        to: confirmed
+    variables:
+      program: "{{ states('input_text.load_optimizer_1_last_start_program') }}"
+    actions:
+      - action: persistent_notification.create
+        data:
+          notification_id: load_optimizer_1_successful_start
+          title: Dishwasher started successfully
+          message: "Dishwasher program {{ program or 'unknown' }} has started."
 
   - id: load_optimizer_1_reset_door_open_flag_on_cycle_start
     alias: Load Optimizer 1 - Reset Door Open Flag On Cycle Start
