@@ -10,6 +10,10 @@ The Supervisor watchdog restarts an add-on that crashes. This package also
 catches the separate failure mode where the add-on container remains present but
 stops publishing a healthy status update.
 
+The add-on also has an internal scan-loop health check for Home Assistant's
+native Supervisor watchdog. This package is an independent second layer: it
+checks whether the heartbeat was actually received back in Home Assistant.
+
 It cannot reconstruct samples from a period when the add-on was unavailable.
 Its purpose is to shorten future outages and make recovery visible.
 
@@ -31,3 +35,5 @@ Defaults are deliberately conservative:
 - Restart cooldown: 30 minutes.
 
 The recovery status and message helpers record why the latest action was taken.
+The app itself forces a full entity republish every 15 minutes, so missing tables
+should recover without a restart when the scan loop is otherwise healthy.

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.55
+
+- Force a full Home Assistant entity republish every 15 minutes so dashboards
+  and tables recover automatically after Home Assistant state loss or restart.
+- Make the add-on `/health` endpoint fail when the main scan loop stops
+  completing, allowing the Home Assistant Supervisor watchdog to restart a
+  stalled process instead of only detecting a dead container.
+- Keep the five-minute Home Assistant heartbeat and optional recovery package as
+  a second independent stalled-app check.
+
 ## 0.8.54
 
 - Confirm compatibility with BottlecapDave Octopus Energy v19.0.0 rate events.

@@ -22,9 +22,15 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.54"
+APP_VERSION = "0.8.55"
 HEARTBEAT_INTERVAL_SECONDS = 300
+FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
+LAST_FULL_REPUBLISH_AT: float | None = None
+RUNTIME_STARTED_AT: datetime | None = None
+LAST_SCAN_STARTED_AT: datetime | None = None
+LAST_SCAN_COMPLETED_AT: datetime | None = None
+SCAN_HEALTH_TIMEOUT_SECONDS = 210
 DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.51"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
@@ -47,6 +53,37 @@ LOGGER = logging.getLogger("load_optimizer")
 STOP_EVENT = threading.Event()
 PUBLISHED_ENTITY_CACHE: dict[str, str] = {}
 API_WARNING_CACHE: dict[str, float] = {}
+
+
+def refresh_publish_cache(now_monotonic: float | None = None) -> bool:
+    """Periodically force all entities to be recreated after HA state loss."""
+    global LAST_FULL_REPUBLISH_AT
+
+    now_monotonic = time.monotonic() if now_monotonic is None else now_monotonic
+    if (
+        LAST_FULL_REPUBLISH_AT is not None
+        and now_monotonic - LAST_FULL_REPUBLISH_AT < FULL_REPUBLISH_INTERVAL_SECONDS
+    ):
+        return False
+    PUBLISHED_ENTITY_CACHE.clear()
+    LAST_FULL_REPUBLISH_AT = now_monotonic
+    return True
+
+
+def runtime_health(now: datetime | None = None) -> tuple[bool, dict]:
+    """Report whether the main scan loop is completing within its deadline."""
+    now = now or datetime.now(timezone.utc)
+    reference = LAST_SCAN_COMPLETED_AT or RUNTIME_STARTED_AT
+    age_seconds = (now - reference).total_seconds() if reference else None
+    healthy = age_seconds is not None and age_seconds <= SCAN_HEALTH_TIMEOUT_SECONDS
+    return healthy, {
+        "status": "ok" if healthy else "stalled",
+        "version": APP_VERSION,
+        "last_scan_started": LAST_SCAN_STARTED_AT.isoformat() if LAST_SCAN_STARTED_AT else None,
+        "last_scan_completed": LAST_SCAN_COMPLETED_AT.isoformat() if LAST_SCAN_COMPLETED_AT else None,
+        "scan_age_seconds": round(age_seconds, 1) if age_seconds is not None else None,
+        "scan_timeout_seconds": SCAN_HEALTH_TIMEOUT_SECONDS,
+    }
 
 
 def configure_logging() -> None:
@@ -2385,6 +2422,9 @@ def publish_status(
         "restart_blocked": bool(running),
         "active_capture_instances": running,
         "last_heartbeat": LAST_HEARTBEAT_AT.isoformat(),
+        "last_scan_started": LAST_SCAN_STARTED_AT.isoformat() if LAST_SCAN_STARTED_AT else None,
+        "last_scan_completed": LAST_SCAN_COMPLETED_AT.isoformat() if LAST_SCAN_COMPLETED_AT else None,
+        "full_republish_interval_minutes": FULL_REPUBLISH_INTERVAL_SECONDS // 60,
         **(reset_status or {}),
     })
 
@@ -2394,10 +2434,11 @@ class HealthHandler(BaseHTTPRequestHandler):
         if self.path != "/health":
             self.send_error(404)
             return
-        self.send_response(200)
+        healthy, payload = runtime_health()
+        self.send_response(200 if healthy else 503)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(b'{"status":"ok"}')
+        self.wfile.write(json.dumps(payload).encode("utf-8"))
 
     def log_message(self, _format: str, *_args: object) -> None:
         return
@@ -2414,12 +2455,17 @@ def stop(_signum: int, _frame: object) -> None:
 
 
 def main() -> None:
+    global LAST_SCAN_COMPLETED_AT, LAST_SCAN_STARTED_AT, RUNTIME_STARTED_AT
+    global SCAN_HEALTH_TIMEOUT_SECONDS
+
     configure_logging()
     token = os.getenv("SUPERVISOR_TOKEN")
     if not token:
         raise RuntimeError("SUPERVISOR_TOKEN was not provided by Home Assistant")
 
     interval = max(10, int(os.getenv("LOAD_OPTIMIZER_SCAN_INTERVAL", "60")))
+    SCAN_HEALTH_TIMEOUT_SECONDS = max(180, (interval * 3) + 30)
+    RUNTIME_STARTED_AT = datetime.now(timezone.utc)
     options = load_options()
     state = load_state()
     state_cache = state_signature(state)
@@ -2440,6 +2486,9 @@ def main() -> None:
 
     try:
         while not STOP_EVENT.is_set():
+            LAST_SCAN_STARTED_AT = datetime.now(timezone.utc)
+            if refresh_publish_cache():
+                LOGGER.info("Refreshing all Home Assistant entities")
             for config in configs:
                 update_instance(token, state, config)
             state_cache = save_state_if_changed(state, state_cache)
@@ -2451,6 +2500,7 @@ def main() -> None:
                 reset_request_status(state, options),
             )
             publish_restart_safety(token, active_captures)
+            LAST_SCAN_COMPLETED_AT = datetime.now(timezone.utc)
             STOP_EVENT.wait(interval)
     finally:
         health_server.shutdown()

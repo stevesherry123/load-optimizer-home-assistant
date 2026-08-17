@@ -191,6 +191,26 @@ The main status entity also exposes `active_capture_instances` so dashboards and
 debugging views can show whether any appliance was mid-cycle at the last update.
 It also exposes `restart_blocked` for simple dashboard conditions.
 
+## Automatic health and recovery
+
+The app republishes every Home Assistant entity at least once every 15 minutes,
+even when its payload has not changed. This recreates missing dashboard and
+table entities after a Home Assistant restart or temporary state loss.
+
+The add-on `/health` endpoint monitors completion of the main scan loop. It
+returns an unhealthy response when no scan has completed within three scan
+intervals plus 30 seconds, with a minimum three-minute allowance. Home
+Assistant's Supervisor watchdog can then restart a stalled add-on container.
+This is separate from the five-minute `last_heartbeat` on
+`sensor.load_optimizer_status`, which proves that publishing back into Home
+Assistant is still working.
+
+For an additional Home Assistant-side check, install the optional
+`homeassistant/packages/load_optimizer_recovery_watchdog.yaml` package. It tests
+the heartbeat every minute, uses a restart cooldown, and provides a manual
+restart test. A restart cannot reconstruct samples lost while the app was down,
+so the goal is to detect failures quickly and reduce missed-cycle exposure.
+
 Discarded interrupted cycles are visible through
 `sensor.load_optimizer_N_last_discarded_cycle`, including the programme, finish
 time, runtime, energy, sample count, and exclusion reason.

@@ -36,7 +36,9 @@ from load_optimizer.app.main import (
     program_summary,
     publish_status,
     publish_restart_warning,
+    refresh_publish_cache,
     repair_learning_quality,
+    runtime_health,
     save_state,
     save_state_if_changed,
     reset_configured_instances,
@@ -75,6 +77,48 @@ class StatusHeartbeatTests(unittest.TestCase):
 
         heartbeats = [call.args[3]["last_heartbeat"] for call in publish_mock.call_args_list]
         self.assertEqual(heartbeats, [first.isoformat(), first.isoformat(), (first + timedelta(minutes=5)).isoformat()])
+
+
+class RuntimeHealthTests(unittest.TestCase):
+    def test_publish_cache_is_forced_to_refresh_periodically(self):
+        cache = {"sensor.example": "payload"}
+        with (
+            patch("load_optimizer.app.main.PUBLISHED_ENTITY_CACHE", cache),
+            patch("load_optimizer.app.main.LAST_FULL_REPUBLISH_AT", None),
+        ):
+            self.assertTrue(refresh_publish_cache(100))
+            cache["sensor.example"] = "new-payload"
+            self.assertFalse(refresh_publish_cache(999))
+            self.assertIn("sensor.example", cache)
+            self.assertTrue(refresh_publish_cache(1000))
+            self.assertEqual(cache, {})
+
+    def test_runtime_health_fails_when_scan_completion_is_stale(self):
+        now = datetime(2026, 8, 17, 12, 10, tzinfo=timezone.utc)
+        with (
+            patch("load_optimizer.app.main.RUNTIME_STARTED_AT", now - timedelta(minutes=10)),
+            patch("load_optimizer.app.main.LAST_SCAN_STARTED_AT", now - timedelta(minutes=9)),
+            patch("load_optimizer.app.main.LAST_SCAN_COMPLETED_AT", now - timedelta(minutes=8)),
+            patch("load_optimizer.app.main.SCAN_HEALTH_TIMEOUT_SECONDS", 210),
+        ):
+            healthy, payload = runtime_health(now)
+
+        self.assertFalse(healthy)
+        self.assertEqual(payload["status"], "stalled")
+        self.assertEqual(payload["scan_age_seconds"], 480)
+
+    def test_runtime_health_allows_recent_scan_completion(self):
+        now = datetime(2026, 8, 17, 12, 10, tzinfo=timezone.utc)
+        with (
+            patch("load_optimizer.app.main.RUNTIME_STARTED_AT", now - timedelta(minutes=10)),
+            patch("load_optimizer.app.main.LAST_SCAN_STARTED_AT", now - timedelta(seconds=70)),
+            patch("load_optimizer.app.main.LAST_SCAN_COMPLETED_AT", now - timedelta(seconds=60)),
+            patch("load_optimizer.app.main.SCAN_HEALTH_TIMEOUT_SECONDS", 210),
+        ):
+            healthy, payload = runtime_health(now)
+
+        self.assertTrue(healthy)
+        self.assertEqual(payload["status"], "ok")
 
 
 class StateStorageTests(unittest.TestCase):
