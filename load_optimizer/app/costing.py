@@ -918,6 +918,7 @@ def recommend_cycle(
     candidate_interval_minutes: int,
     schedule_strategy: str = "cheapest_absolute",
     equivalent_cost_tolerance_pence: float = 0.0,
+    preference_weight_pence: float = 0.1,
     window_preference: str = "any",
     overnight_start: str = "20:00",
     overnight_end: str = "08:00",
@@ -937,6 +938,7 @@ def recommend_cycle(
     if window_preference not in WINDOW_PREFERENCES:
         raise ValueError(f"Unsupported window preference: {window_preference}")
     equivalent_cost_tolerance_pence = max(0.0, float(equivalent_cost_tolerance_pence))
+    preference_weight_pence = max(0.0, float(preference_weight_pence))
     policy_by_program = {policy["program"]: policy for policy in policies}
     excluded = set(excluded_programs or [])
     candidates = []
@@ -1118,7 +1120,7 @@ def recommend_cycle(
     elif schedule_strategy == "cheapest_latest_finish":
         cheapest = min(equivalent_candidates, key=lambda item: (candidate_window_score(item, window_preference), -item["finish"].timestamp(), item["total_cost_pence"], item["preference_rank"]))
     else:
-        cheapest = min(candidates, key=lambda item: (item["total_cost_pence"], candidate_window_score(item, window_preference), item["preference_rank"], item["finish"]))
+        cheapest = min(candidates, key=lambda item: (item["total_cost_pence"] + (item["preference_rank"] * preference_weight_pence), candidate_window_score(item, window_preference), item["total_cost_pence"], item["preference_rank"], item["finish"]))
     selected_model = next(model for model in models if model["program"] == cheapest["program"])
     try:
         now_finish = reference_utc + timedelta(minutes=float(selected_model["expected_runtime_minutes"]))

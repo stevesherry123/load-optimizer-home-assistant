@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.65"
+APP_VERSION = "0.8.66"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -31,7 +31,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.65"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.66"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -1026,6 +1026,7 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "schedule_start_tolerance_minutes": int(_option_or_env(options, f"{prefix}_schedule_start_tolerance_minutes", 5)),
         "schedule_strategy": str(_option_or_env(options, f"{prefix}_schedule_strategy", "cheapest_absolute")),
         "schedule_equivalent_cost_tolerance_pence": float(_option_or_env(options, f"{prefix}_schedule_equivalent_cost_tolerance_pence", 0)),
+        "schedule_preference_weight_pence": float(_option_or_env(options, f"{prefix}_schedule_preference_weight_pence", options.get("schedule_preference_weight_pence", 0.1))),
         "schedule_window_preference": str(_option_or_env(options, f"{prefix}_schedule_window_preference", "any")),
         "schedule_overnight_start": str(_option_or_env(options, f"{prefix}_schedule_overnight_start", "20:00")),
         "schedule_overnight_end": str(_option_or_env(options, f"{prefix}_schedule_overnight_end", "08:00")),
@@ -1072,6 +1073,7 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "schedule_start_tolerance_minutes": int(entry.get("schedule_start_tolerance_minutes", 5)),
         "schedule_strategy": str(entry.get("schedule_strategy", "cheapest_absolute")),
         "schedule_equivalent_cost_tolerance_pence": float(entry.get("schedule_equivalent_cost_tolerance_pence", 0)),
+        "schedule_preference_weight_pence": float(entry.get("schedule_preference_weight_pence", options.get("schedule_preference_weight_pence", 0.1))),
         "schedule_window_preference": str(entry.get("schedule_window_preference", "any")),
         "schedule_overnight_start": str(entry.get("schedule_overnight_start", "20:00")),
         "schedule_overnight_end": str(entry.get("schedule_overnight_end", "08:00")),
@@ -2272,6 +2274,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     candidate_interval_minutes=config["cost_candidate_interval"],
                     schedule_strategy=config.get("schedule_strategy", "cheapest_absolute"),
                     equivalent_cost_tolerance_pence=config.get("schedule_equivalent_cost_tolerance_pence", 0),
+                    preference_weight_pence=config.get("schedule_preference_weight_pence", 0.1),
                     window_preference=config.get("schedule_window_preference", "any"),
                     overnight_start=config.get("schedule_overnight_start", "20:00"),
                     overnight_end=config.get("schedule_overnight_end", "08:00"),

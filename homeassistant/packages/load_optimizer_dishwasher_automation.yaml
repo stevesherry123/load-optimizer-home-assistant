@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.65.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.66.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -59,7 +59,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.65"
+    initial: "0.8.66"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -447,7 +447,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.65"
+          value: "0.8.66"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request

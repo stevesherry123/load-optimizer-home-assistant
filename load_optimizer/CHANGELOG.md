@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.66
+
+- Apply a configurable bounded cost weight to program preference rank so user
+  preference influences normal selection without overriding large price gaps.
+
 ## 0.8.65
 
 - Add a dashboard-visible data-freshness sensor based on the last completed
