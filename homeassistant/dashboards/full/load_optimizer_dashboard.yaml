@@ -490,7 +490,7 @@ views:
 
               **Waiting/warnings:** {{ (state_attr(negative, 'warnings') or []) | join(', ') or 'none' }}
           - type: markdown
-            title: Scheduler Message
+            title: Scheduler / Queued Request
             content: >
               {% set result =
               states('sensor.load_optimizer_1_last_start_result') %} {% set
@@ -498,6 +498,14 @@ views:
               {% set message =
               states('input_text.load_optimizer_1_scheduler_message') %} {% set
               empty = ['unknown', 'unavailable', 'none', '', '—'] %}
+
+              **Queued mode:** {{ states('input_select.load_optimizer_1_requested_mode') }}
+
+              **Queued program:** {{ states('input_text.load_optimizer_1_requested_program') or 'none' }}
+
+              **Queued start:** {{ states('input_datetime.load_optimizer_1_requested_start') or 'none' }}
+
+              **Current overnight recommendation:** {{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'program') or 'none' }}
 
               {% if result == 'success' or message.startswith('Dishwasher
               started successfully') %} **Status:** OK {% elif message not in
