@@ -425,6 +425,34 @@ class ConfigurationTests(unittest.TestCase):
 
     @patch("load_optimizer.app.main.api_request")
     @patch("load_optimizer.app.main.source_state")
+    def test_blocked_window_entity_parses_octoplus_power_down_events(self, source_state, api_request):
+        source_state.return_value = {
+            "entity_id": "event.octopus_energy_power_down_events",
+            "state": "2026-08-17T12:00:00+00:00",
+            "attributes": {
+                "joined_events": [{
+                    "id": 42,
+                    "start": "2026-08-17T18:00:00+00:00",
+                    "end": "2026-08-17T19:00:00+00:00",
+                    "duration_in_minutes": 60,
+                }],
+            },
+        }
+
+        windows, diagnostic = blocked_windows_from_entity(
+            "token",
+            "event.octopus_energy_power_down_events",
+            start=datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 8, 18, 12, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(windows[0]["metadata"]["id"], 42)
+        self.assertEqual(diagnostic["event_list_counts"], {"joined_events": 1})
+        api_request.assert_not_called()
+
+    @patch("load_optimizer.app.main.api_request")
+    @patch("load_optimizer.app.main.source_state")
     def test_green_window_entity_merges_multiple_window_entities(self, source_state, api_request):
         api_request.return_value = []
 

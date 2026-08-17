@@ -230,7 +230,7 @@ flowchart TD
     H --> I["Load provider context"]
     I --> I1["Tariff rates"]
     I --> I2["Green windows"]
-    I --> I3["Blocked windows such as saving sessions"]
+    I --> I3["Blocked windows such as Power Down sessions"]
     I --> I4["Earliest-start and latest-finish helpers"]
 
     I1 --> J["Generate candidate starts"]
@@ -297,9 +297,10 @@ lower-carbon window. This should be modelled as an optional provider input, not
 as an Octopus-only feature.
 
 The first version should accept a generic Home Assistant calendar or sensor that
-marks preferred green windows. BottlecapDave's Octopus Energy integration
-currently exposes a greener-nights calendar for Octopus users, but the core
-should only care that a candidate start overlaps a green window.
+marks preferred green windows. Provider-specific sources can be retired or
+renamed, so the core should only care that a candidate start overlaps a green
+window. BottlecapDave's Octopus Energy integration removed Greener Nights in
+v19.0.0 after the upstream service was discontinued.
 
 Future scheduling strategies may include:
 

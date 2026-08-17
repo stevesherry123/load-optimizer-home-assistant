@@ -382,20 +382,26 @@ allowed slot to prefer, such as `cheapest_earliest_finish` for dishwashers or
 `cheapest_latest_finish` for EV-style loads.
 
 Future provider-aware scheduling may also compare the cheapest candidate with a
-greener candidate. For example, an Octopus user may expose a greener-nights
-calendar, while another household may expose a local carbon-intensity sensor or
-solar/battery forecast. The intended model is to publish both the financial
-best option and the greener option, including the extra cost of choosing the
-greener run. This should remain optional and supplier-agnostic.
+greener candidate. A household may expose a carbon-intensity calendar, local
+renewable forecast, or solar/battery window. The intended model is to publish
+both the financial best option and the greener option, including the extra cost
+of choosing the greener run. This remains optional and supplier-agnostic.
 
 To enable green-window comparison, set **Green window entity** to a Home
 Assistant calendar or entity that exposes preferred greener windows. The app
-does not require Octopus, but BottlecapDave's Octopus Energy greener-nights
-calendar is a suitable source when available:
+does not require Octopus or any particular environmental-data provider. For
+example:
 
 ```yaml
-green_window_entity: calendar.octopus_energy_xxx_greener_nights
+green_window_entity: calendar.household_low_carbon_windows
 ```
+
+BottlecapDave's Octopus Energy integration removed Greener Nights in v19.0.0
+because the upstream service was discontinued. Clear any
+`calendar.octopus_energy_xxx_greener_nights` configuration after upgrading and
+replace it only when another suitable provider-neutral green-window source is
+available. A missing optional green source does not affect tariff costing or
+normal recommendations; greenest entities remain unavailable.
 
 The app will continue to publish the cheapest recommendation, then additionally
 publish the best candidate that overlaps a green window:
@@ -411,33 +417,39 @@ candidate overlaps a green window, these entities remain `unknown` or
 
 To prevent discretionary loads during provider events, set **Blocked window
 entity** to a Home Assistant calendar or entity that exposes no-run windows.
-This is intended for events such as Octoplus Saving Sessions, where the best
+This is intended for events such as Octoplus Power Down sessions, where the best
 financial outcome comes from reducing consumption compared with the household's
 normal usage during the event:
 
 ```yaml
-blocked_window_entity: calendar.octopus_energy_xxx_octoplus_saving_sessions
+blocked_window_entity: calendar.octopus_energy_xxx_octoplus_power_down
 ```
 
 Event-style feeds are also supported. For example, BottlecapDave's Octopus
-Energy integration can expose Octoplus Saving Session history and upcoming
+Energy integration can expose Octoplus Power Down history and upcoming
 joined events through an `event` entity:
 
 ```yaml
-blocked_window_entity: event.octopus_energy_xxx_octoplus_saving_session_events
+blocked_window_entity: event.octopus_energy_xxx_octoplus_power_down_events
 ```
 
 Multiple sources can be combined with commas when a household wants to block
 both the calendar's currently exposed event and any event-list feed:
 
 ```yaml
-blocked_window_entity: calendar.octopus_energy_xxx_octoplus_saving_sessions,event.octopus_energy_xxx_octoplus_saving_session_events
+blocked_window_entity: calendar.octopus_energy_xxx_octoplus_power_down,event.octopus_energy_xxx_octoplus_power_down_events
 ```
+
+The legacy Saving Sessions calendar and event names remain readable for existing
+installations, but BottlecapDave's documentation marks them as superseded and
+scheduled for removal. New configurations should use Power Down names. Power Up
+calendar and event entities use the same generic window format and can be used
+as preferred green or opportunity windows when appropriate.
 
 The app recognises direct `start_time` / `end_time` attributes and event-list
 attributes named `events`, `available_events`, `joined_events`,
-`saving_sessions`, or `windows`. Event-list entries should expose `start` and
-`end` timestamps.
+`saving_sessions`, `power_down_sessions`, `power_up_sessions`, or `windows`.
+Event-list entries should expose `start` and `end` timestamps.
 
 Blocked windows are stricter than green windows. Any candidate that overlaps a
 blocked window is removed from normal recommendations and cost forecasts. Cost

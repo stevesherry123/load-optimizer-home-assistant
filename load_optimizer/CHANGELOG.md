@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.54
+
+- Confirm compatibility with BottlecapDave Octopus Energy v19.0.0 rate events.
+- Replace discontinued Greener Nights and legacy Saving Sessions examples with
+  provider-neutral green inputs and Octoplus Power Down entities.
+- Accept future Power Down and Power Up session-list attribute names while
+  retaining backwards compatibility with legacy Saving Sessions feeds.
+
 ## 0.8.53
 
 - Publish a fresh status heartbeat every five minutes so Home Assistant can

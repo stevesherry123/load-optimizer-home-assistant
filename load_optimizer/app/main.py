@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.53"
+APP_VERSION = "0.8.54"
 HEARTBEAT_INTERVAL_SECONDS = 300
 LAST_HEARTBEAT_AT: datetime | None = None
 DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.51"
@@ -241,6 +241,8 @@ WINDOW_EVENT_KEYS = (
     "available_events",
     "joined_events",
     "saving_sessions",
+    "power_down_sessions",
+    "power_up_sessions",
     "windows",
 )
 

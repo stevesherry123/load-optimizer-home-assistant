@@ -42,8 +42,8 @@ Planned scheduling features:
 - helper-driven deadline support via Home Assistant input helpers
 - optional calendar integration, with TripIt recommended for travel-aware
   scheduling where users already expose TripIt to Home Assistant
-- optional green-window integration, with provider calendars such as Octopus
-  Greener Nights treated as one possible low-carbon signal
+- optional green-window integration, with provider-neutral carbon-intensity,
+  renewable forecast, or solar/battery calendars as possible low-carbon signals
 - scheduling strategies that are separate from constraints:
   `cheapest_earliest_finish`, `cheapest_latest_finish`, and later `cheapest_absolute`
 - future environmental strategies such as `greenest`, `balanced`, and
