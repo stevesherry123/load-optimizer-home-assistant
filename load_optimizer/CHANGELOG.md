@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.57
+
+- Refresh automatic readiness traffic lights every minute and on direct engine
+  state changes so helper-indirected Bosch prerequisites cannot leave stale
+  startup blockers displayed.
+- Render the dishwasher Program Catalogue from the dedicated catalogue entity
+  instead of depending on a later three-entity dashboard join.
+
 ## 0.8.56
 
 - Require the configured learned-confidence threshold before automatic

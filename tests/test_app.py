@@ -72,6 +72,8 @@ class VersionTests(unittest.TestCase):
         for suffix in ("overnight_readiness", "negative_price_readiness"):
             self.assertIn(f"load_optimizer_1_{suffix}", package)
             self.assertIn(f"sensor.load_optimizer_1_{suffix}", dashboard)
+        self.assertIn('minutes: "/1"', package)
+        self.assertIn("sensor.load_optimizer_1_program_catalogue", dashboard)
 
 
 class StatusHeartbeatTests(unittest.TestCase):

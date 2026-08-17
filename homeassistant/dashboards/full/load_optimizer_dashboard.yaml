@@ -387,18 +387,16 @@ views:
               columns: 24
               rows: auto
             conditions:
-              - entity: sensor.load_optimizer_1_learned_programs
+              - entity: sensor.load_optimizer_1_program_catalogue
                 state_not: "0"
             card:
               type: markdown
               title: Program Catalogue
               content: >
-                {% set learned =
-                (state_attr('sensor.load_optimizer_1_learned_programs',
+                {% set catalogue =
+                (state_attr('sensor.load_optimizer_1_program_catalogue',
                 'programs') or []) | sort(attribute='confidence', reverse=true)
-                %} {% set policies =
-                state_attr('sensor.load_optimizer_1_program_policies',
-                'policies') or [] %} {% set capabilities =
+                %} {% set capabilities =
                 state_attr('sensor.load_optimizer_1_program_capabilities',
                 'programs') or [] %}
 
@@ -407,42 +405,24 @@ views:
 
                 |---|---:|---:|---:|---:|---|---:|---:|---:|---:|---|
 
-                {%- for item in learned %}
-
-                {%- set policy = (policies | selectattr('program', 'eq',
-                item.program) | list | first) or {} %}
+                {%- for item in catalogue %}
 
                 {%- set capability = (capabilities | selectattr('program',
                 'eq', item.program) | list | first) or {} %}
 
                 | {{ item.program }} | {{ item.runs }} | {{
-                item.expected_runtime_minutes | round(0, 'ceil') | int }} min |
-                {{ item.expected_energy_kwh | round(3) }} kWh | {{
-                item.confidence | round(0) }}% | {{ policy.classification |
+                (item.expected_runtime_minutes | round(0, 'ceil') | int ~ ' min')
+                if item.expected_runtime_minutes is number else 'unknown' }} |
+                {{ (item.expected_energy_kwh | round(3) ~ ' kWh') if
+                item.expected_energy_kwh is number else 'unknown' }} | {{
+                item.confidence | round(0) }}% | {{ item.classification |
                 default('unclassified') }} | {{ 'yes' if
-                policy.allow_normal_recommendation | default(false) else 'no' }}
-                | {{ 'yes' if policy.allow_negative_price_run | default(false)
-                else 'no' }} | {{ policy.minimum_hours_between_runs |
+                item.allow_normal_recommendation | default(false) else 'no' }}
+                | {{ 'yes' if item.allow_negative_price_run | default(false)
+                else 'no' }} | {{ item.minimum_hours_between_runs |
                 default(0) }} h | {{ 'yes' if capability.can_auto_start |
                 default(false) else 'no' }} | {{ capability.remote_start_status
                 | default('unknown') }} |
-
-                {%- endfor %}
-
-                {%- for policy in policies if not (learned |
-                selectattr('program', 'eq', policy.program) | list) %}
-
-                {%- set capability = (capabilities | selectattr('program',
-                'eq', policy.program) | list | first) or {} %}
-
-                | {{ policy.program }} | 0 | unknown | unknown | 0% | {{
-                policy.classification | default('unclassified') }} | {{ 'yes'
-                if policy.allow_normal_recommendation | default(false) else 'no'
-                }} | {{ 'yes' if policy.allow_negative_price_run |
-                default(false) else 'no' }} | {{
-                policy.minimum_hours_between_runs | default(0) }} h | {{ 'yes'
-                if capability.can_auto_start | default(false) else 'no' }} | {{
-                capability.remote_start_status | default('unknown') }} |
 
                 {%- endfor %}
       - type: grid
