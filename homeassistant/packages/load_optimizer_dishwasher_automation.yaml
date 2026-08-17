@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.61.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.62.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -59,7 +59,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.61"
+    initial: "0.8.62"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -314,6 +314,31 @@ template:
           confidence: "{{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'confidence') }}"
           confidence_threshold: "{{ state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) }}"
 
+      - name: Load Optimizer 1 Remote Activation Check
+        unique_id: load_optimizer_1_remote_activation_check
+        icon: mdi:remote
+        state: >-
+          {% set connected = states('input_text.load_optimizer_1_bosch_connected_sensor') %}
+          {% set remote = states('input_text.load_optimizer_1_bosch_remote_control_sensor') %}
+          {% set remote_start = states('input_text.load_optimizer_1_bosch_remote_start_sensor') %}
+          {% set power = states('input_text.load_optimizer_1_bosch_power_switch') %}
+          {% set missing = [connected, remote, remote_start, power]
+             | select('in', ['unknown', 'unavailable', 'none', '']) | list %}
+          {% if missing | count > 0 or states(connected) != 'on'
+             or states(remote) != 'on' or states(remote_start) != 'on' %}
+            blocked
+          {% elif states(power) != 'on' %}
+            ready_power_on_required
+          {% else %}
+            ready
+          {% endif %}
+        attributes:
+          destructive_test_performed: false
+          message: >-
+            {% if this.state == 'ready' %}Remote activation prerequisites are present.
+            {% elif this.state == 'ready_power_on_required' %}Prerequisites are present; the engine will power the dishwasher on when needed.
+            {% else %}Remote activation prerequisites are unavailable.{% endif %}
+
       - name: Load Optimizer 1 Negative Price Readiness
         unique_id: load_optimizer_1_negative_price_readiness
         icon: mdi:traffic-light
@@ -403,7 +428,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.61"
+          value: "0.8.62"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request

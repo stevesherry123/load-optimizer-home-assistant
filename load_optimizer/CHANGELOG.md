@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.62
+
+- Add a periodic, non-destructive remote-activation preflight sensor.
+
 ## 0.8.61
 
 - Keep readiness traffic lights green when the dishwasher is powered off but
