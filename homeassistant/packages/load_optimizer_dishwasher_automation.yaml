@@ -467,7 +467,7 @@ automation:
       last_auto_request: "{{ states('input_datetime.load_optimizer_1_last_auto_normal_request') }}"
       auto_cooldown_elapsed: >-
         {{ last_auto_request in ['unknown', 'unavailable', 'none', None, '']
-           or as_timestamp(now()) >= as_timestamp(as_datetime(last_auto_request)) + (auto_cooldown_minutes * 60) }}
+           or as_timestamp(now()) >= as_timestamp(as_datetime(last_auto_request)) + (([(auto_cooldown_minutes | int(0)), 720] | max) * 60) }}
       message: >-
         Dishwasher automatic overnight request queued:
         {{ recommendation_program }} at {{ recommendation_start }}.

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.53
+
+- Publish a fresh status heartbeat every five minutes so Home Assistant can
+  detect a stalled optimizer even when all other status attributes are unchanged.
+- Add an optional, opt-in recovery watchdog package with a manual restart test,
+  configurable stale threshold, and restart cooldown.
+- Prevent a second unattended normal overnight request for at least 12 hours,
+  while leaving negative-price reruns governed by their configured cooldown.
+- Confirm compatibility with BottlecapDave Octopus Energy rate events through
+  v18.3.3; no dependency on the deprecated target-rate sensors is required.
+
 ## 0.8.52
 - Queue opt-in unattended normal dishwasher runs from the overnight
   recommendation only, and only after a fresh door opening since the previous
@@ -23,10 +34,6 @@
 - Publish an estimated completion time for active captures when a learned runtime is available.
 - Always publish a bounded cost breakdown for the recommended and start-now options.
 - Add a tariff-horizon sensor so dashboards can match the available price horizon.
-
-## Unreleased
-
-- No unreleased changes.
 
 ## 0.8.49
 

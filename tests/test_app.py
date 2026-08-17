@@ -34,6 +34,7 @@ from load_optimizer.app.main import (
     publish_execution_entities,
     green_windows_from_entity,
     program_summary,
+    publish_status,
     publish_restart_warning,
     repair_learning_quality,
     save_state,
@@ -58,6 +59,22 @@ class VersionTests(unittest.TestCase):
 
         self.assertIsNotNone(match)
         self.assertEqual(APP_VERSION, match.group(1))
+
+
+class StatusHeartbeatTests(unittest.TestCase):
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.datetime")
+    def test_heartbeat_refreshes_only_after_interval(self, datetime_mock, publish_mock):
+        first = datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc)
+        datetime_mock.now.side_effect = [first, first + timedelta(minutes=4), first + timedelta(minutes=5)]
+
+        with patch("load_optimizer.app.main.LAST_HEARTBEAT_AT", None):
+            publish_status("token", 1)
+            publish_status("token", 1)
+            publish_status("token", 1)
+
+        heartbeats = [call.args[3]["last_heartbeat"] for call in publish_mock.call_args_list]
+        self.assertEqual(heartbeats, [first.isoformat(), first.isoformat(), (first + timedelta(minutes=5)).isoformat()])
 
 
 class StateStorageTests(unittest.TestCase):

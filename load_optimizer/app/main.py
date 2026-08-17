@@ -22,7 +22,9 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.52"
+APP_VERSION = "0.8.53"
+HEARTBEAT_INTERVAL_SECONDS = 300
+LAST_HEARTBEAT_AT: datetime | None = None
 DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.51"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
@@ -2365,12 +2367,22 @@ def publish_status(
     running: list[dict] | None = None,
     reset_status: dict | None = None,
 ) -> None:
+    global LAST_HEARTBEAT_AT
+
     running = running or []
+    now = datetime.now(timezone.utc)
+    if (
+        LAST_HEARTBEAT_AT is None
+        or (now - LAST_HEARTBEAT_AT).total_seconds() >= HEARTBEAT_INTERVAL_SECONDS
+    ):
+        LAST_HEARTBEAT_AT = now
+
     publish_entity(token, STATUS_ENTITY, "running", {
         "friendly_name": "Load Optimizer Status", "icon": "mdi:transmission-tower",
         "version": APP_VERSION, "instances": instance_count,
         "restart_blocked": bool(running),
         "active_capture_instances": running,
+        "last_heartbeat": LAST_HEARTBEAT_AT.isoformat(),
         **(reset_status or {}),
     })
 
