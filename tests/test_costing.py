@@ -33,6 +33,89 @@ class NegativePriceSafetyTests(unittest.TestCase):
         self.assertTrue(_negative_power_window_fit(start, model, full_window)["fits"])
         self.assertFalse(_negative_power_window_fit(start, model, partial_window)["fits"])
 
+    def test_maximum_runs_per_negative_window_is_enforced(self):
+        start = datetime(2026, 7, 28, tzinfo=timezone.utc)
+        model = {
+            "program": "MachineCare",
+            "representative_profile_w": [100, 100],
+            "expected_runtime_minutes": 30,
+            "expected_energy_kwh": 1.0,
+            "confidence": 80,
+            "recent_cycles": [{
+                "finish": (start + timedelta(minutes=30)).isoformat(),
+                "runtime_minutes": 30,
+            }],
+        }
+        policy = {
+            "program": "MachineCare",
+            "enabled": True,
+            "allow_normal_recommendation": False,
+            "allow_negative_price_run": True,
+            "preference_rank": 1,
+            "negative_price_priority": 100,
+            "maximum_runs_per_window": 1,
+        }
+        periods = [{
+            "start": start,
+            "end": start + timedelta(hours=2),
+            "price_p_per_kwh": -5,
+        }]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=start + timedelta(minutes=30),
+            search_hours=1,
+            candidate_interval_minutes=30,
+        )
+
+        self.assertEqual(result["status"], "no_eligible_programs")
+        self.assertEqual(result["reason"], "maximum_runs_per_window_reached")
+        self.assertEqual(result["program_diagnostics"][0]["reason"], "maximum_runs_per_window_reached")
+
+    def test_unlimited_negative_window_runs_remain_eligible(self):
+        start = datetime(2026, 7, 28, tzinfo=timezone.utc)
+        model = {
+            "program": "MachineCare",
+            "representative_profile_w": [100, 100],
+            "expected_runtime_minutes": 30,
+            "expected_energy_kwh": 1.0,
+            "confidence": 80,
+            "recent_cycles": [{
+                "finish": (start + timedelta(minutes=30)).isoformat(),
+                "runtime_minutes": 30,
+            }],
+        }
+        policy = {
+            "program": "MachineCare",
+            "enabled": True,
+            "allow_normal_recommendation": False,
+            "allow_negative_price_run": True,
+            "preference_rank": 1,
+            "negative_price_priority": 100,
+            "maximum_runs_per_window": 0,
+        }
+        periods = [{
+            "start": start,
+            "end": start + timedelta(hours=2),
+            "price_p_per_kwh": -5,
+        }]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=start + timedelta(minutes=30),
+            search_hours=1,
+            candidate_interval_minutes=30,
+        )
+
+        recommendation = result["negative_price_recommendation"]
+        self.assertEqual(recommendation["status"], "ready")
+        self.assertEqual(recommendation["negative_window_runs"], 1)
+        self.assertEqual(recommendation["maximum_runs_per_window"], 0)
+
 
 class TariffParsingTests(unittest.TestCase):
     def test_ai_feed_becomes_utc_tariff_periods(self):

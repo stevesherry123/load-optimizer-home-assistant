@@ -222,6 +222,28 @@ views:
                 name: Estimated Cost
               - entity: sensor.load_optimizer_1_good_to_start
                 name: Good To Start
+          - type: markdown
+            title: Automatic Run Readiness
+            content: >-
+              {% set overnight = 'sensor.load_optimizer_1_overnight_readiness' %}
+              {% set negative = 'sensor.load_optimizer_1_negative_price_readiness' %}
+              {% set icons = {'green': '🟢', 'amber': '🟠', 'red': '🔴'} %}
+              {% set overnight_blockers = state_attr(overnight, 'blockers') or [] %}
+              {% set overnight_warnings = state_attr(overnight, 'warnings') or [] %}
+              {% set negative_blockers = state_attr(negative, 'blockers') or [] %}
+              {% set negative_warnings = state_attr(negative, 'warnings') or [] %}
+
+              ### {{ icons.get(states(overnight), '⚪') }} Overnight
+              **{{ states(overnight) | upper }}** · {{ state_attr(overnight, 'program') or 'no program' }}
+
+              {% if overnight_blockers %}**Blockers:** {{ overnight_blockers | join(', ') }}{% endif %}
+              {% if overnight_warnings %}**Waiting:** {{ overnight_warnings | join(', ') }}{% endif %}
+
+              ### {{ icons.get(states(negative), '⚪') }} Negative price
+              **{{ states(negative) | upper }}** · {{ state_attr(negative, 'program') or 'no active opportunity' }}
+
+              {% if negative_blockers %}**Blockers:** {{ negative_blockers | join(', ') }}{% endif %}
+              {% if negative_warnings %}**Waiting:** {{ negative_warnings | join(', ') }}{% endif %}
       - type: grid
         cards:
           - type: entities
@@ -453,6 +475,36 @@ views:
                 name: Must Finish By
               - entity: input_button.load_optimizer_1_clear_deadline
                 name: Clear Travel Deadline
+          - type: markdown
+            title: Automatic Engine Traffic Lights
+            content: >-
+              {% set overnight = 'sensor.load_optimizer_1_overnight_readiness' %}
+              {% set negative = 'sensor.load_optimizer_1_negative_price_readiness' %}
+              {% set icons = {'green': '🟢', 'amber': '🟠', 'red': '🔴'} %}
+
+              ## {{ icons.get(states(overnight), '⚪') }} Overnight — {{ states(overnight) | upper }}
+              **Program:** {{ state_attr(overnight, 'program') or 'none' }}
+
+              **Start:** {{ (state_attr(overnight, 'start') | as_datetime | as_local).strftime('%a %d %b %H:%M') if state_attr(overnight, 'start') else 'not scheduled' }}
+
+              **Confidence:** {{ state_attr(overnight, 'confidence') or 0 }}% / {{ state_attr(overnight, 'confidence_threshold') or 20 }}% required
+
+              **Blockers:** {{ (state_attr(overnight, 'blockers') or []) | join(', ') or 'none' }}
+
+              **Waiting/warnings:** {{ (state_attr(overnight, 'warnings') or []) | join(', ') or 'none' }}
+
+              ## {{ icons.get(states(negative), '⚪') }} Negative price — {{ states(negative) | upper }}
+              **Program:** {{ state_attr(negative, 'program') or 'none' }}
+
+              **Start:** {{ (state_attr(negative, 'start') | as_datetime | as_local).strftime('%a %d %b %H:%M') if state_attr(negative, 'start') else 'no active opportunity' }}
+
+              **Confidence:** {{ state_attr(negative, 'confidence') or 0 }}% / {{ state_attr(negative, 'confidence_threshold') or 20 }}% required
+
+              **Window runs:** {{ state_attr(negative, 'runs_in_window') or 0 }} / {{ state_attr(negative, 'maximum_runs_per_window') or 'unlimited' }}
+
+              **Blockers:** {{ (state_attr(negative, 'blockers') or []) | join(', ') or 'none' }}
+
+              **Waiting/warnings:** {{ (state_attr(negative, 'warnings') or []) | join(', ') or 'none' }}
           - type: markdown
             title: Scheduler Message
             content: >

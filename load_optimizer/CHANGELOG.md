@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.56
+
+- Require the configured learned-confidence threshold before automatic
+  overnight or negative-price requests can be created.
+- Enforce `maximum_runs_per_window` for negative-price opportunities using
+  recent learned-cycle history and the matched contiguous negative window.
+- Revalidate queued automatic programs and confidence at execution time,
+  cancelling plans that are no longer eligible.
+- Add green, amber, and red overnight and negative-price readiness sensors with
+  explicit blockers and warnings, plus dashboard traffic-light cards.
+
 ## 0.8.55
 
 - Force a full Home Assistant entity republish every 15 minutes so dashboards

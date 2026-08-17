@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.55"
+APP_VERSION = "0.8.56"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -31,7 +31,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.51"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.56"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -1699,6 +1699,12 @@ def publish_cost_entities(
             "blocked_by_active_capture": cycle_running and recommendation_ready,
             "active_cycle_start": active_cycle_start,
             "negative_price_run": recommendation.get("negative_price_run"),
+            "power_hungry_window_fits_negative_price": recommendation.get("power_hungry_window_fits_negative_price"),
+            "power_hungry_window_reason": recommendation.get("power_hungry_window_reason"),
+            "negative_window_start": recommendation.get("negative_window_start"),
+            "negative_window_end": recommendation.get("negative_window_end"),
+            "negative_window_runs": recommendation.get("negative_window_runs"),
+            "maximum_runs_per_window": recommendation.get("maximum_runs_per_window"),
             "is_overnight_start": recommendation.get("is_overnight_start"),
             "is_daytime_start": recommendation.get("is_daytime_start"),
             "decision_policy": result.get("decision_policy"),

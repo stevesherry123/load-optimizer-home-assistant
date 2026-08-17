@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from load_optimizer.app.main import (
     APP_VERSION,
+    DISHWASHER_AUTOMATION_PACKAGE_VERSION,
     PUBLISHED_ENTITY_CACHE,
     bootstrap_program_models,
     bool_option,
@@ -61,6 +62,16 @@ class VersionTests(unittest.TestCase):
 
         self.assertIsNotNone(match)
         self.assertEqual(APP_VERSION, match.group(1))
+
+    def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
+        root = Path(__file__).resolve().parents[1]
+        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
+        dashboard = (root / "homeassistant/dashboards/full/load_optimizer_dashboard.yaml").read_text()
+
+        self.assertGreaterEqual(package.count(f'"{DISHWASHER_AUTOMATION_PACKAGE_VERSION}"'), 2)
+        for suffix in ("overnight_readiness", "negative_price_readiness"):
+            self.assertIn(f"load_optimizer_1_{suffix}", package)
+            self.assertIn(f"sensor.load_optimizer_1_{suffix}", dashboard)
 
 
 class StatusHeartbeatTests(unittest.TestCase):

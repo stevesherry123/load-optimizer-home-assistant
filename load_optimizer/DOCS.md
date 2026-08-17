@@ -145,9 +145,11 @@ repeating the same cycle while still building confidence in alternatives.
 Cooldown decisions are exposed in `program_diagnostics` with
 `reason: cooldown_active` and `cooldown_until` where applicable.
 
-`maximum_runs_per_window: 0` means unlimited for future negative-price planning.
-`negative_price_priority` ranks explicitly allowed negative-price programs
-before energy intensity is used as a tie-breaker.
+`maximum_runs_per_window: 0` means unlimited negative-price runs. A positive
+value limits how many learned cycles of that program may overlap the same
+contiguous negative-price window. Once the limit is reached, later candidates
+in that window are rejected. `negative_price_priority` ranks explicitly allowed
+negative-price programs before energy intensity is used as a tie-breaker.
 
 Operating-cost fields let the recommendation show a more realistic cycle cost
 than electricity alone:
@@ -172,6 +174,31 @@ Only `program` and `classification` are required. All other policy fields are
 optional and use the conservative defaults published in the
 `optional_field_defaults` attribute of
 `sensor.load_optimizer_N_program_policies`.
+
+## Automatic engine readiness
+
+The optional Dishwasher 1 Home Assistant package publishes:
+
+- `sensor.load_optimizer_1_overnight_readiness`
+- `sensor.load_optimizer_1_negative_price_readiness`
+
+Each sensor uses a traffic-light state:
+
+- `green`: the mode is armed and its current execution prerequisites are met.
+- `amber`: no hard fault exists, but the engine is disarmed, waiting for a
+  window, waiting for the current cycle/request, or expects to power on the
+  dishwasher before starting.
+- `red`: a hard blocker exists, such as missing eligibility, insufficient
+  learned confidence, restart safety, no fresh door opening for normal mode,
+  loss of connectivity, or disabled remote control/start.
+
+The `blockers` and `warnings` attributes contain machine-readable reason names.
+The dashboard renders these as Overnight and Negative Price traffic-light
+cards. Automatic requests require the same confidence threshold exposed by the
+app's schedule status. Before a stored automatic request executes, the package
+also confirms that the selected program remains present in the current intent
+options, still meets the threshold, and has not moved more than 15 minutes from
+the queued start.
 
 ## Operational Safeguards
 

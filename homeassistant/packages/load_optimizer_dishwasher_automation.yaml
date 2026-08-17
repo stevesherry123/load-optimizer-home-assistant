@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.56.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -62,7 +62,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.52"
+    initial: "0.8.56"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -235,6 +235,148 @@ input_button:
     name: Dishwasher 1 Request Selected Program Overnight
     icon: mdi:weather-night
 
+template:
+  - sensor:
+      - name: Load Optimizer 1 Overnight Readiness
+        unique_id: load_optimizer_1_overnight_readiness
+        icon: mdi:traffic-light
+        state: >-
+          {% set rec = 'sensor.load_optimizer_1_overnight_recommendation' %}
+          {% set threshold = state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) %}
+          {% set confidence = state_attr(rec, 'confidence') | int(0) %}
+          {% set options = state_attr(rec, 'program_options') or [] %}
+          {% set connected = states('input_text.load_optimizer_1_bosch_connected_sensor') %}
+          {% set door = states('input_text.load_optimizer_1_bosch_door_sensor') %}
+          {% set remote = states('input_text.load_optimizer_1_bosch_remote_control_sensor') %}
+          {% set remote_start = states('input_text.load_optimizer_1_bosch_remote_start_sensor') %}
+          {% set power = states('input_text.load_optimizer_1_bosch_power_switch') %}
+          {% set hard_blocked =
+             states('sensor.load_optimizer_1_status') != 'ready'
+             or states('sensor.load_optimizer_restart_safety') != 'safe'
+             or state_attr(rec, 'status') != 'ready'
+             or options | count == 0
+             or confidence < threshold
+             or not is_state('input_boolean.load_optimizer_1_door_opened_since_last_cycle', 'on')
+             or states(connected) != 'on'
+             or states(remote) != 'on'
+             or states(remote_start) != 'on' %}
+          {% set waiting =
+             not is_state('input_boolean.load_optimizer_1_auto_mode_enabled', 'on')
+             or states('sensor.load_optimizer_1_cycle_state') != 'idle'
+             or states('input_select.load_optimizer_1_requested_mode') != 'none'
+             or states(door) in ['on', 'open']
+             or states(power) != 'on' %}
+          {{ 'red' if hard_blocked else ('amber' if waiting else 'green') }}
+        attributes:
+          blockers: >-
+            {% set ns = namespace(items=[]) %}
+            {% set rec = 'sensor.load_optimizer_1_overnight_recommendation' %}
+            {% set threshold = state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) %}
+            {% set confidence = state_attr(rec, 'confidence') | int(0) %}
+            {% set options = state_attr(rec, 'program_options') or [] %}
+            {% set connected = states('input_text.load_optimizer_1_bosch_connected_sensor') %}
+            {% set remote = states('input_text.load_optimizer_1_bosch_remote_control_sensor') %}
+            {% set remote_start = states('input_text.load_optimizer_1_bosch_remote_start_sensor') %}
+            {% if states('sensor.load_optimizer_1_status') != 'ready' %}{% set ns.items = ns.items + ['optimizer_not_ready'] %}{% endif %}
+            {% if states('sensor.load_optimizer_restart_safety') != 'safe' %}{% set ns.items = ns.items + ['active_capture_or_restart_unsafe'] %}{% endif %}
+            {% if state_attr(rec, 'status') != 'ready' %}{% set ns.items = ns.items + [state_attr(rec, 'reason') or 'no_overnight_recommendation'] %}{% endif %}
+            {% if options | count == 0 %}{% set ns.items = ns.items + ['no_eligible_programs'] %}{% endif %}
+            {% if confidence < threshold %}{% set ns.items = ns.items + ['confidence_below_' ~ threshold] %}{% endif %}
+            {% if not is_state('input_boolean.load_optimizer_1_door_opened_since_last_cycle', 'on') %}{% set ns.items = ns.items + ['door_not_opened_since_last_cycle'] %}{% endif %}
+            {% if states(connected) != 'on' %}{% set ns.items = ns.items + ['dishwasher_not_connected'] %}{% endif %}
+            {% if states(remote) != 'on' %}{% set ns.items = ns.items + ['remote_control_disabled'] %}{% endif %}
+            {% if states(remote_start) != 'on' %}{% set ns.items = ns.items + ['remote_start_disabled'] %}{% endif %}
+            {{ ns.items }}
+          warnings: >-
+            {% set ns = namespace(items=[]) %}
+            {% set door = states('input_text.load_optimizer_1_bosch_door_sensor') %}
+            {% set power = states('input_text.load_optimizer_1_bosch_power_switch') %}
+            {% if not is_state('input_boolean.load_optimizer_1_auto_mode_enabled', 'on') %}{% set ns.items = ns.items + ['automatic_overnight_mode_off'] %}{% endif %}
+            {% if states('sensor.load_optimizer_1_cycle_state') != 'idle' %}{% set ns.items = ns.items + ['appliance_not_idle'] %}{% endif %}
+            {% if states('input_select.load_optimizer_1_requested_mode') != 'none' %}{% set ns.items = ns.items + ['request_already_pending'] %}{% endif %}
+            {% if states(door) in ['on', 'open'] %}{% set ns.items = ns.items + ['door_currently_open'] %}{% endif %}
+            {% if states(power) != 'on' %}{% set ns.items = ns.items + ['dishwasher_power_off_engine_will_attempt_power_on'] %}{% endif %}
+            {{ ns.items }}
+          program: "{{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'program') }}"
+          start: "{{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'start') }}"
+          confidence: "{{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'confidence') }}"
+          confidence_threshold: "{{ state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) }}"
+
+      - name: Load Optimizer 1 Negative Price Readiness
+        unique_id: load_optimizer_1_negative_price_readiness
+        icon: mdi:traffic-light
+        state: >-
+          {% set rec = 'sensor.load_optimizer_1_negative_price_recommendation' %}
+          {% set threshold = state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) %}
+          {% set confidence = state_attr(rec, 'confidence') | int(0) %}
+          {% set capabilities = state_attr('sensor.load_optimizer_1_program_capabilities', 'programs') or [] %}
+          {% set eligible = capabilities | selectattr('can_negative_price', 'eq', true) | list %}
+          {% set connected = states('input_text.load_optimizer_1_bosch_connected_sensor') %}
+          {% set door = states('input_text.load_optimizer_1_bosch_door_sensor') %}
+          {% set remote = states('input_text.load_optimizer_1_bosch_remote_control_sensor') %}
+          {% set remote_start = states('input_text.load_optimizer_1_bosch_remote_start_sensor') %}
+          {% set power = states('input_text.load_optimizer_1_bosch_power_switch') %}
+          {% set hard_blocked =
+             states('sensor.load_optimizer_1_status') != 'ready'
+             or states('sensor.load_optimizer_restart_safety') != 'safe'
+             or eligible | count == 0
+             or state_attr('sensor.load_optimizer_1_cost_status', 'reason') == 'maximum_runs_per_window_reached'
+             or state_attr(rec, 'reason') == 'maximum_runs_per_window_reached'
+             or (state_attr(rec, 'status') == 'ready' and confidence < threshold)
+             or states(connected) != 'on'
+             or states(remote) != 'on'
+             or states(remote_start) != 'on' %}
+          {% set waiting =
+             not is_state('input_boolean.load_optimizer_1_auto_negative_price_enabled', 'on')
+             or states('sensor.load_optimizer_1_cycle_state') != 'idle'
+             or states('input_select.load_optimizer_1_requested_mode') != 'none'
+             or state_attr(rec, 'status') != 'ready'
+             or state_attr(rec, 'ready_to_start') != true
+             or states(door) in ['on', 'open']
+             or states(power) != 'on' %}
+          {{ 'red' if hard_blocked else ('amber' if waiting else 'green') }}
+        attributes:
+          blockers: >-
+            {% set ns = namespace(items=[]) %}
+            {% set rec = 'sensor.load_optimizer_1_negative_price_recommendation' %}
+            {% set threshold = state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) %}
+            {% set confidence = state_attr(rec, 'confidence') | int(0) %}
+            {% set capabilities = state_attr('sensor.load_optimizer_1_program_capabilities', 'programs') or [] %}
+            {% set eligible = capabilities | selectattr('can_negative_price', 'eq', true) | list %}
+            {% set connected = states('input_text.load_optimizer_1_bosch_connected_sensor') %}
+            {% set remote = states('input_text.load_optimizer_1_bosch_remote_control_sensor') %}
+            {% set remote_start = states('input_text.load_optimizer_1_bosch_remote_start_sensor') %}
+            {% if states('sensor.load_optimizer_1_status') != 'ready' %}{% set ns.items = ns.items + ['optimizer_not_ready'] %}{% endif %}
+            {% if states('sensor.load_optimizer_restart_safety') != 'safe' %}{% set ns.items = ns.items + ['active_capture_or_restart_unsafe'] %}{% endif %}
+            {% if eligible | count == 0 %}{% set ns.items = ns.items + ['no_negative_price_programs_enabled'] %}{% endif %}
+            {% if state_attr('sensor.load_optimizer_1_cost_status', 'reason') == 'maximum_runs_per_window_reached' %}{% set ns.items = ns.items + ['maximum_runs_per_window_reached'] %}{% endif %}
+            {% if state_attr(rec, 'reason') == 'maximum_runs_per_window_reached' and 'maximum_runs_per_window_reached' not in ns.items %}{% set ns.items = ns.items + ['maximum_runs_per_window_reached'] %}{% endif %}
+            {% if state_attr(rec, 'status') == 'ready' and confidence < threshold %}{% set ns.items = ns.items + ['confidence_below_' ~ threshold] %}{% endif %}
+            {% if states(connected) != 'on' %}{% set ns.items = ns.items + ['dishwasher_not_connected'] %}{% endif %}
+            {% if states(remote) != 'on' %}{% set ns.items = ns.items + ['remote_control_disabled'] %}{% endif %}
+            {% if states(remote_start) != 'on' %}{% set ns.items = ns.items + ['remote_start_disabled'] %}{% endif %}
+            {{ ns.items }}
+          warnings: >-
+            {% set ns = namespace(items=[]) %}
+            {% set rec = 'sensor.load_optimizer_1_negative_price_recommendation' %}
+            {% set door = states('input_text.load_optimizer_1_bosch_door_sensor') %}
+            {% set power = states('input_text.load_optimizer_1_bosch_power_switch') %}
+            {% if not is_state('input_boolean.load_optimizer_1_auto_negative_price_enabled', 'on') %}{% set ns.items = ns.items + ['automatic_negative_price_mode_off'] %}{% endif %}
+            {% if states('sensor.load_optimizer_1_cycle_state') != 'idle' %}{% set ns.items = ns.items + ['appliance_not_idle'] %}{% endif %}
+            {% if states('input_select.load_optimizer_1_requested_mode') != 'none' %}{% set ns.items = ns.items + ['request_already_pending'] %}{% endif %}
+            {% if state_attr(rec, 'status') != 'ready' %}{% set ns.items = ns.items + [state_attr(rec, 'reason') or 'no_negative_price_window'] %}{% endif %}
+            {% if state_attr(rec, 'status') == 'ready' and state_attr(rec, 'ready_to_start') != true %}{% set ns.items = ns.items + ['negative_window_not_started'] %}{% endif %}
+            {% if not is_state('input_boolean.load_optimizer_1_door_opened_since_last_cycle', 'on') %}{% set ns.items = ns.items + ['door_not_opened_not_required_for_negative_mode'] %}{% endif %}
+            {% if states(door) in ['on', 'open'] %}{% set ns.items = ns.items + ['door_currently_open'] %}{% endif %}
+            {% if states(power) != 'on' %}{% set ns.items = ns.items + ['dishwasher_power_off_engine_will_attempt_power_on'] %}{% endif %}
+            {{ ns.items }}
+          program: "{{ state_attr('sensor.load_optimizer_1_negative_price_recommendation', 'program') }}"
+          start: "{{ state_attr('sensor.load_optimizer_1_negative_price_recommendation', 'start') }}"
+          confidence: "{{ state_attr('sensor.load_optimizer_1_negative_price_recommendation', 'confidence') }}"
+          confidence_threshold: "{{ state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) }}"
+          runs_in_window: "{{ state_attr('sensor.load_optimizer_1_negative_price_recommendation', 'negative_window_runs') }}"
+          maximum_runs_per_window: "{{ state_attr('sensor.load_optimizer_1_negative_price_recommendation', 'maximum_runs_per_window') }}"
+
 automation:
   - id: load_optimizer_1_register_automation_package_version
     alias: Load Optimizer 1 - Register Automation Package Version
@@ -250,7 +392,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.51"
+          value: "0.8.56"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
@@ -378,6 +520,8 @@ automation:
         {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
       recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
       recommendation_ready_to_start: "{{ state_attr(recommendation_entity, 'ready_to_start') }}"
+      recommendation_confidence: "{{ state_attr(recommendation_entity, 'confidence') | int(0) }}"
+      confidence_threshold: "{{ state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) }}"
       recommendation_reason: "{{ state_attr(recommendation_entity, 'reason') }}"
       auto_cooldown_minutes: 30
       last_auto_request: "{{ states('input_datetime.load_optimizer_1_last_auto_negative_price_request') }}"
@@ -406,6 +550,7 @@ automation:
              and recommendation_ready_to_start == true
              and recommendation_program not in ['unknown', 'unavailable', 'none', None, '']
              and recommendation_start not in ['unknown', 'unavailable', 'none', None, '']
+             and recommendation_confidence >= confidence_threshold
              and auto_cooldown_elapsed }}
     actions:
       - action: input_select.select_option
@@ -463,6 +608,8 @@ automation:
       recommendation_program: >-
         {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
       recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
+      recommendation_confidence: "{{ state_attr(recommendation_entity, 'confidence') | int(0) }}"
+      confidence_threshold: "{{ state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) }}"
       auto_cooldown_minutes: 30
       last_auto_request: "{{ states('input_datetime.load_optimizer_1_last_auto_normal_request') }}"
       auto_cooldown_elapsed: >-
@@ -492,6 +639,7 @@ automation:
           {{ recommendation_status == 'ready'
              and recommendation_program not in ['unknown', 'unavailable', 'none', None, '']
              and recommendation_start not in ['unknown', 'unavailable', 'none', None, '']
+             and recommendation_confidence >= confidence_threshold
              and as_timestamp(as_datetime(recommendation_start)) > as_timestamp(now())
              and auto_cooldown_elapsed }}
     actions:
@@ -613,6 +761,7 @@ automation:
         {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
       recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
       recommendation_ready_to_start: "{{ state_attr(recommendation_entity, 'ready_to_start') }}"
+      current_program_options: "{{ state_attr(recommendation_entity, 'program_options') or [] }}"
       requested_program: "{{ states('input_text.load_optimizer_1_requested_program') }}"
       requested_start: "{{ states('input_datetime.load_optimizer_1_requested_start') }}"
       selected_start: >-
@@ -624,6 +773,27 @@ automation:
         {{ requested_program
            if requested_program not in ['unknown', 'unavailable', 'none', None, '']
            else recommendation_program }}
+      queued_program_option: >-
+        {{ current_program_options
+           | selectattr('program', 'eq', selected_program)
+           | list | first | default({}, true) }}
+      confidence_threshold: >-
+        {{ state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) }}
+      queued_program_confidence: "{{ queued_program_option.confidence | default(0, true) | int(0) }}"
+      queued_option_start: "{{ queued_program_option.start | default('', true) }}"
+      queued_start_delta_minutes: >-
+        {% if queued_option_start not in ['unknown', 'unavailable', 'none', None, '']
+              and selected_start not in ['unknown', 'unavailable', 'none', None, ''] %}
+          {{ ((((as_timestamp(as_datetime(queued_option_start)) - as_timestamp(as_datetime(selected_start))) | abs) / 60)) | round(1) }}
+        {% else %}
+          9999
+        {% endif %}
+      queued_plan_invalid: >-
+        {{ requested_mode in ['automatic', 'negative_price']
+           and (recommendation_status != 'ready'
+                or not queued_program_option
+                or queued_program_confidence < confidence_threshold
+                or queued_start_delta_minutes | float(9999) > 15) }}
       selected_program_key: >-
         {% set program_map = {
           'Eco50': 'Dishcare.Dishwasher.Program.Eco50',
@@ -689,6 +859,17 @@ automation:
         stale_request program={{ selected_program }}
         due={{ selected_start }}
         lag_limit_minutes={{ maximum_start_lag_minutes }}
+      revalidation_message: >-
+        Dishwasher automatic request cancelled because the queued plan is no
+        longer eligible. program={{ selected_program }},
+        recommendation={{ recommendation_status }},
+        confidence={{ queued_program_confidence }}/{{ confidence_threshold }},
+        start_delta={{ queued_start_delta_minutes }} minutes.
+      revalidation_reason: >-
+        queued_plan_no_longer_eligible program={{ selected_program }}
+        recommendation={{ recommendation_status }}
+        confidence={{ queued_program_confidence }}/{{ confidence_threshold }}
+        start_delta_minutes={{ queued_start_delta_minutes }}
       not_ready_message: >-
         Dishwasher is not ready to start {{ selected_program }}.
         {{ bosch_ready_summary }}.
@@ -733,7 +914,11 @@ automation:
       - condition: template
         value_template: "{{ requested_mode in ['now', 'soon', 'overnight', 'negative_price', 'automatic'] }}"
       - condition: template
-        value_template: "{{ recommendation_status == 'ready' or manual_now_override or stale_request }}"
+        value_template: >-
+          {{ recommendation_status == 'ready'
+             or manual_now_override
+             or stale_request
+             or requested_mode in ['automatic', 'negative_price'] }}
       - condition: template
         value_template: "{{ selected_program not in ['unknown', 'unavailable', 'none', None, ''] }}"
       - condition: template
@@ -800,6 +985,30 @@ automation:
         target:
           entity_id: script.load_optimizer_announce
       - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ queued_plan_invalid }}"
+            sequence:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_scheduler_message
+                data:
+                  value: "{{ revalidation_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_start_attempt_status
+                data:
+                  value: cancelled
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: cancelled
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_failure_reason
+                data:
+                  value: "{{ revalidation_reason[:255] }}"
           - conditions:
               - condition: template
                 value_template: "{{ negative_price_mode and not negative_power_window_fit }}"
