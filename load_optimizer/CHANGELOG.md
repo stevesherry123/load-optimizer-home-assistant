@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.63
+
+- Notify Home Assistant when a requested dishwasher start fails, is blocked,
+  or expires without starting.
+
 ## 0.8.62
 
 - Add a periodic, non-destructive remote-activation preflight sensor.
