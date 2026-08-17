@@ -66,6 +66,7 @@ class VersionTests(unittest.TestCase):
     def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
         root = Path(__file__).resolve().parents[1]
         package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
+        watchdog = (root / "homeassistant/packages/load_optimizer_recovery_watchdog.yaml").read_text()
         dashboard = (root / "homeassistant/dashboards/full/load_optimizer_dashboard.yaml").read_text()
 
         self.assertGreaterEqual(package.count(f'"{DISHWASHER_AUTOMATION_PACKAGE_VERSION}"'), 2)
@@ -76,6 +77,8 @@ class VersionTests(unittest.TestCase):
         self.assertIn("- trigger: template", package)
         input_booleans = package.split("input_boolean:", 1)[1].split("input_text:", 1)[0]
         self.assertNotIn("initial: false", input_booleans)
+        self.assertEqual(package.count("initial:"), 1)
+        self.assertNotIn("initial:", watchdog)
         self.assertIn("sensor.load_optimizer_1_program_catalogue", dashboard)
 
 

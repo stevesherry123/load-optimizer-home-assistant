@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.60
+
+- Preserve queued request mode, program override, recovery-watchdog opt-in,
+  recovery timing, and configured add-on slug across Home Assistant restarts.
+- Retain a safe built-in add-on slug fallback for new watchdog installations
+  without overwriting a locally configured slug.
+
 ## 0.8.59
 
 - Preserve the household's automatic overnight and automatic negative-price

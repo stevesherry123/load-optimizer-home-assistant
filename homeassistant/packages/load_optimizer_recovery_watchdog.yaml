@@ -11,7 +11,6 @@ input_boolean:
   load_optimizer_recovery_enabled:
     name: Load Optimizer Recovery Enabled
     icon: mdi:heart-pulse
-    initial: false
 
 input_number:
   load_optimizer_recovery_stale_after_minutes:
@@ -22,7 +21,6 @@ input_number:
     step: 1
     unit_of_measurement: min
     mode: box
-    initial: 10
   load_optimizer_recovery_restart_cooldown_minutes:
     name: Load Optimizer Recovery Restart Cooldown
     icon: mdi:timer-lock-outline
@@ -31,14 +29,12 @@ input_number:
     step: 1
     unit_of_measurement: min
     mode: box
-    initial: 30
 
 input_text:
   load_optimizer_recovery_addon_slug:
     name: Load Optimizer Add-on Slug
     icon: mdi:identifier
     max: 100
-    initial: f5537f93_load_optimizer
   load_optimizer_recovery_status:
     name: Load Optimizer Recovery Status
     icon: mdi:heart-pulse
@@ -72,7 +68,10 @@ automation:
         entity_id: input_button.load_optimizer_recovery_restart_now
         id: manual
     variables:
-      addon_slug: "{{ states('input_text.load_optimizer_recovery_addon_slug') | trim }}"
+      addon_slug: >-
+        {% set configured = states('input_text.load_optimizer_recovery_addon_slug') | trim %}
+        {{ 'f5537f93_load_optimizer'
+           if configured in ['', 'unknown', 'unavailable'] else configured }}
       optimizer_status: "{{ states('sensor.load_optimizer_status') }}"
       heartbeat: "{{ state_attr('sensor.load_optimizer_status', 'last_heartbeat') }}"
       last_seen: >-
