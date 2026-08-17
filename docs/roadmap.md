@@ -7,23 +7,27 @@ implementation architecture in `docs/architecture.md`.
 ## Near-Term Priorities
 
 - improve profile-weighted tariff cost estimation across half-hour slots
-- add per-instance earliest start and latest finish constraints
 - extend helper-driven deadline support for calendar and travel-aware scheduling
-- add selectable scheduling strategies such as `cheapest_earliest_finish` and
-  `cheapest_latest_finish`
 - continue refining daytime and overnight scheduling windows
-- expose clear recommended start and finish sensors
 - expose a recommended-window active state for dashboards and automations
 - add a manual recalculation service for tariff, policy, or test changes
 - improve runtime status clarity so active capture is obvious
-- model additional per-cycle operating costs such as detergent, water, and
-  appliance wear
 - account for household solar generation and battery storage when estimating the
   effective cost of running a cycle
 - add optional greener-window scheduling that compares the cheapest candidate
   with a lower-carbon or provider-highlighted green candidate
-- continue hardening automatic negative-price opportunity handling for programs
-  explicitly allowed by policy
+
+## Completed Recently
+
+- Per-instance earliest-start and latest-finish constraints.
+- Selectable `cheapest_absolute`, `cheapest_earliest_finish`, and
+  `cheapest_latest_finish` scheduling strategies.
+- Recommended start, finish, cheapest, greenest, and potential-saving sensors.
+- Profile-integrated energy and configurable fixed, water, and wear operating
+  costs.
+- Policy-gated automatic negative-price handling with cooldowns and run limits.
+- Dishwasher automation readiness traffic lights, remote-activation preflight,
+  persistence-safe opt-ins, and missed/successful start notifications.
 
 ## Scheduling And Cost Estimation
 
@@ -38,21 +42,17 @@ and local-energy context rather than embedding provider-specific behaviour.
 
 Planned scheduling features:
 
-- per-instance earliest start and latest finish constraints
 - helper-driven deadline support via Home Assistant input helpers
 - optional calendar integration, with TripIt recommended for travel-aware
   scheduling where users already expose TripIt to Home Assistant
 - optional green-window integration, with provider-neutral carbon-intensity,
   renewable forecast, or solar/battery calendars as possible low-carbon signals
 - scheduling strategies that are separate from constraints:
-  `cheapest_earliest_finish`, `cheapest_latest_finish`, and later `cheapest_absolute`
+  `cheapest_earliest_finish`, `cheapest_latest_finish`, and `cheapest_absolute`
 - future environmental strategies such as `greenest`, `balanced`, and
   `greenest_if_within_budget`
-- schedule window preferences for overnight/daytime operation
-- clear recommended start and finish sensors
 - a recommended-window active state for dashboards and automations
 - a manual recalculation service for tariff, policy, or test changes
-- profile-weighted cost estimation across half-hour tariff slots
 - a simple fallback estimator when only runtime and total kWh are known
 - a guided Home Assistant configuration flow in a future integration phase
 

@@ -94,7 +94,7 @@ This package is intentionally separate from:
 
 - the learning engine
 - other appliance instances
-- future negative-price automation
+- negative-price automation, still opt-in per program and household
 
 That separation lets the app keep learning and recommending for many appliance
 types while household-specific automations decide if and how an appliance should
@@ -120,6 +120,7 @@ Published App sensors include:
 - `sensor.load_optimizer_1_last_profile`
 - `sensor.load_optimizer_1_total_runs`
 - `sensor.load_optimizer_1_learned_programs`
+- `sensor.load_optimizer_1_program_catalogue`
 - `sensor.load_optimizer_1_program_model`
 - `sensor.load_optimizer_1_program_policies`
 - `sensor.load_optimizer_1_cost_status`
@@ -129,6 +130,10 @@ Published App sensors include:
 - `sensor.load_optimizer_1_potential_saving`
 - `sensor.load_optimizer_1_cost_confidence`
 - `sensor.load_optimizer_1_recommended_program`
+- `sensor.load_optimizer_1_overnight_readiness`
+- `sensor.load_optimizer_1_negative_price_readiness`
+- `sensor.load_optimizer_1_remote_activation_check`
+- `sensor.load_optimizer_1_automation_package_status`
 
 ## Data Flow
 
@@ -204,9 +209,10 @@ travel, the likely model is a deadline constraint plus `cheapest_earliest_finish
 future EV or battery use case, the likely model is a departure deadline plus
 `cheapest_latest_finish`.
 
-The current App runtime exposes advisory scheduling entities only. It should not
-start appliances until constraints, confidence thresholds, and user permissions
-have been proven through read-only operation.
+The App runtime exposes advisory scheduling entities. The optional Home Assistant
+automation package may start a configured appliance only after constraints,
+confidence thresholds, remote-control prerequisites, and user permissions have
+been proven immediately before execution.
 
 ## Decision Flow
 
