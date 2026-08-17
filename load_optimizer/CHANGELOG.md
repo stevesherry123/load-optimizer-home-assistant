@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.61
+
+- Keep readiness traffic lights green when the dishwasher is powered off but
+  the engine is configured to power it on automatically; retain the power-off
+  message as an informational warning.
+
 ## 0.8.60
 
 - Preserve queued request mode, program override, recovery-watchdog opt-in,

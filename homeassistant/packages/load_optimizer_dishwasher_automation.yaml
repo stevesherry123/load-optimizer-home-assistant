@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.60.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.61.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -59,7 +59,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.60"
+    initial: "0.8.61"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -277,8 +277,7 @@ template:
              not is_state('input_boolean.load_optimizer_1_auto_mode_enabled', 'on')
              or states('sensor.load_optimizer_1_cycle_state') != 'idle'
              or states('input_select.load_optimizer_1_requested_mode') != 'none'
-             or states(door) in ['on', 'open']
-             or states(power) != 'on' %}
+             or states(door) in ['on', 'open'] %}
           {{ 'red' if hard_blocked else ('amber' if waiting else 'green') }}
         attributes:
           blockers: >-
@@ -345,8 +344,7 @@ template:
              or states('input_select.load_optimizer_1_requested_mode') != 'none'
              or state_attr(rec, 'status') != 'ready'
              or state_attr(rec, 'ready_to_start') != true
-             or states(door) in ['on', 'open']
-             or states(power) != 'on' %}
+             or states(door) in ['on', 'open'] %}
           {{ 'red' if hard_blocked else ('amber' if waiting else 'green') }}
         attributes:
           blockers: >-
@@ -405,7 +403,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.60"
+          value: "0.8.61"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request

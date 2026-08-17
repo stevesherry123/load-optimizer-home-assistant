@@ -79,6 +79,7 @@ class VersionTests(unittest.TestCase):
         self.assertNotIn("initial: false", input_booleans)
         self.assertEqual(package.count("initial:"), 1)
         self.assertNotIn("initial:", watchdog)
+        self.assertIn("dishwasher_power_off_engine_will_attempt_power_on", package)
         self.assertIn("sensor.load_optimizer_1_program_catalogue", dashboard)
 
 
