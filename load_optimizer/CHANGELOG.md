@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.72
+
+- Expose overnight and negative-price recommendation window-active sensors.
+
 ## 0.8.71
 
 - Add a safe manual recommendation recalculation button and automation.

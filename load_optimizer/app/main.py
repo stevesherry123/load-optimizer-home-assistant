@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.71"
+APP_VERSION = "0.8.72"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -31,7 +31,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.71"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.72"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -1667,6 +1667,14 @@ def publish_cost_entities(
         recommendation_status = recommendation.get("status", "not_ready")
         recommendation_reason = recommendation.get("reason")
         recommendation_ready_to_start = recommendation.get("ready_to_start", False)
+        window_active = False
+        try:
+            start_at = datetime.fromisoformat(str(recommendation.get("start")).replace("Z", "+00:00"))
+            finish_at = datetime.fromisoformat(str(recommendation.get("finish")).replace("Z", "+00:00"))
+            current_at = datetime.now(start_at.tzinfo or timezone.utc)
+            window_active = start_at <= current_at <= finish_at
+        except (TypeError, ValueError):
+            pass
         if cycle_running and recommendation_ready:
             recommendation_status = "cycle_running"
             recommendation_reason = "cycle_already_running"
@@ -1697,6 +1705,7 @@ def publish_cost_entities(
             "energy_kwh_per_minute": recommendation.get("energy_kwh_per_minute"),
             "confidence": recommendation.get("confidence"),
             "ready_to_start": recommendation_ready_to_start,
+            "window_active": window_active,
             "cycle_running": cycle_running,
             "blocked_by_active_capture": cycle_running and recommendation_ready,
             "active_cycle_start": active_cycle_start,
@@ -1713,6 +1722,22 @@ def publish_cost_entities(
             "program_options": recommendation.get("program_options", []),
         }
         publish_entity(token, f"{prefix}_{intent}_recommendation", state or "not_ready", attributes)
+        if intent in {"overnight", "negative_price"}:
+            publish_entity(
+                token,
+                f"{prefix}_{intent}_window_active",
+                "on" if window_active else "off",
+                {
+                    "friendly_name": f"{name} {intent.title()} Window Active",
+                    "icon": "mdi:calendar-clock",
+                    "device_class": "occupancy",
+                    "program": recommendation.get("program"),
+                    "start": recommendation.get("start"),
+                    "finish": recommendation.get("finish"),
+                    "window_active": window_active,
+                    **common,
+                },
+            )
     forecast_costs = [
         float(row["cost_pence"]) for row in cost_forecast
         if row.get("cost_pence") is not None
