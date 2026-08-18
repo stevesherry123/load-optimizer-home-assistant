@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.73
+
+- Record appliance state immediately after each automatic start command.
+
 ## 0.8.72
 
 - Expose overnight and negative-price recommendation window-active sensors.

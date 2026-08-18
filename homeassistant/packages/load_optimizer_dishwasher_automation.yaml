@@ -187,6 +187,11 @@ input_text:
     icon: mdi:playlist-remove
     max: 255
 
+  load_optimizer_1_last_start_command_diagnostics:
+    name: Dishwasher 1 Last Start Command Diagnostics
+    icon: mdi:console-line
+    max: 255
+
   load_optimizer_1_remote_start_blocked_programs:
     name: Dishwasher 1 Remote Start Blocked Programs
     icon: mdi:playlist-remove
@@ -1433,6 +1438,17 @@ automation:
                   program_key: "{{ selected_program_key }}"
           - delay:
               minutes: 2
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_last_start_command_diagnostics
+            data:
+              value: >-
+                command_sent program={{ selected_program }} key={{ selected_program_key }}
+                power={{ states(bosch_power_state_sensor) }}
+                remote={{ states(bosch_remote_control_sensor) }}
+                selected={{ states(bosch_selected_program_sensor) }}
+                operation={{ states(bosch_operation_state_sensor) }}
+                cycle={{ states('sensor.load_optimizer_1_cycle_state') }}
           - if:
               - condition: template
                 value_template: >-
