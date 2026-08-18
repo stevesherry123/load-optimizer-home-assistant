@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.77
+
+- Use an ApexCharts-compatible area series for blocked-window shading.
+
 ## 0.8.76
 
 - Shade configured blocked windows on the cost forecast chart.

@@ -346,7 +346,7 @@ views:
                     .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);
               - entity: sensor.load_optimizer_1_cost_forecast
                 name: Saving Session blocked
-                type: rangeArea
+                type: area
                 color: "#9ca3af"
                 opacity: 0.22
                 show:
@@ -358,8 +358,8 @@ views:
                   const values = forecast.map(row => Number(row.cost_pence) / 100).filter(Number.isFinite);
                   const ceiling = Math.max(...values, 1);
                   return windows.flatMap(window => [
-                    [new Date(window.start).getTime(), [0, ceiling]],
-                    [new Date(window.end).getTime(), [0, ceiling]]
+                    [new Date(window.start).getTime(), ceiling],
+                    [new Date(window.end).getTime(), ceiling]
                   ]);
           - type: conditional
             grid_options:
