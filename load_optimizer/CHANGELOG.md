@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.78
+
+- Explain blocked forecast gaps directly above the cost forecast chart.
+
 ## 0.8.77
 
 - Use an ApexCharts-compatible area series for blocked-window shading.
