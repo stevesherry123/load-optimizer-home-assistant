@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.68
+
+- Surface start-request, appliance-confirmation, and queue-cancellation audit
+  fields on the full dashboard.
+
 ## 0.8.67
 
 - Add separate start-request, appliance-confirmation, failure, and queue-cancellation audit logging.

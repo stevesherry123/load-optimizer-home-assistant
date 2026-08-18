@@ -1023,6 +1023,10 @@ views:
                 name: Last Failure Reason
               - entity: sensor.load_optimizer_1_last_start_attempt
                 name: Last Start Attempt
+              - entity: input_text.load_optimizer_1_last_start_audit
+                name: Start Audit
+              - entity: input_text.load_optimizer_1_last_queue_cancellation
+                name: Queue Cancellation
               - entity: sensor.load_optimizer_1_program_capabilities
                 name: Auto-startable Programs
           - type: markdown
