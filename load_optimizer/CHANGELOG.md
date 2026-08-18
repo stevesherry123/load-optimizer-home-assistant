@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.76
+
+- Shade configured blocked windows on the cost forecast chart.
+
 ## 0.8.75
 
 - Put the Octopus price chart first and make it span the full dashboard width.

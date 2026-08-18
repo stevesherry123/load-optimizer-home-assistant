@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.75"
+APP_VERSION = "0.8.76"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -31,7 +31,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.75"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.76"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -2343,6 +2343,13 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "green_window_diagnostic": green_window_diagnostic,
                     "blocked_window_entity": blocked_window_entity,
                     "blocked_window_diagnostic": blocked_window_diagnostic,
+                    "blocked_windows": [
+                        {
+                            "start": window["start"].isoformat(),
+                            "end": window["end"].isoformat(),
+                        }
+                        for window in blocked_windows
+                    ],
                     "remote_start_blocked_programs": blocked_remote_start_programs,
                 })
             except (TypeError, ValueError) as error:

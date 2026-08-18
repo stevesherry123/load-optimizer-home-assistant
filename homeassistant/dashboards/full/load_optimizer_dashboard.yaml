@@ -344,6 +344,23 @@ views:
                   return forecast
                     .filter(row => row.program === "MixedLoad" && typeof row.cost_pence === "number")
                     .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);
+              - entity: sensor.load_optimizer_1_cost_forecast
+                name: Saving Session blocked
+                type: rangeArea
+                color: "#9ca3af"
+                opacity: 0.22
+                show:
+                  in_header: false
+                  legend_value: false
+                data_generator: |
+                  const windows = entity.attributes.blocked_windows || [];
+                  const forecast = entity.attributes.forecast || [];
+                  const values = forecast.map(row => Number(row.cost_pence) / 100).filter(Number.isFinite);
+                  const ceiling = Math.max(...values, 1);
+                  return windows.flatMap(window => [
+                    [new Date(window.start).getTime(), [0, ceiling]],
+                    [new Date(window.end).getTime(), [0, ceiling]]
+                  ]);
           - type: conditional
             grid_options:
               columns: 24
