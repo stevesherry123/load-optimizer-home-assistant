@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.70
+
+- Make execution lifecycle detection work correctly for every configured
+  instance.
+
 ## 0.8.69
 
 - Add an explicit execution lifecycle sensor distinguishing ready, starting,

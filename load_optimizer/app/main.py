@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.69"
+APP_VERSION = "0.8.70"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -31,7 +31,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.69"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.70"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -1838,7 +1838,7 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
   'bosch_selected_program_state_current': states(selected_program_entity),
   'bosch_power_state_entity': power_state_entity,
   'bosch_power_state': states(power_state_entity),
-  'cycle_state': states('sensor.load_optimizer_1_cycle_state')
+  'cycle_state': states('sensor.' ~ helper_prefix ~ '_cycle_state')
 } | to_json }}
 """)
     if not isinstance(snapshot, dict):
