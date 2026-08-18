@@ -1015,6 +1015,8 @@ views:
                 name: Automation Package Status
               - entity: sensor.load_optimizer_1_execution_status
                 name: Execution Status
+              - entity: sensor.load_optimizer_1_execution_lifecycle
+                name: Execution Lifecycle
               - entity: sensor.load_optimizer_1_last_start_result
                 name: Last Start Result
               - entity: sensor.load_optimizer_1_last_start_program

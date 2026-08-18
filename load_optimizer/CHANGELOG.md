@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.69
+
+- Add an explicit execution lifecycle sensor distinguishing ready, starting,
+  running, completed, and failed states.
+
 ## 0.8.68
 
 - Surface start-request, appliance-confirmation, and queue-cancellation audit

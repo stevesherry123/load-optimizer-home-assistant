@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.68"
+APP_VERSION = "0.8.69"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -31,7 +31,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.68"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.69"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -1837,7 +1837,8 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
   'bosch_selected_program_entity': selected_program_entity,
   'bosch_selected_program_state_current': states(selected_program_entity),
   'bosch_power_state_entity': power_state_entity,
-  'bosch_power_state': states(power_state_entity)
+  'bosch_power_state': states(power_state_entity),
+  'cycle_state': states('sensor.load_optimizer_1_cycle_state')
 } | to_json }}
 """)
     if not isinstance(snapshot, dict):
@@ -1850,6 +1851,7 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
         return value
 
     status = text_value("status") or "not_configured"
+    cycle_state = text_value("cycle_state") or "idle"
     message = text_value("message")
     result = text_value("result")
     failure_reason = text_value("failure_reason")
@@ -1898,10 +1900,22 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
         "bosch_power_state_entity": text_value("bosch_power_state_entity"),
         "bosch_power_state": text_value("bosch_power_state"),
         "message": message,
+        "lifecycle": (
+            "running" if cycle_state == "running" else
+            "starting" if status in {"attempting", "pending"} else
+            "failed" if status in {"failed", "blocked", "expired"} or result in {"failed", "blocked", "expired"} else
+            "completed" if result == "confirmed" and cycle_state != "running" else
+            "ready"
+        ),
     }
     publish_entity(token, f"{prefix}_execution_status", status, {
         "friendly_name": f"{name} Execution Status",
         "icon": "mdi:play-network",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_execution_lifecycle", common["lifecycle"], {
+        "friendly_name": f"{name} Execution Lifecycle",
+        "icon": "mdi:progress-clock",
         **common,
     })
     publish_entity(token, f"{prefix}_last_start_attempt", attempt_value, {
