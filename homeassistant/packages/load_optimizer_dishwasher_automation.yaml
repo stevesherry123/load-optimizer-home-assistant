@@ -177,6 +177,16 @@ input_text:
     icon: mdi:shield-check
     max: 255
 
+  load_optimizer_1_last_start_audit:
+    name: Dishwasher 1 Last Start Audit
+    icon: mdi:clipboard-text-clock
+    max: 255
+
+  load_optimizer_1_last_queue_cancellation:
+    name: Dishwasher 1 Last Queue Cancellation
+    icon: mdi:playlist-remove
+    max: 255
+
   load_optimizer_1_remote_start_blocked_programs:
     name: Dishwasher 1 Remote Start Blocked Programs
     icon: mdi:playlist-remove
@@ -1062,6 +1072,14 @@ automation:
           entity_id: input_text.load_optimizer_1_last_start_readiness
         data:
           value: "{{ bosch_ready_summary[:255] }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_start_audit
+        data:
+          value: >-
+            {{ now().strftime('%Y-%m-%d %H:%M:%S') }} request
+            mode={{ requested_mode }} program={{ selected_program }}
+            key={{ selected_program_key }}
       - action: input_datetime.set_datetime
         target:
           entity_id: input_datetime.load_optimizer_1_last_start_attempt
@@ -1110,6 +1128,11 @@ automation:
                   entity_id: input_text.load_optimizer_1_last_start_failure_reason
                 data:
                   value: "{{ revalidation_reason[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_queue_cancellation
+                data:
+                  value: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }} {{ revalidation_reason[:220] }}"
           - conditions:
               - condition: template
                 value_template: "{{ negative_price_mode and not negative_power_window_fit }}"
@@ -1413,6 +1436,14 @@ automation:
                     operation={{ states(bosch_operation_state_sensor) }}.
               - action: input_text.set_value
                 target:
+                  entity_id: input_text.load_optimizer_1_last_start_audit
+                data:
+                  value: >-
+                    {{ now().strftime('%Y-%m-%d %H:%M:%S') }} confirmed
+                    mode={{ requested_mode }} program={{ selected_program }}
+                    operation={{ states(bosch_operation_state_sensor) }}
+              - action: input_text.set_value
+                target:
                   entity_id: input_text.load_optimizer_1_remote_start_blocked_programs
                 data:
                   value: "{{ blocked_programs_after_success[:255] }}"
@@ -1450,6 +1481,14 @@ automation:
                   entity_id: input_text.load_optimizer_1_start_attempt_message
                 data:
                   value: "{{ failed_message[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_audit
+                data:
+                  value: >-
+                    {{ now().strftime('%Y-%m-%d %H:%M:%S') }} failed
+                    mode={{ requested_mode }} program={{ selected_program }}
+                    {{ failed_reason[:150] }}
               - action: input_text.set_value
                 target:
                   entity_id: input_text.announce_text
