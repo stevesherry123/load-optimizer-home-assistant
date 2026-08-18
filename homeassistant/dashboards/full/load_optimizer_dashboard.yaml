@@ -361,6 +361,25 @@ views:
                     [new Date(window.start).getTime(), ceiling],
                     [new Date(window.end).getTime(), ceiling]
                   ]);
+          - type: markdown
+            title: Forecast Coverage
+            content: >
+              {% set forecast =
+              state_attr('sensor.load_optimizer_1_cost_forecast', 'forecast') or
+              [] %} {% set blocked =
+              state_attr('sensor.load_optimizer_1_cost_forecast',
+              'blocked_windows') or [] %} {% set blocked_candidates =
+              state_attr('sensor.load_optimizer_1_cost_forecast',
+              'blocked_window_candidate_count') or 0 %} {% set first =
+              forecast | map(attribute='start') | list | sort | first %}
+
+              {% if blocked and first %}
+                **Grey shading:** Saving Session blocked windows. {{ blocked_candidates }} candidate starts are blocked; the first valid forecast starts {{ (first | as_datetime | as_local).strftime('%a %d %b %H:%M') }}.
+              {% elif first %}
+                Forecasted cycle-cost points begin at {{ (first | as_datetime | as_local).strftime('%a %d %b %H:%M') }}.
+              {% else %}
+                No fully priced cycle forecast is currently available.
+              {% endif %}
           - type: conditional
             grid_options:
               columns: 24
