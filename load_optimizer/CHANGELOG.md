@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.67
+
+- Add separate start-request, appliance-confirmation, failure, and queue-cancellation audit logging.
+
 ## 0.8.66
 
 - Apply a configurable bounded cost weight to program preference rank so user
