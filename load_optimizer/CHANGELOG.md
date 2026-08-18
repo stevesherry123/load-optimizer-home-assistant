@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.71
+
+- Add a safe manual recommendation recalculation button and automation.
+
 ## 0.8.70
 
 - Make execution lifecycle detection work correctly for every configured

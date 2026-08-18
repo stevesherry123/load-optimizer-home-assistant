@@ -1009,6 +1009,8 @@ views:
           - type: entities
             title: Automation Reliability
             entities:
+              - entity: input_button.load_optimizer_1_recalculate_now
+                name: Recalculate Recommendations
               - entity: sensor.load_optimizer_restart_safety
                 name: Restart Safety
               - entity: sensor.load_optimizer_1_automation_package_status

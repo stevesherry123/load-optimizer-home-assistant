@@ -218,6 +218,10 @@ input_button:
     name: Dishwasher 1 Request Start Now
     icon: mdi:play-circle
 
+  load_optimizer_1_recalculate_now:
+    name: Dishwasher 1 Recalculate Recommendations
+    icon: mdi:refresh
+
   load_optimizer_1_request_soon:
     name: Dishwasher 1 Request Start Soon
     icon: mdi:clock-fast
@@ -443,6 +447,30 @@ template:
           maximum_runs_per_window: "{{ state_attr('sensor.load_optimizer_1_negative_price_recommendation', 'maximum_runs_per_window') }}"
 
 automation:
+  - id: load_optimizer_1_manual_recalculate
+    alias: Load Optimizer 1 - Manual Recalculate
+    description: Refresh Load Optimizer recommendations without starting the appliance.
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_button.load_optimizer_1_recalculate_now
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.load_optimizer_1_overnight_recommendation
+            - sensor.load_optimizer_1_negative_price_recommendation
+            - sensor.load_optimizer_1_program_catalogue
+            - sensor.load_optimizer_1_schedule_status
+            - sensor.load_optimizer_1_data_freshness
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_scheduler_message
+        data:
+          value: >-
+            Recommendations manually refreshed at
+            {{ now().strftime('%Y-%m-%d %H:%M:%S') }}.
+
   - id: load_optimizer_1_register_automation_package_version
     alias: Load Optimizer 1 - Register Automation Package Version
     description: Keep the package version helper aligned after package updates.
