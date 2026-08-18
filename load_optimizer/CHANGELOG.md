@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.75
+
+- Put the Octopus price chart first and make it span the full dashboard width.
+- Extend the chart to include tomorrow's rates when they are available.
+
 ## 0.8.74
 
 - Add a compact persistent history of recent manual and automatic run outcomes.
