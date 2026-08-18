@@ -1037,6 +1037,8 @@ views:
                 name: Queue Cancellation
               - entity: input_text.load_optimizer_1_last_start_command_diagnostics
                 name: Start Command Diagnostics
+              - entity: input_text.load_optimizer_1_run_history
+                name: Recent Run History
               - entity: sensor.load_optimizer_1_program_capabilities
                 name: Auto-startable Programs
           - type: markdown

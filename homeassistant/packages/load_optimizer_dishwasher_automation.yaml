@@ -192,6 +192,11 @@ input_text:
     icon: mdi:console-line
     max: 255
 
+  load_optimizer_1_run_history:
+    name: Dishwasher 1 Recent Run History
+    icon: mdi:history
+    max: 255
+
   load_optimizer_1_remote_start_blocked_programs:
     name: Dishwasher 1 Remote Start Blocked Programs
     icon: mdi:playlist-remove
@@ -452,6 +457,35 @@ template:
           maximum_runs_per_window: "{{ state_attr('sensor.load_optimizer_1_negative_price_recommendation', 'maximum_runs_per_window') }}"
 
 automation:
+  - id: load_optimizer_1_record_run_history
+    alias: Load Optimizer 1 - Record Run History
+    description: Keep a compact history of recent manual and automatic outcomes.
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: input_text.load_optimizer_1_last_start_result
+        to:
+          - confirmed
+          - failed
+          - blocked
+          - expired
+          - cancelled
+    variables:
+      timestamp: "{{ now().strftime('%Y-%m-%d %H:%M') }}"
+      result: "{{ states('input_text.load_optimizer_1_last_start_result') }}"
+      mode: "{{ states('input_text.load_optimizer_1_last_start_mode') }}"
+      program: "{{ states('input_text.load_optimizer_1_last_start_program') }}"
+      previous: "{{ states('input_text.load_optimizer_1_run_history') }}"
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_run_history
+        data:
+          value: >-
+            {{ ((timestamp ~ '|' ~ mode ~ '|' ~ program ~ '|' ~ result)
+                ~ (';' ~ previous if previous not in ['unknown', 'unavailable', 'none', ''] else ''))
+                [:255] }}
+
   - id: load_optimizer_1_manual_recalculate
     alias: Load Optimizer 1 - Manual Recalculate
     description: Refresh Load Optimizer recommendations without starting the appliance.

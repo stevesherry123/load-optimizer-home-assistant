@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.74
+
+- Add a compact persistent history of recent manual and automatic run outcomes.
+
 ## 0.8.73
 
 - Record appliance state immediately after each automatic start command.
