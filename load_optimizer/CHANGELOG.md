@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.80
+
+- Align the optional Home Assistant automation package's registered version
+  with the app release so a current deployment reports `current`.
+- Add regression coverage for due-time automatic request revalidation and stale
+  request handling.
+
 ## 0.8.79
 
 - Preserve due automatic requests for execution instead of cancelling them

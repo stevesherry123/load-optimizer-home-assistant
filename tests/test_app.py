@@ -82,6 +82,20 @@ class VersionTests(unittest.TestCase):
         self.assertIn("dishwasher_power_off_engine_will_attempt_power_on", package)
         self.assertIn("sensor.load_optimizer_1_program_catalogue", dashboard)
 
+    def test_due_automatic_request_bypasses_revalidation_until_stale_gate(self):
+        root = Path(__file__).resolve().parents[1]
+        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
+
+        invalid_expression = package.split("queued_plan_invalid: >-", 1)[1].split(
+            "selected_program_key: >-", 1
+        )[0]
+        self.assertIn("and not due_by_time", invalid_expression)
+
+        actions = package.split("actions:", 1)[1]
+        revalidation_gate = actions.index('value_template: "{{ queued_plan_invalid }}"')
+        stale_gate = actions.index('value_template: "{{ stale_request }}"', revalidation_gate)
+        self.assertLess(revalidation_gate, stale_gate)
+
 
 class StatusHeartbeatTests(unittest.TestCase):
     @patch("load_optimizer.app.main.publish_entity")
