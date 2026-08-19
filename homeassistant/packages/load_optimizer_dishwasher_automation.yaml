@@ -968,6 +968,7 @@ automation:
         {% endif %}
       queued_plan_invalid: >-
         {{ requested_mode in ['automatic', 'negative_price']
+           and not due_by_time
            and (recommendation_status != 'ready'
                 or not queued_program_option
                 or queued_program_confidence < confidence_threshold

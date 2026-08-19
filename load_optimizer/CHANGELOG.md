@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.79
+
+- Preserve due automatic requests for execution instead of cancelling them
+  during late recommendation revalidation.
+
 ## 0.8.78
 
 - Explain blocked forecast gaps directly above the cost forecast chart.
