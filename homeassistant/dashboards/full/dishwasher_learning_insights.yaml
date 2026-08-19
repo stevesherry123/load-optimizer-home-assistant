@@ -1,0 +1,108 @@
+title: Dishwasher Learning Insights
+views:
+  - title: Dishwasher Learning Insights
+    path: dishwasher-learning-insights
+    icon: mdi:dishwasher
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Dishwasher 1 - Learning Overview
+            icon: mdi:brain
+
+          - type: entities
+            title: Learning Summary
+            entities:
+              - entity: sensor.load_optimizer_1_status
+                name: Optimizer status
+              - entity: sensor.load_optimizer_1_cycle_state
+                name: Cycle state
+              - entity: sensor.load_optimizer_1_total_runs
+                name: Total learned runs
+              - entity: sensor.load_optimizer_1_last_program
+                name: Last program
+              - entity: sensor.load_optimizer_1_last_runtime
+                name: Last runtime
+              - entity: sensor.load_optimizer_1_last_energy
+                name: Last energy
+              - entity: sensor.load_optimizer_1_last_finish
+                name: Last finish
+              - entity: sensor.load_optimizer_1_peak_power
+                name: Last peak power
+              - entity: sensor.load_optimizer_1_sample_count
+                name: Current / last sample count
+
+          - type: entities
+            title: Published Learning Data
+            entities:
+              - entity: sensor.load_optimizer_1_profile_data
+                name: Representative profiles
+              - entity: sensor.load_optimizer_1_cost_forecast
+                name: Cost forecast
+
+          - type: markdown
+            title: Learned Programs
+            content: |
+              {% set programs = state_attr('sensor.load_optimizer_1_learned_programs', 'programs') or [] %}
+              {% set programs = programs | sort(attribute='confidence', reverse=true) %}
+              {% if programs %}
+              | Program | Runs | Runtime | Energy | Peak | Confidence |
+              |---|---:|---:|---:|---:|---:|
+              {% for item in programs %}
+              | {{ item.program }} | {{ item.runs | int }} | {{ item.expected_runtime_minutes | float(0) | round(0, 'ceil') | int }} min | {{ item.expected_energy_kwh | float(0) | round(3) }} kWh | {{ item.average_peak_power_w | float(0) | round(0) | int }} W | {{ item.confidence | float(0) | round(0) | int }}% |
+              {% endfor %}
+              {% else %}
+              No completed cycles have been learned yet.
+              {% endif %}
+
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: sensor.load_optimizer_1_discovered_programs
+                above: 0
+            card:
+              type: markdown
+              title: Discovered Programs Needing Review
+              content: |
+                {% set programs = state_attr('sensor.load_optimizer_1_discovered_programs', 'programs') or [] %}
+                | Program | Runs | Status |
+                |---|---:|---|
+                {% for item in programs %}
+                | {{ item.program }} | {{ item.runs | int }} | {{ item.status }} |
+                {% endfor %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Published Profile Data
+            icon: mdi:chart-bell-curve-cumulative
+
+          - type: markdown
+            title: Profile Data Contract
+            content: |
+              The profile sensor publishes representative learned profiles in
+              `program_profiles`. Each profile contains a program name and
+              chart-ready `[minutes, power_w]` points. This dashboard keeps the
+              program list dynamic so it works with different appliances and
+              program names.
+
+              Configure the profile entity in a chart card if you want to plot
+              selected programs for your appliance.
+
+          - type: history-graph
+            title: Live Power and Cycle State
+            hours_to_show: 6
+            entities:
+              - entity: sensor.load_optimizer_1_power
+                name: Power
+              - entity: sensor.load_optimizer_1_cycle_state
+                name: Cycle state
+
+          - type: entities
+            title: Current Profile and Forecast Entities
+            entities:
+              - entity: sensor.load_optimizer_1_profile_data
+              - entity: sensor.load_optimizer_1_last_profile
+              - entity: sensor.load_optimizer_1_cost_forecast
