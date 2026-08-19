@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.81
+
+- Clarify runtime health and active-capture status for live monitoring.
+- Keep the optional Home Assistant automation package aligned with the app
+  release.
+- Reduce routine cost-forecast publication size to avoid oversized Home
+  Assistant Recorder attributes.
+
 ## 0.8.80
 
 - Align the optional Home Assistant automation package's registered version

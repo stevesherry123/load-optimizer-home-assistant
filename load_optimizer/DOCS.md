@@ -33,6 +33,10 @@ Load Optimizer 0.8.30 started
 Home Assistant exposes `sensor.load_optimizer_status` and a set of
 `sensor.load_optimizer_N_*` entities for each configured instance. Until a power
 sensor is configured, that instance's status reports `configuration_required`.
+Once configured, an idle instance reports `ready` and an actively learned cycle
+reports `capturing`. The separate `health_status` attribute remains
+`configured` while the instance is healthy, so active capture is not confused
+with a configuration failure.
 
 After a completed cycle, `sensor.load_optimizer_1_last_profile` exposes the
 timestamped power samples in its `samples` attribute. Each compact sample is

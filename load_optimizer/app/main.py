@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.80"
+APP_VERSION = "0.8.81"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -31,7 +31,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.80"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.81"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -1559,6 +1559,11 @@ def publish_cost_entities(
     daytime_comparison = result.get("daytime_comparison") or {}
     greenest_comparison = result.get("greenest_comparison") or {}
     cost_forecast = result.get("cost_forecast", []) if ready else []
+    forecast_total_points = len(cost_forecast)
+    forecast_stride = 1
+    while cost_forecast and len(json.dumps(cost_forecast[::forecast_stride], separators=(",", ":"))) > 12000:
+        forecast_stride += 1
+    published_cost_forecast = cost_forecast[::forecast_stride]
 
     def rounded_pence(value):
         if value is None or value == "unknown":
@@ -1749,18 +1754,21 @@ def publish_cost_entities(
         **common,
         "forecast_hours": result.get("forecast_hours") if ready else None,
         "forecast_interval_minutes": result.get("forecast_interval_minutes") if ready else None,
-        "forecast_points": len(cost_forecast),
+        "forecast_points": len(published_cost_forecast),
+        "forecast_total_points": forecast_total_points,
+        "forecast_stride": forecast_stride,
+        "forecast_truncated": forecast_stride > 1,
         "forecast_publishing": publish_cost_forecast,
         "forecast_format": "program, start, finish, cost_pence, energy_kwh, confidence, is_overnight_start, is_daytime_start",
     }
     if publish_diagnostics:
         forecast_attributes["forecast_diagnostics"] = result.get("forecast_diagnostics", []) if ready else []
     if publish_cost_forecast:
-        forecast_attributes["forecast"] = cost_forecast
+        forecast_attributes["forecast"] = published_cost_forecast
     publish_entity(
         token,
         f"{prefix}_cost_forecast",
-        rounded_pence(min(forecast_costs)) if forecast_costs and publish_cost_forecast else "unknown",
+        rounded_pence(min(float(row["cost_pence"]) for row in published_cost_forecast if row.get("cost_pence") is not None)) if published_cost_forecast and publish_cost_forecast else "unknown",
         forecast_attributes,
     )
 
@@ -2084,9 +2092,14 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     name = config["name"]
 
     configured = bool(config["power_sensor"])
-    publish_entity(token, f"{prefix}_status", "ready" if configured else "configuration_required", {
+    publish_entity(token, f"{prefix}_status", (
+        "configuration_required" if not configured else
+        "capturing" if instance.get("cycle_start") else "ready"
+    ), {
         "friendly_name": f"{name} Optimizer Status", "icon": "mdi:progress-wrench",
         "power_sensor": config["power_sensor"] or None, "energy_sensor": config["energy_sensor"] or None,
+        "health_status": "configured" if configured else "configuration_required",
+        "cycle_state": "running" if instance.get("cycle_start") else "idle",
     })
     publish_entity(token, f"{prefix}_power", power if power is not None else "unavailable", {
         "friendly_name": f"{name} Power", "device_class": "power", "unit_of_measurement": "W",

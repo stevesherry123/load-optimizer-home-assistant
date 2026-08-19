@@ -11,13 +11,17 @@ implementation architecture in `docs/architecture.md`.
 - continue refining daytime and overnight scheduling windows
 - expose a recommended-window active state for dashboards and automations
 - add a manual recalculation service for tariff, policy, or test changes
-- improve runtime status clarity so active capture is obvious
 - account for household solar generation and battery storage when estimating the
   effective cost of running a cycle
 - add optional greener-window scheduling that compares the cheapest candidate
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Clarified instance runtime status so active capture reports `capturing` while
+  configuration health remains separately available.
+- Bounded published cost-forecast attributes to stay below Home Assistant's
+  Recorder state-attribute limit while retaining the full internal forecast.
 
 - Per-instance earliest-start and latest-finish constraints.
 - Selectable `cheapest_absolute`, `cheapest_earliest_finish`, and
