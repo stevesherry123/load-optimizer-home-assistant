@@ -18,6 +18,10 @@ views:
               show_states: true
               colorize_states: true
             graph_span: 48h
+            visibility:
+              - condition: state
+                entity: binary_sensor.octopus_tomorrow_rates_available
+                state: "on"
             span:
               start: day
             now:
@@ -114,6 +118,156 @@ views:
                     .split(',')
                     .map((value) => value.trim())
                     .filter(Boolean);
+
+                  const pointsByStart = new Map();
+                  let lastEnd = null;
+                  for (const entityId of entities) {
+                    const rates = hass.states[entityId]?.attributes?.rates;
+                    if (!Array.isArray(rates) || rates.length === 0) {
+                      continue;
+                    }
+                    for (const entry of rates) {
+                      const startRaw = entry.start || entry.valid_from || entry.from;
+                      const endRaw = entry.end || entry.valid_to || entry.to;
+                      const priceRaw = entry.price_p_per_kwh
+                        ?? entry.value_inc_vat
+                        ?? entry.value
+                        ?? entry.price;
+                      const start = new Date(startRaw).getTime();
+                      const end = endRaw ? new Date(endRaw).getTime() : null;
+                      let value = Number(priceRaw);
+                      if (!Number.isFinite(start) || !Number.isFinite(value)) {
+                        continue;
+                      }
+
+                      if (entry.price_p_per_kwh === undefined) {
+                        value = value * 100;
+                      }
+
+                      pointsByStart.set(start, [start, value]);
+                      if (Number.isFinite(end)) {
+                        pointsByStart.set(end, [end, value]);
+                        lastEnd = Math.max(lastEnd || end, end);
+                      }
+                    }
+                  }
+
+                  const points = Array.from(pointsByStart.values())
+                    .sort((left, right) => left[0] - right[0]);
+                  if (points.length > 0 && Number.isFinite(lastEnd)) {
+                    points.push([lastEnd + 1, null]);
+                  }
+                  return points;
+          - type: custom:apexcharts-card
+            grid_options:
+              columns: full
+            header:
+              show: true
+              title: Octopus Prices
+              show_states: true
+              colorize_states: true
+            graph_span: 24h
+            visibility:
+              - condition: state
+                entity: binary_sensor.octopus_tomorrow_rates_available
+                state: "off"
+            span:
+              start: day
+            now:
+              show: true
+              label: Now
+              color: "#0ea5e9"
+            experimental:
+              color_threshold: true
+            apex_config:
+              chart:
+                height: 340
+                toolbar:
+                  show: false
+              xaxis:
+                type: datetime
+                labels:
+                  datetimeUTC: false
+              yaxis:
+                - min: |
+                    EVAL:function(min) {
+                      return Math.min(0, min);
+                    }
+                  decimalsInFloat: 2
+                  title:
+                    text: Import price (p/kWh)
+              stroke:
+                curve: stepline
+                width: 2
+              fill:
+                type: gradient
+                gradient:
+                  opacityFrom: 0.55
+                  opacityTo: 0.15
+              legend:
+                show: true
+              tooltip:
+                x:
+                  format: ddd dd MMM HH:mm
+                "y":
+                  formatter: |
+                    EVAL:function(value) {
+                      return `${Number(value).toFixed(2)} p/kWh`;
+                    }
+              annotations:
+                yaxis:
+                  - "y": 0
+                    borderColor: "#16a34a"
+                    strokeDashArray: 4
+                    label:
+                      text: Free / paid boundary
+                      style:
+                        color: "#ffffff"
+                        background: "#16a34a"
+            all_series_config:
+              type: area
+              unit: p/kWh
+              float_precision: 2
+            series:
+              - entity: sensor.load_optimizer_1_current_energy_price
+                name: Current
+                type: line
+                unit: p/kWh
+                float_precision: 2
+                show:
+                  in_chart: false
+                  in_header: true
+                  legend_value: false
+                transform: |
+                  return Number(x);
+              - entity: sensor.load_optimizer_status
+                name: Import price
+                show:
+                  in_header: false
+                  legend_value: false
+                color_threshold:
+                  - value: -50
+                    color: "#00b050"
+                  - value: 0
+                    color: "#00b050"
+                  - value: 15
+                    color: "#92d050"
+                  - value: 25
+                    color: "#ffc000"
+                  - value: 35
+                    color: "#ff8000"
+                  - value: 50
+                    color: "#c00000"
+                data_generator: |
+                  const sourceState = hass.states['sensor.load_optimizer_1_cost_status'];
+                  const rawEntities = sourceState?.attributes?.tariff_entities
+                    || sourceState?.attributes?.tariff_entity
+                    || '';
+                  const entities = String(rawEntities)
+                    .split(',')
+                    .map((value) => value.trim())
+                    .filter(Boolean)
+                    .slice(0, 1);
 
                   const pointsByStart = new Map();
                   let lastEnd = null;
