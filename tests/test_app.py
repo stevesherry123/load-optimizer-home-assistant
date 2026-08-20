@@ -81,6 +81,12 @@ class VersionTests(unittest.TestCase):
         self.assertNotIn("initial:", watchdog)
         self.assertIn("dishwasher_power_off_engine_will_attempt_power_on", package)
         self.assertIn("sensor.load_optimizer_1_program_catalogue", dashboard)
+        self.assertIn("sensor.load_optimizer_1_overnight_window_active", dashboard)
+        self.assertIn("sensor.load_optimizer_1_negative_price_window_active", dashboard)
+        self.assertNotIn("binary_sensor.load_optimizer_1_overnight_window_active", dashboard)
+        self.assertNotIn("binary_sensor.load_optimizer_1_negative_price_window_active", dashboard)
+        self.assertIn("display_program_options", dashboard)
+        self.assertIn("**⚠ Manual only**", dashboard)
 
     def test_due_automatic_request_bypasses_revalidation_until_stale_gate(self):
         root = Path(__file__).resolve().parents[1]

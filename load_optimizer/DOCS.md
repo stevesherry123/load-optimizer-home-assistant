@@ -353,8 +353,13 @@ The recommendation entities are intended for simple front ends such as Alexa,
 dashboard buttons, mobile notifications, or physical switches. The state is the
 recommended program when ready, while attributes include `start`, `finish`,
 `cost_pence`, `saving_vs_now_pence`, `confidence`, `ready_to_start`, and
-`reason`. A voice workflow can therefore offer "start now or schedule overnight"
-without duplicating tariff or policy logic outside the app.
+`reason`. The `program_options` attribute remains restricted to programs that
+the engine may select automatically. `display_program_options` also includes
+priced manual-only programs and labels each option with `automatic_eligible`
+and `eligibility_reason`, allowing dashboards to show a complete comparison
+without broadening automatic-start policy. A voice workflow can therefore offer
+"start now or schedule overnight" without duplicating tariff or policy logic
+outside the app.
 
 The cost forecast entity publishes chart-ready forecast data in its `forecast`
 attribute. Each row contains the learned program, candidate start and finish,

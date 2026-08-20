@@ -691,6 +691,12 @@ class CostEstimationTests(unittest.TestCase):
             "expected_runtime_minutes": 60,
             "expected_energy_kwh": 2.0,
         }
+        pre_rinse = {
+            **self.model,
+            "program": "PreRinse",
+            "expected_runtime_minutes": 30,
+            "expected_energy_kwh": 0.1,
+        }
         policies = [
             {
                 "program": "Quick45",
@@ -708,6 +714,14 @@ class CostEstimationTests(unittest.TestCase):
                 "preference_rank": 20,
                 "estimated_overhead_cost_pence": 0,
             },
+            {
+                "program": "PreRinse",
+                "enabled": True,
+                "allow_normal_recommendation": False,
+                "allow_negative_price_run": False,
+                "preference_rank": 50,
+                "estimated_overhead_cost_pence": 0,
+            },
         ]
         periods = [
             self.period(0, 30, 20),
@@ -719,7 +733,7 @@ class CostEstimationTests(unittest.TestCase):
         ]
 
         result = recommend_cycle(
-            [quick, super60],
+            [quick, super60, pre_rinse],
             policies,
             periods,
             reference_utc=self.start,
@@ -741,6 +755,15 @@ class CostEstimationTests(unittest.TestCase):
         overnight_options = result["overnight_recommendation"]["program_options"]
         self.assertEqual({item["program"] for item in overnight_options}, {"Quick45", "Super60"})
         self.assertEqual(overnight_options[0]["start"], "2026-07-06T20:00:00+00:00")
+        display_options = result["now_recommendation"]["display_program_options"]
+        self.assertEqual(
+            {item["program"] for item in display_options},
+            {"Quick45", "Super60", "PreRinse"},
+        )
+        pre_rinse_now = next(item for item in display_options if item["program"] == "PreRinse")
+        self.assertEqual(pre_rinse_now["cost_pence"], 2.0)
+        self.assertFalse(pre_rinse_now["automatic_eligible"])
+        self.assertEqual(pre_rinse_now["eligibility_reason"], "manual_only")
 
     def test_recommendation_includes_cost_forecast(self):
         model = {**self.model, "expected_runtime_minutes": 30}

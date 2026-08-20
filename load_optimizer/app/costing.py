@@ -504,6 +504,7 @@ def summarize_decision(
     ready_to_start: bool = False,
     reason: str | None = None,
     program_options: list[dict] | None = None,
+    display_program_options: list[dict] | None = None,
 ) -> dict:
     if not candidate:
         return {
@@ -512,6 +513,7 @@ def summarize_decision(
             "reason": reason or "no_candidate",
             "ready_to_start": False,
             "program_options": program_options or [],
+            "display_program_options": display_program_options or program_options or [],
         }
     cost = candidate.get("total_cost_pence")
     saving = None
@@ -550,6 +552,7 @@ def summarize_decision(
         "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
         "is_green_window_start": candidate.get("is_green_window_start"),
         "program_options": program_options or [],
+        "display_program_options": display_program_options or program_options or [],
     }
 
 
@@ -584,6 +587,8 @@ def summarize_program_option(candidate: dict, reference_utc: datetime, now_cost:
         "green_window_overlap_seconds": candidate.get("green_window_overlap_seconds"),
         "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
         "is_green_window_start": candidate.get("is_green_window_start"),
+        "automatic_eligible": candidate.get("automatic_eligible", True),
+        "eligibility_reason": candidate.get("eligibility_reason", "automatic"),
     }
 
 
@@ -943,6 +948,7 @@ def recommend_cycle(
     excluded = set(excluded_programs or [])
     candidates = []
     comparison_candidates = []
+    display_candidates = []
     negative_candidates = []
     rejected_profiles = 0
     rejected_constraints = 0
@@ -961,6 +967,7 @@ def recommend_cycle(
             "reason": None,
             "candidate_points": 0,
             "priced_points": 0,
+            "display_priced_points": 0,
             "rejected_constraints": 0,
             "rejected_cooldown_points": 0,
             "rejected_blocked_points": 0,
@@ -979,10 +986,9 @@ def recommend_cycle(
             diagnostic.update(status="excluded", reason="policy_missing_or_disabled")
             program_diagnostics.append(diagnostic)
             continue
-        if not (policy["allow_normal_recommendation"] or policy["allow_negative_price_run"]):
-            diagnostic.update(status="excluded", reason="policy_not_allowed_for_recommendation")
-            program_diagnostics.append(diagnostic)
-            continue
+        automatic_policy_allowed = bool(
+            policy["allow_normal_recommendation"] or policy["allow_negative_price_run"]
+        )
         try:
             _profile_segments(model)
         except ValueError:
@@ -1033,35 +1039,44 @@ def recommend_cycle(
                 if negative_fit.get("reason") == "maximum_runs_per_window_reached":
                     diagnostic["rejected_negative_run_limit_points"] += 1
                     rejected_negative_run_limits += 1
-            if policy["allow_normal_recommendation"] or negative_eligible:
-                estimate = apply_operating_costs(estimate, policy)
+            estimate = apply_operating_costs(estimate, policy)
+            automatic_eligible = bool(policy["allow_normal_recommendation"] or negative_eligible)
+            candidate = {
+                "program": model["program"],
+                "start": start,
+                "finish": finish,
+                "energy_cost_pence": estimate["energy_cost_pence"],
+                "energy_kwh": estimate["energy_kwh"],
+                "cost_breakdown": estimate["cost_breakdown"],
+                "overhead_cost_pence": estimate["fixed_cost_pence"],
+                "fixed_cost_pence": estimate["fixed_cost_pence"],
+                "water_litres": estimate["water_litres"],
+                "water_cost_pence_per_litre": estimate["water_cost_pence_per_litre"],
+                "water_cost_pence": estimate["water_cost_pence"],
+                "wear_cost_pence": estimate["wear_cost_pence"],
+                "non_energy_cost_pence": estimate["non_energy_cost_pence"],
+                "operating_cost_breakdown": estimate["operating_cost_breakdown"],
+                "total_cost_pence": estimate["total_cost_pence"],
+                "confidence": model.get("confidence", 0),
+                "preference_rank": policy["preference_rank"],
+                "negative_price_priority": policy.get("negative_price_priority", 50),
+                "negative_price_run": negative_eligible,
+                "negative_power_window": negative_fit,
+                "energy_kwh_per_minute": round(estimate["energy_kwh"] / float(model["expected_runtime_minutes"]), 6),
+                "is_overnight_start": is_overnight,
+                "is_daytime_start": is_daytime,
+                "automatic_eligible": automatic_eligible,
+                "eligibility_reason": (
+                    "normal_recommendation"
+                    if policy["allow_normal_recommendation"]
+                    else ("negative_price" if negative_eligible else "manual_only")
+                ),
+            }
+            candidate = annotate_green_context(candidate, green_windows or [])
+            display_candidates.append(candidate)
+            diagnostic["display_priced_points"] += 1
+            if automatic_eligible:
                 diagnostic["priced_points"] += 1
-                candidate = {
-                    "program": model["program"],
-                    "start": start,
-                    "finish": finish,
-                    "energy_cost_pence": estimate["energy_cost_pence"],
-                    "energy_kwh": estimate["energy_kwh"],
-                    "cost_breakdown": estimate["cost_breakdown"],
-                    "overhead_cost_pence": estimate["fixed_cost_pence"],
-                    "fixed_cost_pence": estimate["fixed_cost_pence"],
-                    "water_litres": estimate["water_litres"],
-                    "water_cost_pence_per_litre": estimate["water_cost_pence_per_litre"],
-                    "water_cost_pence": estimate["water_cost_pence"],
-                    "wear_cost_pence": estimate["wear_cost_pence"],
-                    "non_energy_cost_pence": estimate["non_energy_cost_pence"],
-                    "operating_cost_breakdown": estimate["operating_cost_breakdown"],
-                    "total_cost_pence": estimate["total_cost_pence"],
-                    "confidence": model.get("confidence", 0),
-                    "preference_rank": policy["preference_rank"],
-                    "negative_price_priority": policy.get("negative_price_priority", 50),
-                    "negative_price_run": negative_eligible,
-                    "negative_power_window": negative_fit,
-                    "energy_kwh_per_minute": round(estimate["energy_kwh"] / float(model["expected_runtime_minutes"]), 6),
-                    "is_overnight_start": is_overnight,
-                    "is_daytime_start": is_daytime,
-                }
-                candidate = annotate_green_context(candidate, green_windows or [])
                 comparison_candidates.append(candidate)
                 if negative_eligible:
                     negative_candidates.append(candidate)
@@ -1074,7 +1089,9 @@ def recommend_cycle(
                 candidates.append(candidate)
             start += timedelta(minutes=candidate_interval_minutes)
         if diagnostic["priced_points"] == 0:
-            if diagnostic["rejected_cooldown_points"]:
+            if not automatic_policy_allowed:
+                diagnostic.update(status="excluded", reason="policy_not_allowed_for_recommendation")
+            elif diagnostic["rejected_cooldown_points"]:
                 diagnostic.update(status="excluded", reason="cooldown_active")
             elif diagnostic["rejected_constraints"]:
                 diagnostic.update(status="excluded", reason="outside_schedule_constraints")
@@ -1195,6 +1212,24 @@ def recommend_cycle(
         now_cost=now_cost,
         intent="greenest",
     )
+    now_display_program_options = summarize_program_options(
+        display_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="now",
+    )
+    soon_display_program_options = summarize_program_options(
+        display_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="soon",
+    )
+    overnight_display_program_options = summarize_program_options(
+        display_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="overnight",
+    )
     cost_forecast, forecast_diagnostics = forecast_cycle_costs(
         models,
         policies,
@@ -1251,6 +1286,7 @@ def recommend_cycle(
             ready_to_start=True,
             reason="start_immediately",
             program_options=now_program_options,
+            display_program_options=now_display_program_options,
         ),
         "soon_recommendation": summarize_decision(
             intent="soon",
@@ -1260,6 +1296,7 @@ def recommend_cycle(
             ready_to_start=False,
             reason="best_within_2_hours",
             program_options=soon_program_options,
+            display_program_options=soon_display_program_options,
         ),
         "overnight_recommendation": summarize_decision(
             intent="overnight",
@@ -1269,6 +1306,7 @@ def recommend_cycle(
             ready_to_start=False,
             reason="best_overnight",
             program_options=overnight_program_options,
+            display_program_options=overnight_display_program_options,
         ),
         "negative_price_recommendation": summarize_decision(
             intent="negative_price",

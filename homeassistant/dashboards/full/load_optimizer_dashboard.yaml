@@ -850,7 +850,8 @@ views:
                 content: >
                   {% set recommendation =
                   'sensor.load_optimizer_1_now_recommendation' %} {% set options
-                  = state_attr(recommendation, 'program_options') or [] %} {% set
+                  = state_attr(recommendation, 'display_program_options') or
+                  state_attr(recommendation, 'program_options') or [] %} {% set
                   chosen_program = state_attr(recommendation, 'program') or
                   states(recommendation) %}
 
@@ -860,9 +861,9 @@ views:
 
                   {% else %}
 
-                  | Pick | Program | Cost | Start | Finish | Confidence |
+                  | Pick | Program | Cost | Start | Finish | Confidence | Eligibility |
 
-                  |---|---|---:|---|---|---:|
+                  |---|---|---:|---|---|---:|---|
 
                   {%- for item in options %}
 
@@ -879,7 +880,9 @@ views:
                   format((item.cost_pence | float(0)) / 100) }} | {{
                   start.strftime('%a %d %b %H:%M') if start else 'unknown' }} |
                   {{ finish.strftime('%a %d %b %H:%M') if finish else 'unknown'
-                  }} | {{ item.confidence | round(0) }}% |
+                  }} | {{ item.confidence | round(0) }}% | {{ 'Auto' if
+                  item.automatic_eligible | default(true) else '**⚠ Manual only**'
+                  }} |
 
                   {%- endfor %}
 
@@ -933,8 +936,9 @@ views:
                 content: >
                   {% set recommendation =
                   'sensor.load_optimizer_1_soon_recommendation' %} {% set
-                  options = state_attr(recommendation, 'program_options') or []
-                  %} {% set chosen_program = state_attr(recommendation,
+                  options = state_attr(recommendation,
+                  'display_program_options') or state_attr(recommendation,
+                  'program_options') or [] %} {% set chosen_program = state_attr(recommendation,
                   'program') or states(recommendation) %}
 
                   {% if options | count == 0 %}
@@ -943,9 +947,9 @@ views:
 
                   {% else %}
 
-                  | Pick | Program | Cost | Start | Finish | Confidence |
+                  | Pick | Program | Cost | Start | Finish | Confidence | Eligibility |
 
-                  |---|---|---:|---|---|---:|
+                  |---|---|---:|---|---|---:|---|
 
                   {%- for item in options %}
 
@@ -962,7 +966,9 @@ views:
                   format((item.cost_pence | float(0)) / 100) }} | {{
                   start.strftime('%a %d %b %H:%M') if start else 'unknown' }} |
                   {{ finish.strftime('%a %d %b %H:%M') if finish else 'unknown'
-                  }} | {{ item.confidence | round(0) }}% |
+                  }} | {{ item.confidence | round(0) }}% | {{ 'Auto' if
+                  item.automatic_eligible | default(true) else '**⚠ Manual only**'
+                  }} |
 
                   {%- endfor %}
 
@@ -1017,8 +1023,9 @@ views:
                 content: >
                   {% set recommendation =
                   'sensor.load_optimizer_1_overnight_recommendation' %} {% set
-                  options = state_attr(recommendation, 'program_options') or []
-                  %} {% set chosen_program = state_attr(recommendation,
+                  options = state_attr(recommendation,
+                  'display_program_options') or state_attr(recommendation,
+                  'program_options') or [] %} {% set chosen_program = state_attr(recommendation,
                   'program') or states(recommendation) %}
 
                   {% if options | count == 0 %}
@@ -1027,9 +1034,9 @@ views:
 
                   {% else %}
 
-                  | Pick | Program | Cost | Start | Finish | Confidence |
+                  | Pick | Program | Cost | Start | Finish | Confidence | Eligibility |
 
-                  |---|---|---:|---|---|---:|
+                  |---|---|---:|---|---|---:|---|
 
                   {%- for item in options %}
 
@@ -1046,7 +1053,9 @@ views:
                   format((item.cost_pence | float(0)) / 100) }} | {{
                   start.strftime('%a %d %b %H:%M') if start else 'unknown' }} |
                   {{ finish.strftime('%a %d %b %H:%M') if finish else 'unknown'
-                  }} | {{ item.confidence | round(0) }}% |
+                  }} | {{ item.confidence | round(0) }}% | {{ 'Auto' if
+                  item.automatic_eligible | default(true) else '**⚠ Manual only**'
+                  }} |
 
                   {%- endfor %}
 
@@ -1163,9 +1172,9 @@ views:
             entities:
               - entity: input_button.load_optimizer_1_recalculate_now
                 name: Recalculate Recommendations
-              - entity: binary_sensor.load_optimizer_1_overnight_window_active
+              - entity: sensor.load_optimizer_1_overnight_window_active
                 name: Overnight Window Active
-              - entity: binary_sensor.load_optimizer_1_negative_price_window_active
+              - entity: sensor.load_optimizer_1_negative_price_window_active
                 name: Negative Price Window Active
               - entity: sensor.load_optimizer_restart_safety
                 name: Restart Safety

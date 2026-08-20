@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.82
+
+- Publish separately priced display options so dashboards can show manual-only
+  programs without making them eligible for automatic selection.
+- Label manual-only program rows in the dashboard recommendation tables.
+- Use the app-published window-active sensor entities instead of nonexistent
+  binary-sensor references.
+
 ## 0.8.81
 
 - Clarify runtime health and active-capture status for live monitoring.

@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.81"
+APP_VERSION = "0.8.82"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -31,7 +31,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.81"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.82"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -1725,6 +1725,10 @@ def publish_cost_entities(
             "is_daytime_start": recommendation.get("is_daytime_start"),
             "decision_policy": result.get("decision_policy"),
             "program_options": recommendation.get("program_options", []),
+            "display_program_options": recommendation.get(
+                "display_program_options",
+                recommendation.get("program_options", []),
+            ),
         }
         publish_entity(token, f"{prefix}_{intent}_recommendation", state or "not_ready", attributes)
         if intent in {"overnight", "negative_price"}:
