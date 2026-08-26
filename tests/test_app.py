@@ -87,6 +87,22 @@ class VersionTests(unittest.TestCase):
         self.assertNotIn("binary_sensor.load_optimizer_1_negative_price_window_active", dashboard)
         self.assertIn("display_program_options", dashboard)
         self.assertIn("**⚠ Manual only**", dashboard)
+        for helper in (
+            "last_start_reason_code",
+            "last_start_reason_detail",
+            "last_start_decision_snapshot",
+            "last_execution_event",
+        ):
+            self.assertIn(f"load_optimizer_1_{helper}", package)
+        self.assertIn("action: logbook.log", package)
+        self.assertIn("recommended_start_changed", package)
+        self.assertIn("queued_program_missing_from_latest_recommendation", package)
+        self.assertIn("load_optimizer_1_record_cycle_end", package)
+        self.assertIn("cycle_ended_without_terminal_operation_state", package)
+        self.assertIn("Evaluating queued dishwasher start", package)
+        self.assertNotIn("Dishwasher execution started for", package)
+        self.assertIn("sensor.load_optimizer_1_last_start_reason_code", dashboard)
+        self.assertIn("sensor.load_optimizer_1_last_start_reason_detail", dashboard)
 
     def test_due_automatic_request_bypasses_revalidation_until_stale_gate(self):
         root = Path(__file__).resolve().parents[1]
@@ -1557,6 +1573,10 @@ class ScheduleAdviceTests(unittest.TestCase):
             "message": "Dishwasher start failed for QuickD.",
             "result": "failed",
             "failure_reason": "not_running_after_start key=Dishcare.Dishwasher.Program.QuickD",
+            "reason_code": "not_running_after_start",
+            "reason_detail": "No running state after button and API attempts.",
+            "decision_snapshot": "queued=12:00 latest=12:00 delta_min=0",
+            "execution_event": "outcome=failed",
             "program": "QuickD",
             "attempt": "2026-01-01 12:00:00",
         }
@@ -1570,6 +1590,37 @@ class ScheduleAdviceTests(unittest.TestCase):
         self.assertEqual(
             status_args[3]["last_start_failure_reason"],
             "not_running_after_start key=Dishcare.Dishwasher.Program.QuickD",
+        )
+        self.assertEqual(status_args[3]["last_start_reason_code"], "not_running_after_start")
+        self.assertEqual(
+            published["sensor.load_optimizer_1_last_start_reason_detail"][2],
+            "No running state after button and API attempts.",
+        )
+        self.assertEqual(
+            published["sensor.load_optimizer_1_last_start_decision_snapshot"][2],
+            "queued=12:00 latest=12:00 delta_min=0",
+        )
+
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.render_template")
+    def test_cancelled_execution_is_published_as_aborted(self, render_template, publish_entity):
+        render_template.return_value = {
+            "status": "cancelled",
+            "result": "cancelled",
+            "reason_code": "recommended_start_changed",
+            "reason_detail": "Queued start changed by 1,150 minutes.",
+            "program": "Eco50",
+            "attempt": "2026-08-25 11:02:00",
+            "cycle_state": "idle",
+        }
+
+        publish_execution_entities("token", "sensor.load_optimizer_1", "Dishwasher 1", "1")
+
+        published = {call.args[1]: call.args for call in publish_entity.call_args_list}
+        self.assertEqual(published["sensor.load_optimizer_1_execution_lifecycle"][2], "aborted")
+        self.assertEqual(
+            published["sensor.load_optimizer_1_last_start_reason_code"][2],
+            "recommended_start_changed",
         )
 
 

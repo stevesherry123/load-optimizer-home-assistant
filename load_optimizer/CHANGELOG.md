@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.83
+
+- Record terminal dishwasher execution outcomes in the Home Assistant Logbook
+  with stable reason codes, readable details, and the revalidation snapshot.
+- Record confirmed cycle-end events as completed, failed, aborted, or
+  unconfirmed based on the appliance operation state.
+- Distinguish cancelled, blocked, expired, and failed execution lifecycles.
+- Explain exactly which queued-plan revalidation rule aborted a start, including
+  the queued start, latest recommendation, confidence, and allowed time shift.
+- Stop reporting that execution has started before the command sequence begins.
+
 ## 0.8.82
 
 - Publish separately priced display options so dashboards can show manual-only

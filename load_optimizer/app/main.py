@@ -22,7 +22,7 @@ try:
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
 
-APP_VERSION = "0.8.82"
+APP_VERSION = "0.8.83"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -31,7 +31,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.82"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.83"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -1853,6 +1853,10 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
   'message': states('input_text.' ~ helper_prefix ~ '_start_attempt_message'),
   'result': states('input_text.' ~ helper_prefix ~ '_last_start_result'),
   'failure_reason': states('input_text.' ~ helper_prefix ~ '_last_start_failure_reason'),
+  'reason_code': states('input_text.' ~ helper_prefix ~ '_last_start_reason_code'),
+  'reason_detail': states('input_text.' ~ helper_prefix ~ '_last_start_reason_detail'),
+  'decision_snapshot': states('input_text.' ~ helper_prefix ~ '_last_start_decision_snapshot'),
+  'execution_event': states('input_text.' ~ helper_prefix ~ '_last_execution_event'),
   'program': states('input_text.' ~ helper_prefix ~ '_last_start_program'),
   'attempt': states('input_datetime.' ~ helper_prefix ~ '_last_start_attempt'),
   'mode': states('input_text.' ~ helper_prefix ~ '_last_start_mode'),
@@ -1892,6 +1896,10 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
     message = text_value("message")
     result = text_value("result")
     failure_reason = text_value("failure_reason")
+    reason_code = text_value("reason_code")
+    reason_detail = text_value("reason_detail")
+    decision_snapshot = text_value("decision_snapshot")
+    execution_event = text_value("execution_event")
     program = text_value("program")
     mode = text_value("mode")
     program_key = text_value("program_key")
@@ -1916,6 +1924,10 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
         "last_start_program": program,
         "last_start_result": result,
         "last_start_failure_reason": failure_reason,
+        "last_start_reason_code": reason_code,
+        "last_start_reason_detail": reason_detail,
+        "last_start_decision_snapshot": decision_snapshot,
+        "last_execution_event": execution_event,
         "last_start_mode": mode,
         "last_start_program_key": program_key,
         "last_start_selected_program": selected_program_state,
@@ -1939,8 +1951,11 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
         "message": message,
         "lifecycle": (
             "running" if cycle_state == "running" else
-            "starting" if status in {"attempting", "pending"} else
-            "failed" if status in {"failed", "blocked", "expired"} or result in {"failed", "blocked", "expired"} else
+            "starting" if status in {"attempting", "pending", "commanding"} else
+            "aborted" if status == "cancelled" or result == "cancelled" else
+            "blocked" if status == "blocked" or result == "blocked" else
+            "expired" if status == "expired" or result == "expired" else
+            "failed" if status == "failed" or result == "failed" else
             "completed" if result == "confirmed" and cycle_state != "running" else
             "ready"
         ),
@@ -1974,6 +1989,21 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
     publish_entity(token, f"{prefix}_last_start_failure_reason", failure_reason or "none", {
         "friendly_name": f"{name} Last Start Failure Reason",
         "icon": "mdi:alert-circle",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_last_start_reason_code", reason_code or "none", {
+        "friendly_name": f"{name} Last Start Reason Code",
+        "icon": "mdi:code-tags",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_last_start_reason_detail", reason_detail or "none", {
+        "friendly_name": f"{name} Last Start Reason Detail",
+        "icon": "mdi:text-box-search-outline",
+        **common,
+    })
+    publish_entity(token, f"{prefix}_last_start_decision_snapshot", decision_snapshot or "none", {
+        "friendly_name": f"{name} Last Start Decision Snapshot",
+        "icon": "mdi:source-branch-check",
         **common,
     })
     publish_entity(token, f"{prefix}_remote_start_blocked_programs", len(remote_blocked_programs), {
@@ -2067,8 +2097,8 @@ def publish_automation_package_status(token: str, prefix: str, name: str, instan
         installed_version = raw_version
         status = "update_required"
         message = (
-            "Optional Home Assistant automation package is older than the installed "
-            "app. Refresh the package YAML from the repository."
+            "Optional Home Assistant automation package version does not match the "
+            "installed app. Refresh both components from the same release."
         )
 
     publish_entity(token, f"{prefix}_automation_package_status", status, {

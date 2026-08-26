@@ -3,7 +3,7 @@
 # Paste this card stack into the Dishwasher 1 dashboard view after installing
 # `homeassistant/packages/load_optimizer_dishwasher_automation.yaml`.
 #
-# Requires Load Optimizer 0.8.46 or later for the remote-start diagnostics.
+# Requires Load Optimizer 0.8.83 or later for structured execution diagnostics.
 
 type: vertical-stack
 cards:
@@ -29,6 +29,14 @@ cards:
         name: Last Start Program
       - entity: sensor.load_optimizer_1_last_start_failure_reason
         name: Last Failure Reason
+      - entity: sensor.load_optimizer_1_last_start_reason_code
+        name: Decision Reason Code
+      - entity: sensor.load_optimizer_1_last_start_reason_detail
+        name: Decision Explanation
+      - entity: sensor.load_optimizer_1_last_start_decision_snapshot
+        name: Decision Snapshot
+      - entity: input_text.load_optimizer_1_last_execution_event
+        name: Last Execution Event
       - entity: sensor.load_optimizer_1_last_start_attempt
         name: Last Start Attempt
       - entity: input_text.load_optimizer_1_last_start_audit

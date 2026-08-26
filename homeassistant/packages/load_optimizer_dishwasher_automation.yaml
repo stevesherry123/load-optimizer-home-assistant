@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.82.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.83.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -59,7 +59,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.82"
+    initial: "0.8.83"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -150,6 +150,26 @@ input_text:
   load_optimizer_1_last_start_failure_reason:
     name: Dishwasher 1 Last Start Failure Reason
     icon: mdi:alert-circle-outline
+    max: 255
+
+  load_optimizer_1_last_start_reason_code:
+    name: Dishwasher 1 Last Start Reason Code
+    icon: mdi:code-tags
+    max: 64
+
+  load_optimizer_1_last_start_reason_detail:
+    name: Dishwasher 1 Last Start Reason Detail
+    icon: mdi:text-box-search-outline
+    max: 255
+
+  load_optimizer_1_last_start_decision_snapshot:
+    name: Dishwasher 1 Last Start Decision Snapshot
+    icon: mdi:source-branch-check
+    max: 255
+
+  load_optimizer_1_last_execution_event:
+    name: Dishwasher 1 Last Execution Event
+    icon: mdi:timeline-clock-outline
     max: 255
 
   load_optimizer_1_last_start_mode:
@@ -459,7 +479,7 @@ template:
 automation:
   - id: load_optimizer_1_record_run_history
     alias: Load Optimizer 1 - Record Run History
-    description: Keep a compact history of recent manual and automatic outcomes.
+    description: Persist a structured terminal outcome in helpers and the Home Assistant Logbook.
     mode: queued
     triggers:
       - trigger: state
@@ -475,16 +495,39 @@ automation:
       result: "{{ states('input_text.load_optimizer_1_last_start_result') }}"
       mode: "{{ states('input_text.load_optimizer_1_last_start_mode') }}"
       program: "{{ states('input_text.load_optimizer_1_last_start_program') }}"
+      reason_code: "{{ states('input_text.load_optimizer_1_last_start_reason_code') }}"
+      reason_detail: "{{ states('input_text.load_optimizer_1_last_start_reason_detail') }}"
+      decision_snapshot: "{{ states('input_text.load_optimizer_1_last_start_decision_snapshot') }}"
       previous: "{{ states('input_text.load_optimizer_1_run_history') }}"
     actions:
+      - delay:
+          seconds: 1
       - action: input_text.set_value
         target:
           entity_id: input_text.load_optimizer_1_run_history
         data:
           value: >-
-            {{ ((timestamp ~ '|' ~ mode ~ '|' ~ program ~ '|' ~ result)
+            {{ ((timestamp ~ '|' ~ mode ~ '|' ~ program ~ '|' ~ result ~ '|' ~
+                 (reason_code if reason_code not in ['unknown', 'unavailable', 'none', ''] else 'none'))
                 ~ (';' ~ previous if previous not in ['unknown', 'unavailable', 'none', ''] else ''))
                 [:255] }}
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_execution_event
+        data:
+          value: >-
+            {{ (timestamp ~ ' outcome=' ~ result ~ ' mode=' ~ mode ~
+                ' program=' ~ program ~ ' reason=' ~
+                (reason_code if reason_code not in ['unknown', 'unavailable', 'none', ''] else 'none'))[:255] }}
+      - action: logbook.log
+        data:
+          name: Load Optimizer Dishwasher 1
+          entity_id: sensor.load_optimizer_1_execution_status
+          message: >-
+            outcome={{ result }} mode={{ mode }} program={{ program }}
+            reason={{ reason_code if reason_code not in ['unknown', 'unavailable', 'none', ''] else 'none' }};
+            detail={{ reason_detail if reason_detail not in ['unknown', 'unavailable', 'none', ''] else 'none' }};
+            decision={{ decision_snapshot if decision_snapshot not in ['unknown', 'unavailable', 'none', ''] else 'none' }}
 
   - id: load_optimizer_1_manual_recalculate
     alias: Load Optimizer 1 - Manual Recalculate
@@ -524,7 +567,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.82"
+          value: "0.8.83"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
@@ -831,10 +874,13 @@ automation:
           - failed
           - blocked
           - expired
+          - cancelled
     variables:
       result: "{{ states('input_text.load_optimizer_1_last_start_result') }}"
       program: "{{ states('input_text.load_optimizer_1_last_start_program') }}"
       reason: "{{ states('input_text.load_optimizer_1_last_start_failure_reason') }}"
+      reason_code: "{{ states('input_text.load_optimizer_1_last_start_reason_code') }}"
+      reason_detail: "{{ states('input_text.load_optimizer_1_last_start_reason_detail') }}"
     actions:
       - action: persistent_notification.create
         data:
@@ -842,7 +888,8 @@ automation:
           title: Dishwasher start {{ result }}
           message: >-
             Dishwasher program {{ program or 'unknown' }} did not start.
-            Result: {{ result }}. Reason: {{ reason or 'not provided' }}.
+            Result: {{ result }}. Reason code: {{ reason_code or 'not provided' }}.
+            {{ reason_detail or reason or 'No further detail was recorded.' }}
 
   - id: load_optimizer_1_notify_successful_start
     alias: Load Optimizer 1 - Notify Successful Start
@@ -860,6 +907,45 @@ automation:
           notification_id: load_optimizer_1_successful_start
           title: Dishwasher started successfully
           message: "Dishwasher program {{ program or 'unknown' }} has started."
+
+  - id: load_optimizer_1_record_cycle_end
+    alias: Load Optimizer 1 - Record Cycle End
+    description: Record how a confirmed dishwasher cycle ended without guessing that every idle transition completed normally.
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: sensor.load_optimizer_1_cycle_state
+        from: running
+        to: idle
+    variables:
+      operation_sensor: "{{ states('input_text.load_optimizer_1_bosch_operation_state_sensor') }}"
+      operation_state: "{{ states(operation_sensor) }}"
+      program: "{{ states('input_text.load_optimizer_1_last_start_program') }}"
+      cycle_outcome: >-
+        {{ 'completed' if operation_state.endswith('.Finished')
+           else ('failed' if operation_state.endswith('.Error')
+           else ('aborted' if operation_state.endswith('.Aborting') else 'ended_unconfirmed')) }}
+      cycle_reason: >-
+        {{ 'normal_completion' if cycle_outcome == 'completed'
+           else ('appliance_reported_error' if cycle_outcome == 'failed'
+           else ('appliance_reported_aborting' if cycle_outcome == 'aborted'
+           else 'cycle_ended_without_terminal_operation_state')) }}
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_execution_event
+        data:
+          value: >-
+            {{ now().strftime('%Y-%m-%d %H:%M:%S') }} phase=cycle_end
+            outcome={{ cycle_outcome }} program={{ program }} reason={{ cycle_reason }}
+            operation={{ operation_state }}
+      - action: logbook.log
+        data:
+          name: Load Optimizer Dishwasher 1
+          entity_id: sensor.load_optimizer_1_cycle_state
+          message: >-
+            phase=cycle_end outcome={{ cycle_outcome }} program={{ program }}
+            reason={{ cycle_reason }} operation={{ operation_state }}
 
   - id: load_optimizer_1_reset_door_open_flag_on_cycle_start
     alias: Load Optimizer 1 - Reset Door Open Flag On Cycle Start
@@ -973,6 +1059,29 @@ automation:
                 or not queued_program_option
                 or queued_program_confidence < confidence_threshold
                 or queued_start_delta_minutes | float(9999) > 15) }}
+      revalidation_reason_code: >-
+        {{ 'recommendation_not_ready' if recommendation_status != 'ready'
+           else ('queued_program_missing_from_latest_recommendation' if not queued_program_option
+           else ('confidence_below_threshold' if queued_program_confidence < confidence_threshold
+           else ('recommended_start_changed' if queued_start_delta_minutes | float(9999) > 15
+           else 'none'))) }}
+      revalidation_reason_detail: >-
+        {% if recommendation_status != 'ready' %}
+          Latest recommendation status is {{ recommendation_status }}; expected ready.
+        {% elif not queued_program_option %}
+          {{ selected_program }} is absent from the latest eligible program options.
+        {% elif queued_program_confidence < confidence_threshold %}
+          Latest confidence is {{ queued_program_confidence }}%; required {{ confidence_threshold }}%.
+        {% elif queued_start_delta_minutes | float(9999) > 15 %}
+          Queued start {{ selected_start }} changed to {{ queued_option_start }}
+          ({{ queued_start_delta_minutes }} minutes; maximum 15).
+        {% else %}
+          Revalidation passed.
+        {% endif %}
+      decision_snapshot: >-
+        queued={{ selected_start }} latest={{ queued_option_start or 'missing' }}
+        delta_min={{ queued_start_delta_minutes }} recommendation={{ recommendation_status }}
+        confidence={{ queued_program_confidence }}/{{ confidence_threshold }} due={{ due_by_time }}
       selected_program_key: >-
         {% set program_map = {
           'Eco50': 'Dishcare.Dishwasher.Program.Eco50',
@@ -1001,6 +1110,12 @@ automation:
         door={{ bosch_door_sensor }}={{ states(bosch_door_sensor) }};
         remote={{ bosch_remote_control_sensor }}={{ states(bosch_remote_control_sensor) }};
         remote_start={{ bosch_remote_start_sensor }}={{ states(bosch_remote_start_sensor) }}
+      not_ready_reason_code: >-
+        {{ 'dishwasher_not_connected' if states(bosch_connected_sensor) != 'on'
+           else ('dishwasher_door_not_closed' if states(bosch_door_sensor) != 'off'
+           else ('remote_control_disabled' if states(bosch_remote_control_sensor) != 'on'
+           else ('remote_start_disabled' if states(bosch_remote_start_sensor) != 'on'
+           else 'dishwasher_not_ready'))) }}
       negative_price_mode: "{{ requested_mode == 'negative_price' }}"
       negative_power_window_fit: >-
         {{ requested_mode != 'negative_price'
@@ -1026,10 +1141,9 @@ automation:
       start_message: >-
         Dishwasher start requested by Load Optimizer:
         {{ selected_program }}.
-      executing_message: >-
-        Dishwasher execution started for {{ selected_program }}.
-        key={{ selected_program_key }},
-        due={{ selected_start }}.
+      evaluating_message: >-
+        Evaluating queued dishwasher start for {{ selected_program }}.
+        queued={{ selected_start }}, latest={{ queued_option_start or 'missing' }}.
       stale_request_message: >-
         Dishwasher start request expired without being run:
         {{ selected_program }} was due at {{ selected_start }}.
@@ -1045,10 +1159,7 @@ automation:
         confidence={{ queued_program_confidence }}/{{ confidence_threshold }},
         start_delta={{ queued_start_delta_minutes }} minutes.
       revalidation_reason: >-
-        queued_plan_no_longer_eligible program={{ selected_program }}
-        recommendation={{ recommendation_status }}
-        confidence={{ queued_program_confidence }}/{{ confidence_threshold }}
-        start_delta_minutes={{ queued_start_delta_minutes }}
+        {{ revalidation_reason_code }}: {{ revalidation_reason_detail }}
       not_ready_message: >-
         Dishwasher is not ready to start {{ selected_program }}.
         {{ bosch_ready_summary }}.
@@ -1127,6 +1238,21 @@ automation:
           value: ""
       - action: input_text.set_value
         target:
+          entity_id: input_text.load_optimizer_1_last_start_reason_code
+        data:
+          value: ""
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_start_reason_detail
+        data:
+          value: ""
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_start_decision_snapshot
+        data:
+          value: "{{ decision_snapshot[:255] }}"
+      - action: input_text.set_value
+        target:
           entity_id: input_text.load_optimizer_1_last_start_mode
         data:
           value: "{{ requested_mode }}"
@@ -1148,6 +1274,20 @@ automation:
             {{ now().strftime('%Y-%m-%d %H:%M:%S') }} request
             mode={{ requested_mode }} program={{ selected_program }}
             key={{ selected_program_key }}
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_execution_event
+        data:
+          value: >-
+            {{ now().strftime('%Y-%m-%d %H:%M:%S') }} phase=request_received
+            mode={{ requested_mode }} program={{ selected_program }}
+      - action: logbook.log
+        data:
+          name: Load Optimizer Dishwasher 1
+          entity_id: sensor.load_optimizer_1_execution_status
+          message: >-
+            phase=request_received mode={{ requested_mode }} program={{ selected_program }};
+            {{ decision_snapshot }}
       - action: input_datetime.set_datetime
         target:
           entity_id: input_datetime.load_optimizer_1_last_start_attempt
@@ -1162,12 +1302,12 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_start_attempt_message
         data:
-          value: "{{ executing_message[:255] }}"
+          value: "{{ evaluating_message[:255] }}"
       - action: input_text.set_value
         target:
           entity_id: input_text.load_optimizer_1_scheduler_message
         data:
-          value: "{{ executing_message[:255] }}"
+          value: "{{ evaluating_message[:255] }}"
       - action: script.turn_on
         target:
           entity_id: script.load_optimizer_announce
@@ -1188,9 +1328,21 @@ automation:
                   value: cancelled
               - action: input_text.set_value
                 target:
-                  entity_id: input_text.load_optimizer_1_last_start_result
+                  entity_id: input_text.load_optimizer_1_last_start_reason_code
                 data:
-                  value: cancelled
+                  value: "{{ revalidation_reason_code[:64] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_reason_detail
+                data:
+                  value: "{{ revalidation_reason_detail[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_queue_cancellation
+                data:
+                  value: >-
+                    {{ now().strftime('%Y-%m-%d %H:%M:%S') }}
+                    {{ revalidation_reason_code }} {{ revalidation_reason_detail[:180] }}
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_last_start_failure_reason
@@ -1198,9 +1350,9 @@ automation:
                   value: "{{ revalidation_reason[:255] }}"
               - action: input_text.set_value
                 target:
-                  entity_id: input_text.load_optimizer_1_last_queue_cancellation
+                  entity_id: input_text.load_optimizer_1_last_start_result
                 data:
-                  value: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }} {{ revalidation_reason[:220] }}"
+                  value: cancelled
           - conditions:
               - condition: template
                 value_template: "{{ negative_price_mode and not negative_power_window_fit }}"
@@ -1217,14 +1369,26 @@ automation:
                   value: blocked
               - action: input_text.set_value
                 target:
-                  entity_id: input_text.load_optimizer_1_last_start_result
+                  entity_id: input_text.load_optimizer_1_last_start_reason_code
                 data:
-                  value: blocked
+                  value: negative_power_window_mismatch
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_reason_detail
+                data:
+                  value: >-
+                    The power-hungry phase of {{ selected_program }} does not fit
+                    inside the current negative-price window.
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_last_start_failure_reason
                 data:
                   value: negative_power_window_mismatch
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: blocked
               - action: input_select.select_option
                 target:
                   entity_id: input_select.load_optimizer_1_requested_mode
@@ -1246,14 +1410,26 @@ automation:
                   value: blocked
               - action: input_text.set_value
                 target:
-                  entity_id: input_text.load_optimizer_1_last_start_result
+                  entity_id: input_text.load_optimizer_1_last_start_reason_code
                 data:
-                  value: blocked
+                  value: door_not_opened_since_last_cycle
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_reason_detail
+                data:
+                  value: >-
+                    The door-open safety flag is off; open the dishwasher door
+                    and submit a fresh request.
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_last_start_failure_reason
                 data:
                   value: door_not_opened_since_last_cycle
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: blocked
               - action: input_select.select_option
                 target:
                   entity_id: input_select.load_optimizer_1_requested_mode
@@ -1280,14 +1456,26 @@ automation:
                   value: expired
               - action: input_text.set_value
                 target:
-                  entity_id: input_text.load_optimizer_1_last_start_result
+                  entity_id: input_text.load_optimizer_1_last_start_reason_code
                 data:
-                  value: expired
+                  value: stale_request
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_reason_detail
+                data:
+                  value: >-
+                    {{ selected_program }} was due at {{ selected_start }} and exceeded
+                    the {{ maximum_start_lag_minutes }} minute start-lag limit.
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_last_start_failure_reason
                 data:
                   value: "{{ stale_request_reason[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: expired
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_start_attempt_message
@@ -1317,14 +1505,24 @@ automation:
                   value: blocked
               - action: input_text.set_value
                 target:
-                  entity_id: input_text.load_optimizer_1_last_start_result
+                  entity_id: input_text.load_optimizer_1_last_start_reason_code
                 data:
-                  value: blocked
+                  value: "{{ not_ready_reason_code[:64] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_reason_detail
+                data:
+                  value: "{{ bosch_ready_summary[:255] }}"
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_last_start_failure_reason
                 data:
                   value: "{{ not_ready_reason[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: blocked
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_start_attempt_message
@@ -1355,14 +1553,26 @@ automation:
                   value: blocked
               - action: input_text.set_value
                 target:
-                  entity_id: input_text.load_optimizer_1_last_start_result
+                  entity_id: input_text.load_optimizer_1_last_start_reason_code
                 data:
-                  value: blocked
+                  value: program_not_selectable
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_reason_detail
+                data:
+                  value: >-
+                    Program key {{ selected_program_key }} is not present in
+                    {{ bosch_program_select }} options.
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_last_start_failure_reason
                 data:
                   value: "{{ not_startable_reason[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: blocked
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_start_attempt_message
@@ -1377,6 +1587,33 @@ automation:
                 target:
                   entity_id: script.load_optimizer_announce
         default:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_start_attempt_status
+            data:
+              value: commanding
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_start_attempt_message
+            data:
+              value: >-
+                Start command sequence initiated for {{ selected_program }}.
+                queued={{ selected_start }}.
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_last_execution_event
+            data:
+              value: >-
+                {{ now().strftime('%Y-%m-%d %H:%M:%S') }} phase=command_sequence_started
+                mode={{ requested_mode }} program={{ selected_program }}
+          - action: logbook.log
+            data:
+              name: Load Optimizer Dishwasher 1
+              entity_id: sensor.load_optimizer_1_execution_status
+              message: >-
+                phase=command_sequence_started mode={{ requested_mode }}
+                program={{ selected_program }} queued={{ selected_start }}
+                key={{ selected_program_key }}
           - action: switch.turn_on
             continue_on_error: true
             target:
@@ -1497,14 +1734,26 @@ automation:
                   value: confirmed
               - action: input_text.set_value
                 target:
-                  entity_id: input_text.load_optimizer_1_last_start_result
+                  entity_id: input_text.load_optimizer_1_last_start_reason_code
                 data:
-                  value: confirmed
+                  value: start_confirmed
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_reason_detail
+                data:
+                  value: >-
+                    Running state confirmed by cycle={{ states('sensor.load_optimizer_1_cycle_state') }}
+                    operation={{ states(bosch_operation_state_sensor) }}.
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_last_start_failure_reason
                 data:
                   value: ""
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: confirmed
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_start_attempt_message
@@ -1547,14 +1796,28 @@ automation:
                   value: failed
               - action: input_text.set_value
                 target:
-                  entity_id: input_text.load_optimizer_1_last_start_result
+                  entity_id: input_text.load_optimizer_1_last_start_reason_code
                 data:
-                  value: failed
+                  value: not_running_after_start
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_reason_detail
+                data:
+                  value: >-
+                    No running state after button and API attempts;
+                    selected={{ states(bosch_selected_program_sensor) }},
+                    operation={{ states(bosch_operation_state_sensor) }},
+                    cycle={{ states('sensor.load_optimizer_1_cycle_state') }}.
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_last_start_failure_reason
                 data:
                   value: "{{ failed_reason[:255] }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.load_optimizer_1_last_start_result
+                data:
+                  value: failed
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_start_attempt_message

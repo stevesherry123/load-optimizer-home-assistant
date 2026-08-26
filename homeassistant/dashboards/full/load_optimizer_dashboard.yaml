@@ -1190,6 +1190,12 @@ views:
                 name: Last Start Program
               - entity: sensor.load_optimizer_1_last_start_failure_reason
                 name: Last Failure Reason
+              - entity: sensor.load_optimizer_1_last_start_reason_code
+                name: Decision Reason Code
+              - entity: sensor.load_optimizer_1_last_start_reason_detail
+                name: Decision Explanation
+              - entity: sensor.load_optimizer_1_last_start_decision_snapshot
+                name: Decision Snapshot
               - entity: sensor.load_optimizer_1_last_start_attempt
                 name: Last Start Attempt
               - entity: input_text.load_optimizer_1_last_start_audit
@@ -1198,6 +1204,8 @@ views:
                 name: Queue Cancellation
               - entity: input_text.load_optimizer_1_last_start_command_diagnostics
                 name: Start Command Diagnostics
+              - entity: input_text.load_optimizer_1_last_execution_event
+                name: Last Execution Event
               - entity: input_text.load_optimizer_1_run_history
                 name: Recent Run History
               - entity: sensor.load_optimizer_1_program_capabilities
@@ -1224,6 +1232,18 @@ views:
 
               | Last failure | {{
               states('sensor.load_optimizer_1_last_start_failure_reason') }} |
+
+              | Reason code | {{
+              states('sensor.load_optimizer_1_last_start_reason_code') }} |
+
+              | Explanation | {{
+              states('sensor.load_optimizer_1_last_start_reason_detail') }} |
+
+              | Decision snapshot | {{
+              states('sensor.load_optimizer_1_last_start_decision_snapshot') }} |
+
+              | Last execution event | {{
+              state_attr(execution, 'last_execution_event') or 'none' }} |
 
               | Last program | {{
               states('sensor.load_optimizer_1_last_start_program') }} |

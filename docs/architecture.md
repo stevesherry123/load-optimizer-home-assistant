@@ -273,6 +273,46 @@ attempts the start, records the result, announces failures, and clears the
 request. This keeps unattended operation opt-in and avoids a separate privileged
 start path.
 
+## Execution Audit Contract
+
+Status: Active implementation contract
+
+Each dishwasher request records three persistent Logbook stages:
+
+1. `request_received`, with the queued start and the latest recommendation
+   snapshot.
+2. `command_sequence_started`, only after every pre-command gate passes.
+3. A terminal outcome: `confirmed`, `cancelled`, `blocked`, `expired`, or
+   `failed`, with a stable reason code and readable detail.
+
+The package keeps the machine-readable reason in
+`input_text.load_optimizer_1_last_start_reason_code`, the explanation in
+`input_text.load_optimizer_1_last_start_reason_detail`, and the values used by
+the decision in `input_text.load_optimizer_1_last_start_decision_snapshot`.
+These fields are set before the terminal result changes so downstream
+automations and Logbook entries observe one consistent outcome.
+
+Queued-plan revalidation uses the following precedence:
+
+| Condition | Result | Reason code |
+|---|---|---|
+| Latest recommendation is not ready | Cancelled | `recommendation_not_ready` |
+| Queued program is absent from the latest eligible options | Cancelled | `queued_program_missing_from_latest_recommendation` |
+| Latest confidence is below the configured threshold | Cancelled | `confidence_below_threshold` |
+| Latest start moved by more than 15 minutes | Cancelled | `recommended_start_changed` |
+| Request is more than 30 minutes late | Expired | `stale_request` |
+| Appliance prerequisites fail | Blocked | Specific connection, door, or remote-control code |
+| No running state is observed after all command paths | Failed | `not_running_after_start` |
+
+A due automatic request bypasses recommendation-drift cancellation and proceeds
+to the stale-request and appliance-safety gates. This prevents a recommendation
+refresh at the due minute from cancelling an otherwise valid scheduled run.
+
+When a confirmed cycle changes from `running` to `idle`, the package records a
+separate `cycle_end` Logbook event. The observed Bosch operation state classifies
+it as completed, failed, aborted, or `ended_unconfirmed`; it does not silently
+label every idle transition as a successful completion.
+
 ## Local Energy Context
 
 Status: Future design principle
