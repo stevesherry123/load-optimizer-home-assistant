@@ -9,6 +9,7 @@ import os
 import signal
 import threading
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,8 +20,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
     from .costing import recommend_cycle, tariff_periods_from_entity
+    from .observability import EventEngine, configure_logging as configure_event_logging
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
+    from observability import EventEngine, configure_logging as configure_event_logging
 
 APP_VERSION = "0.8.83"
 HEARTBEAT_INTERVAL_SECONDS = 300
@@ -50,6 +53,7 @@ PROGRAM_CLASSIFICATIONS = {
 }
 
 LOGGER = logging.getLogger("load_optimizer")
+EVENTS = EventEngine(LOGGER)
 STOP_EVENT = threading.Event()
 PUBLISHED_ENTITY_CACHE: dict[str, str] = {}
 API_WARNING_CACHE: dict[str, float] = {}
@@ -87,12 +91,10 @@ def runtime_health(now: datetime | None = None) -> tuple[bool, dict]:
 
 
 def configure_logging() -> None:
-    level_name = os.getenv("LOAD_OPTIMIZER_LOG_LEVEL", "info").upper()
-    level = getattr(logging, level_name, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s [load_optimizer] %(message)s",
-    )
+    global LOGGER, EVENTS
+    level_name = os.getenv("LOAD_OPTIMIZER_LOG_LEVEL", "info")
+    LOGGER = configure_event_logging(level_name)
+    EVENTS = EventEngine(LOGGER, int(os.getenv("LOAD_OPTIMIZER_LOG_HISTORY", "25")))
 
 
 def load_state(path: Path = DATA_PATH) -> dict:
@@ -2152,6 +2154,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     if active:
         if not instance.get("cycle_start"):
             instance.update(cycle_start=now.isoformat(), start_energy=energy, peak_power=power, samples=0, profile=[], below_threshold=0)
+            EVENTS.info("LO-CYCLE-START", "Cycle capture started", instance_id=instance_id, instance_name=name, power_w=power, program=program)
         start = datetime.fromisoformat(instance["cycle_start"])
         instance.setdefault("profile", []).append(profile_sample(start, now, power, energy))
         instance["samples"] = len(instance["profile"])
@@ -2195,6 +2198,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 last["learning_excluded"] = True
                 last["exclusion_reason"] = "app_restarted_during_cycle"
                 instance["last_discarded_cycle"] = last
+                EVENTS.warning("LO-CYCLE-DISCARDED", "Cycle excluded because the app restarted during capture", instance_id=instance_id, program=last.get("program"), runtime_minutes=last.get("runtime_minutes"))
             elif quality_issue := cycle_quality_issue(config, last):
                 last["learning_excluded"] = True
                 last["exclusion_reason"] = quality_issue
@@ -2212,10 +2216,12 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "exclusion_reason": quality_issue,
                 })
                 del excluded[:-20]
+                EVENTS.warning("LO-CYCLE-DISCARDED", "Cycle excluded by learning quality checks", instance_id=instance_id, program=last.get("program"), reason=quality_issue, sample_count=last.get("sample_count"))
             else:
                 instance["last_cycle"] = last
                 update_program_model(instance, last)
                 instance["runs"] = int(instance.get("runs", 0)) + 1
+                EVENTS.info("LO-CYCLE-COMPLETE", "Cycle learned successfully", instance_id=instance_id, program=last.get("program"), runtime_minutes=last.get("runtime_minutes"), energy_kwh=last.get("energy_kwh"), total_runs=instance["runs"])
             for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold", "finish_candidate", "program", "capture_interrupted", "capture_interrupted_at"):
                 instance.pop(key, None)
     if instance.get("cycle_start") and program not in ("unknown", "unavailable", ""):
@@ -2531,6 +2537,17 @@ def publish_status(
     })
 
 
+def publish_logging_diagnostics(token: str) -> None:
+    """Expose a bounded, credential-safe support trail in Home Assistant."""
+    snapshot = EVENTS.snapshot()
+    publish_entity(token, "sensor.load_optimizer_diagnostics", "error" if snapshot.get("last_error") else "ok", {
+        "friendly_name": "Load Optimizer Diagnostics",
+        "icon": "mdi:text-box-search-outline",
+        "version": APP_VERSION,
+        **snapshot,
+    })
+
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if self.path != "/health":
@@ -2563,6 +2580,7 @@ def main() -> None:
     configure_logging()
     token = os.getenv("SUPERVISOR_TOKEN")
     if not token:
+        EVENTS.error("LO-STARTUP-TOKEN", "Home Assistant did not provide the Supervisor token", action="Restart the app; if this repeats, include this event code in a support request")
         raise RuntimeError("SUPERVISOR_TOKEN was not provided by Home Assistant")
 
     interval = max(10, int(os.getenv("LOAD_OPTIMIZER_SCAN_INTERVAL", "60")))
@@ -2582,17 +2600,24 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    LOGGER.info("Load Optimizer %s started", APP_VERSION)
+    EVENTS.info("LO-STARTUP-OK", "Load Optimizer started", version=APP_VERSION, scan_interval_seconds=interval, instance_count=len(configs), configured_instances=[{"id": item["instance_id"], "name": item["name"], "configured": bool(item.get("power_sensor"))} for item in configs])
     publish_restart_warning(token, startup_running)
     publish_restart_safety(token, startup_running)
 
     try:
         while not STOP_EVENT.is_set():
             LAST_SCAN_STARTED_AT = datetime.now(timezone.utc)
+            scan_id = uuid.uuid4().hex[:8]
+            scan_started = time.monotonic()
             if refresh_publish_cache():
-                LOGGER.info("Refreshing all Home Assistant entities")
+                EVENTS.info("LO-PUBLISH-REFRESH", "Refreshing all Home Assistant entities", scan_id=scan_id)
+            failed_instances = []
             for config in configs:
-                update_instance(token, state, config)
+                try:
+                    update_instance(token, state, config)
+                except Exception as error:  # Keep healthy instances running and make the failure explainable.
+                    failed_instances.append(str(config.get("instance_id")))
+                    EVENTS.exception("LO-INSTANCE-FAILED", "Instance update failed; other instances will continue", scan_id=scan_id, instance_id=config.get("instance_id"), instance_name=config.get("name"), error_type=type(error).__name__, error=str(error), action="Enable debug logging and include this event code when requesting support")
             state_cache = save_state_if_changed(state, state_cache)
             active_captures = running_instances(state, configs)
             publish_status(
@@ -2602,11 +2627,13 @@ def main() -> None:
                 reset_request_status(state, options),
             )
             publish_restart_safety(token, active_captures)
+            publish_logging_diagnostics(token)
             LAST_SCAN_COMPLETED_AT = datetime.now(timezone.utc)
+            EVENTS.debug("LO-SCAN-COMPLETE", "Scan completed", scan_id=scan_id, duration_ms=round((time.monotonic() - scan_started) * 1000), instances=len(configs), failed_instances=failed_instances, active_captures=len(active_captures))
             STOP_EVENT.wait(interval)
     finally:
         health_server.shutdown()
-        LOGGER.info("Load Optimizer stopped")
+        EVENTS.info("LO-SHUTDOWN", "Load Optimizer stopped")
 
 
 if __name__ == "__main__":

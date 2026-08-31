@@ -6,6 +6,8 @@ its power cycles, and retains completed-cycle statistics in private app storage.
 ## Configuration
 
 - **Log level** controls diagnostic detail.
+- **Log history** controls how many recent info, warning, and error events are
+  retained in `sensor.load_optimizer_diagnostics` (10–50, default 25).
 - **Scan interval** controls how often the app refreshes its Home Assistant state.
 - **Scalable appliance instances** is the YAML or JSON text field used to define
   appliances. Add one list item per appliance and give each item a stable
@@ -29,6 +31,29 @@ Start the app and open its log. A successful start includes:
 ```text
 Load Optimizer 0.8.30 started
 ```
+
+## Logs and community support
+
+Important messages carry a stable event code such as `LO-STARTUP-OK`,
+`LO-CYCLE-COMPLETE`, or `LO-INSTANCE-FAILED`. Each message includes useful
+operation context. Search the app log for the code in square brackets when
+investigating or reporting a problem.
+
+`sensor.load_optimizer_diagnostics` provides a bounded support summary with
+event counts, recent events, and the most recent error. Debug messages are not
+placed in this entity, and fields whose names indicate credentials are
+redacted. Review the summary before posting it publicly, since entity names may
+still describe household devices.
+
+At the default `info` level, the app records startup, entity refreshes, cycle
+starts/completions, discarded cycles, failures, and shutdown. Choose `debug`
+temporarily to add one `LO-SCAN-COMPLETE` summary per scan, including duration,
+active captures, and failed instance IDs.
+
+An unexpected failure in one appliance instance is reported as
+`LO-INSTANCE-FAILED`; other configured instances continue updating. The full
+Python traceback is restricted to debug level, while the normal error explains
+the failure type and recommended next action.
 
 Home Assistant exposes `sensor.load_optimizer_status` and a set of
 `sensor.load_optimizer_N_*` entities for each configured instance. Until a power

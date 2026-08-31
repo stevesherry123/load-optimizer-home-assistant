@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add event-coded, contextual logs with bounded and credential-redacted support
+  history in `sensor.load_optimizer_diagnostics`.
+- Log app, scan, and cycle lifecycle events with actionable failure guidance.
+- Isolate unexpected per-instance failures so healthy appliances continue to
+  update, with full exception details available at debug level.
+
 ## 0.8.83
 
 - Record terminal dishwasher execution outcomes in the Home Assistant Logbook
