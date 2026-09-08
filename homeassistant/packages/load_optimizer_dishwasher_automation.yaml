@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.83.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.84.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -59,7 +59,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.83"
+    initial: "0.8.84"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -567,7 +567,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.83"
+          value: "0.8.84"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
@@ -640,11 +640,6 @@ automation:
           {{ (recommendation_status == 'ready' or (override_program_requested and requested_mode == 'now'))
              and recommendation_program not in ['unknown', 'unavailable', 'none', None, '']
              and recommendation_start not in ['unknown', 'unavailable', 'none', None, ''] }}
-      - action: input_select.select_option
-        target:
-          entity_id: input_select.load_optimizer_1_requested_mode
-        data:
-          option: "{{ requested_mode }}"
       - action: input_text.set_value
         target:
           entity_id: input_text.load_optimizer_1_requested_program
@@ -678,6 +673,13 @@ automation:
       - action: script.turn_on
         target:
           entity_id: script.load_optimizer_announce
+      # Commit the request last. Changing requested_mode wakes the executor, so
+      # every field it reads must already describe the same recommendation.
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.load_optimizer_1_requested_mode
+        data:
+          option: "{{ requested_mode }}"
 
   - id: load_optimizer_1_auto_negative_price_request
     alias: Load Optimizer 1 - Auto Negative Price Request
@@ -728,11 +730,6 @@ automation:
              and recommendation_confidence >= confidence_threshold
              and auto_cooldown_elapsed }}
     actions:
-      - action: input_select.select_option
-        target:
-          entity_id: input_select.load_optimizer_1_requested_mode
-        data:
-          option: negative_price
       - action: input_text.set_value
         target:
           entity_id: input_text.load_optimizer_1_requested_program
@@ -761,6 +758,13 @@ automation:
       - action: script.turn_on
         target:
           entity_id: script.load_optimizer_announce
+      # Commit after publishing the program and start; requested_mode triggers
+      # the executor and must never expose fields from the previous request.
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.load_optimizer_1_requested_mode
+        data:
+          option: negative_price
 
   - id: load_optimizer_1_auto_normal_request
     alias: Load Optimizer 1 - Auto Overnight Request
@@ -818,11 +822,6 @@ automation:
              and as_timestamp(as_datetime(recommendation_start)) > as_timestamp(now())
              and auto_cooldown_elapsed }}
     actions:
-      - action: input_select.select_option
-        target:
-          entity_id: input_select.load_optimizer_1_requested_mode
-        data:
-          option: automatic
       - action: input_text.set_value
         target:
           entity_id: input_text.load_optimizer_1_requested_program
@@ -843,6 +842,13 @@ automation:
           entity_id: input_text.load_optimizer_1_scheduler_message
         data:
           value: "{{ message[:255] }}"
+      # Commit after publishing the recommendation. The executor is triggered
+      # by requested_mode and must see this request's start, not a stale one.
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.load_optimizer_1_requested_mode
+        data:
+          option: automatic
 
   - id: load_optimizer_1_cancel_user_request
     alias: Load Optimizer 1 - Cancel User Request

@@ -3,7 +3,7 @@
 # Paste this card stack into the Dishwasher 1 dashboard view after installing
 # `homeassistant/packages/load_optimizer_dishwasher_automation.yaml`.
 #
-# Requires Load Optimizer 0.8.83 or later for structured execution diagnostics.
+# Requires Load Optimizer 0.8.84 or later for atomic request publication.
 
 type: vertical-stack
 cards:

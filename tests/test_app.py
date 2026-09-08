@@ -118,6 +118,26 @@ class VersionTests(unittest.TestCase):
         stale_gate = actions.index('value_template: "{{ stale_request }}"', revalidation_gate)
         self.assertLess(revalidation_gate, stale_gate)
 
+    def test_dishwasher_requests_publish_schedule_before_mode_commit(self):
+        root = Path(__file__).resolve().parents[1]
+        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
+
+        requests = {
+            "load_optimizer_1_capture_user_request": 'option: "{{ requested_mode }}"',
+            "load_optimizer_1_auto_negative_price_request": "option: negative_price",
+            "load_optimizer_1_auto_normal_request": "option: automatic",
+        }
+        for automation_id, mode_commit in requests.items():
+            block = package.split(f"  - id: {automation_id}\n", 1)[1].split("\n  - id:", 1)[0]
+            program_write = block.index("entity_id: input_text.load_optimizer_1_requested_program")
+            start_write = block.index("entity_id: input_datetime.load_optimizer_1_requested_start")
+            commit = block.index(mode_commit)
+
+            self.assertLess(program_write, commit, automation_id)
+            self.assertLess(start_write, commit, automation_id)
+            self.assertNotIn("entity_id: input_text.load_optimizer_1_requested_program", block[commit:])
+            self.assertNotIn("entity_id: input_datetime.load_optimizer_1_requested_start", block[commit:])
+
 
 class StatusHeartbeatTests(unittest.TestCase):
     @patch("load_optimizer.app.main.publish_entity")

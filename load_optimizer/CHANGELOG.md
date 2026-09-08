@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Publish every dishwasher request's program and scheduled start before changing
+  its mode, preventing the executor from validating a new request against stale
+  queue fields and cancelling a valid overnight recommendation.
 - Add event-coded, contextual logs with bounded and credential-redacted support
   history in `sensor.load_optimizer_diagnostics`.
 - Log app, scan, and cycle lifecycle events with actionable failure guidance.
