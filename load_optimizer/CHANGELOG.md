@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Refresh a pending automatic overnight request whenever its recommendation or
+  travel deadline changes, allowing an earlier start or a shorter programme to
+  replace a plan that no longer fits.
+- Persist the queued predicted finish and re-check it immediately before an
+  automatic start. If no fitting re-plan is available, continue only with an
+  explicit deadline-overrun status, announcement, and audit reason rather than
+  presenting the run as deadline-compliant.
+
 - Publish every dishwasher request's program and scheduled start before changing
   its mode, preventing the executor from validating a new request against stale
   queue fields and cancelling a valid overnight recommendation.

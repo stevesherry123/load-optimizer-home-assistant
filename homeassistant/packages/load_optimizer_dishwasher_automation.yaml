@@ -228,6 +228,11 @@ input_datetime:
     has_date: true
     has_time: true
 
+  load_optimizer_1_requested_finish:
+    name: Dishwasher 1 Requested Finish
+    has_date: true
+    has_time: true
+
   load_optimizer_1_last_start_attempt:
     name: Dishwasher 1 Last Start Attempt
     has_date: true
@@ -696,6 +701,7 @@ automation:
       recommendation_program: >-
         {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
       recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
+      recommendation_finish: "{{ state_attr(recommendation_entity, 'finish') }}"
       recommendation_ready_to_start: "{{ state_attr(recommendation_entity, 'ready_to_start') }}"
       recommendation_confidence: "{{ state_attr(recommendation_entity, 'confidence') | int(0) }}"
       confidence_threshold: "{{ state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) }}"
@@ -781,12 +787,14 @@ automation:
           - sensor.load_optimizer_1_overnight_recommendation
           - sensor.load_optimizer_1_cycle_state
           - input_boolean.load_optimizer_1_door_opened_since_last_cycle
+          - input_datetime.load_optimizer_1_must_finish_by
     variables:
       recommendation_entity: sensor.load_optimizer_1_overnight_recommendation
       recommendation_status: "{{ state_attr(recommendation_entity, 'status') }}"
       recommendation_program: >-
         {{ state_attr(recommendation_entity, 'program') or states(recommendation_entity) }}
       recommendation_start: "{{ state_attr(recommendation_entity, 'start') }}"
+      recommendation_finish: "{{ state_attr(recommendation_entity, 'finish') }}"
       recommendation_confidence: "{{ state_attr(recommendation_entity, 'confidence') | int(0) }}"
       confidence_threshold: "{{ state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) }}"
       auto_cooldown_minutes: 30
@@ -807,9 +815,9 @@ automation:
       - condition: state
         entity_id: sensor.load_optimizer_1_cycle_state
         state: idle
-      - condition: state
-        entity_id: input_select.load_optimizer_1_requested_mode
-        state: none
+      - condition: template
+        value_template: >-
+          {{ states('input_select.load_optimizer_1_requested_mode') in ['none', 'automatic'] }}
       - condition: state
         entity_id: input_boolean.load_optimizer_1_door_opened_since_last_cycle
         state: "on"
@@ -820,7 +828,8 @@ automation:
              and recommendation_start not in ['unknown', 'unavailable', 'none', None, '']
              and recommendation_confidence >= confidence_threshold
              and as_timestamp(as_datetime(recommendation_start)) > as_timestamp(now())
-             and auto_cooldown_elapsed }}
+             and (is_state('input_select.load_optimizer_1_requested_mode', 'automatic')
+                  or auto_cooldown_elapsed) }}
     actions:
       - action: input_text.set_value
         target:
@@ -834,9 +843,19 @@ automation:
           datetime: "{{ as_local(as_datetime(recommendation_start)).strftime('%Y-%m-%d %H:%M:%S') }}"
       - action: input_datetime.set_datetime
         target:
-          entity_id: input_datetime.load_optimizer_1_last_auto_normal_request
+          entity_id: input_datetime.load_optimizer_1_requested_finish
         data:
-          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+          datetime: "{{ as_local(as_datetime(recommendation_finish)).strftime('%Y-%m-%d %H:%M:%S') }}"
+      - if:
+          - condition: state
+            entity_id: input_select.load_optimizer_1_requested_mode
+            state: none
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.load_optimizer_1_last_auto_normal_request
+            data:
+              datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
       - action: input_text.set_value
         target:
           entity_id: input_text.load_optimizer_1_scheduler_message
@@ -1008,6 +1027,8 @@ automation:
           - sensor.load_optimizer_1_negative_price_recommendation
           - input_select.load_optimizer_1_requested_mode
           - input_datetime.load_optimizer_1_requested_start
+          - input_datetime.load_optimizer_1_requested_finish
+          - input_datetime.load_optimizer_1_must_finish_by
     variables:
       requested_mode: "{{ states('input_select.load_optimizer_1_requested_mode') }}"
       bosch_device_id: "{{ states('input_text.load_optimizer_1_bosch_device_id') }}"
@@ -1034,6 +1055,7 @@ automation:
       current_program_options: "{{ state_attr(recommendation_entity, 'program_options') or [] }}"
       requested_program: "{{ states('input_text.load_optimizer_1_requested_program') }}"
       requested_start: "{{ states('input_datetime.load_optimizer_1_requested_start') }}"
+      requested_finish: "{{ states('input_datetime.load_optimizer_1_requested_finish') }}"
       selected_start: >-
         {{ requested_start
            if requested_start not in ['unknown', 'unavailable', 'none', None, '']
@@ -1088,6 +1110,8 @@ automation:
         queued={{ selected_start }} latest={{ queued_option_start or 'missing' }}
         delta_min={{ queued_start_delta_minutes }} recommendation={{ recommendation_status }}
         confidence={{ queued_program_confidence }}/{{ confidence_threshold }} due={{ due_by_time }}
+        finish={{ projected_finish or requested_finish or 'unknown' }}
+        deadline={{ active_deadline or 'none' }} overrun={{ deadline_overrun }}
       selected_program_key: >-
         {% set program_map = {
           'Eco50': 'Dishcare.Dishwasher.Program.Eco50',
@@ -1132,6 +1156,25 @@ automation:
       due_by_time: >-
         {{ selected_start not in ['unknown', 'unavailable', 'none', None, '']
            and as_timestamp(now()) >= as_timestamp(as_datetime(selected_start)) }}
+      active_deadline: >-
+        {% set raw = states('input_datetime.load_optimizer_1_must_finish_by') %}
+        {{ raw if raw not in ['unknown', 'unavailable', 'none', None, '']
+           and as_timestamp(as_datetime(raw)) > as_timestamp(now()) else '' }}
+      projected_finish: >-
+        {% if requested_finish not in ['unknown', 'unavailable', 'none', None, ''] %}
+          {% set lag = [0, as_timestamp(now()) - as_timestamp(as_datetime(selected_start))] | max %}
+          {{ (as_timestamp(as_datetime(requested_finish)) + lag) | timestamp_custom('%Y-%m-%d %H:%M:%S', true) }}
+        {% else %}
+          {{ '' }}
+        {% endif %}
+      deadline_overrun: >-
+        {{ requested_mode == 'automatic'
+           and active_deadline not in ['', none]
+           and (projected_finish in ['', none]
+                or as_timestamp(as_datetime(projected_finish)) > as_timestamp(as_datetime(active_deadline))) }}
+      deadline_overrun_message: >-
+        Dishwasher will knowingly miss the travel deadline. program={{ selected_program }},
+        projected_finish={{ projected_finish or 'unknown' }}, deadline={{ active_deadline }}.
       stale_request: >-
         {{ selected_start not in ['unknown', 'unavailable', 'none', None, '']
            and as_timestamp(now()) > as_timestamp(as_datetime(selected_start)) + (maximum_start_lag_minutes * 60) }}
@@ -1317,6 +1360,38 @@ automation:
       - action: script.turn_on
         target:
           entity_id: script.load_optimizer_announce
+      - if:
+          - condition: template
+            value_template: "{{ deadline_overrun }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_start_attempt_status
+            data:
+              value: warning_deadline_overrun
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_scheduler_message
+            data:
+              value: "{{ deadline_overrun_message[:255] }}"
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_last_start_reason_code
+            data:
+              value: deadline_overrun_no_fitting_replan
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.load_optimizer_1_last_start_reason_detail
+            data:
+              value: "{{ deadline_overrun_message[:255] }}"
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.announce_text
+            data:
+              value: "{{ deadline_overrun_message[:255] }}"
+          - action: script.turn_on
+            target:
+              entity_id: script.load_optimizer_announce
       - choose:
           - conditions:
               - condition: template

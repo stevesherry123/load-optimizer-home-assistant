@@ -103,6 +103,22 @@ class VersionTests(unittest.TestCase):
         self.assertNotIn("Dishwasher execution started for", package)
         self.assertIn("sensor.load_optimizer_1_last_start_reason_code", dashboard)
         self.assertIn("sensor.load_optimizer_1_last_start_reason_detail", dashboard)
+        self.assertIn("load_optimizer_1_requested_finish", package)
+        self.assertIn("deadline_overrun_no_fitting_replan", package)
+
+    def test_pending_automatic_request_refreshes_before_execution(self):
+        root = Path(__file__).resolve().parents[1]
+        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
+        block = package.split("  - id: load_optimizer_1_auto_normal_request\n", 1)[1].split(
+            "\n  - id:", 1
+        )[0]
+
+        self.assertIn("['none', 'automatic']", block)
+        self.assertIn("load_optimizer_1_requested_finish", block)
+        self.assertIn("recommendation_finish", block)
+        self.assertIn("input_datetime.load_optimizer_1_must_finish_by", block)
+        self.assertIn("input_datetime.load_optimizer_1_must_finish_by", package)
+        self.assertIn('value_template: "{{ deadline_overrun }}"', package)
 
     def test_due_automatic_request_bypasses_revalidation_until_stale_gate(self):
         root = Path(__file__).resolve().parents[1]
