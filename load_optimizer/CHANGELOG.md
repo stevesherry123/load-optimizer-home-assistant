@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.85
+
 - Refresh a pending automatic overnight request whenever its recommendation or
   travel deadline changes, allowing an earlier start or a shorter programme to
   replace a plan that no longer fits.
