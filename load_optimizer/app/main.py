@@ -25,7 +25,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "0.8.86"
+APP_VERSION = "0.8.87"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -2118,16 +2118,15 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     now = now or datetime.now(timezone.utc)
     instance_id = str(config.get("instance_id", "1"))
     instance = database.setdefault("instances", {}).setdefault(instance_id, {})
-    power_entity = source_state(token, config["power_sensor"])
-    energy_entity = source_state(token, config["energy_sensor"])
-    program_entity = source_state(token, config["program_sensor"])
-    device_state_entity = source_state(token, config["state_sensor"])
-    power = numeric_state(power_entity)
-    energy = numeric_state(energy_entity)
     prefix = f"sensor.load_optimizer_{instance_id}"
     name = config["name"]
-
     configured = bool(config["power_sensor"])
+
+    # Publish the lifecycle entities before reading the configured source
+    # entities. A temporarily unavailable source must not leave HA with an
+    # `unknown` optimizer/cycle state: those entities are safety gates for
+    # pending automatic plans and must survive a partial source failure.
+    cycle_state = "running" if instance.get("cycle_start") else "idle"
     publish_entity(token, f"{prefix}_status", (
         "configuration_required" if not configured else
         "capturing" if instance.get("cycle_start") else "ready"
@@ -2135,8 +2134,19 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "friendly_name": f"{name} Optimizer Status", "icon": "mdi:progress-wrench",
         "power_sensor": config["power_sensor"] or None, "energy_sensor": config["energy_sensor"] or None,
         "health_status": "configured" if configured else "configuration_required",
-        "cycle_state": "running" if instance.get("cycle_start") else "idle",
+        "cycle_state": cycle_state,
     })
+    publish_entity(token, f"{prefix}_cycle_state", cycle_state, {
+        "friendly_name": f"{name} Cycle State", "icon": "mdi:dishwasher" if "dishwasher" in name.lower() else "mdi:lightning-bolt",
+        "source_state": None,
+    })
+
+    power_entity = source_state(token, config["power_sensor"])
+    energy_entity = source_state(token, config["energy_sensor"])
+    program_entity = source_state(token, config["program_sensor"])
+    device_state_entity = source_state(token, config["state_sensor"])
+    power = numeric_state(power_entity)
+    energy = numeric_state(energy_entity)
     publish_entity(token, f"{prefix}_power", power if power is not None else "unavailable", {
         "friendly_name": f"{name} Power", "device_class": "power", "unit_of_measurement": "W",
         "state_class": "measurement", "source_entity": config["power_sensor"] or None,

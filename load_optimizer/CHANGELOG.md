@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Publish each appliance's optimizer and cycle safety state before reading its
+  source sensors, so a temporary source/API failure cannot leave a pending
+  automatic plan blocked by `unknown` safety entities after restart.
+
 - Add a Home Assistant-owned automatic-plan watchdog: committed dishwasher
   schedules remain executable during a Load Optimizer outage and report a
   precise stale-data warning.
