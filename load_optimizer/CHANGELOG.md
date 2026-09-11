@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add a Home Assistant-owned automatic-plan watchdog: committed dishwasher
+  schedules remain executable during a Load Optimizer outage and report a
+  precise stale-data warning.
+- Add automatic-plan recovery when fresh optimizer data returns before the
+  scheduled start, plus resilience status and execution-audit helpers.
+
 ## 0.8.85
 
 - Refresh a pending automatic overnight request whenever its recommendation or

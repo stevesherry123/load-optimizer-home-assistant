@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.85.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.86.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -59,7 +59,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.85"
+    initial: "0.8.86"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -172,6 +172,11 @@ input_text:
     icon: mdi:timeline-clock-outline
     max: 255
 
+  load_optimizer_1_resilience_status:
+    name: Dishwasher 1 Resilience Status
+    icon: mdi:shield-check-outline
+    max: 255
+
   load_optimizer_1_last_start_mode:
     name: Dishwasher 1 Last Start Mode
     icon: mdi:gesture-tap-button
@@ -245,6 +250,11 @@ input_datetime:
 
   load_optimizer_1_last_auto_normal_request:
     name: Dishwasher 1 Last Automatic Normal Request
+    has_date: true
+    has_time: true
+
+  load_optimizer_1_last_resilience_alert:
+    name: Dishwasher 1 Last Resilience Alert
     has_date: true
     has_time: true
 
@@ -407,6 +417,31 @@ template:
             {{ ((as_timestamp(now()) - as_timestamp(as_datetime(completed), 0)) / 60) | round(1) if completed not in [none, '', 'unknown', 'unavailable'] else none }}
           stale_after_minutes: 7
 
+      - name: Load Optimizer 1 Automatic Plan Resilience
+        unique_id: load_optimizer_1_automatic_plan_resilience
+        icon: mdi:shield-sync-outline
+        state: >-
+          {% set mode = states('input_select.load_optimizer_1_requested_mode') %}
+          {% set start = states('input_datetime.load_optimizer_1_requested_start') %}
+          {% if mode != 'automatic' or start in ['unknown', 'unavailable', 'none', ''] %}
+            idle
+          {% elif states('sensor.load_optimizer_1_data_freshness') != 'fresh' %}
+            protected_attention_required
+          {% elif as_timestamp(as_datetime(start)) <= as_timestamp(now()) %}
+            executing_or_verifying
+          {% else %}
+            protected
+          {% endif %}
+        attributes:
+          plan_mode: "{{ states('input_select.load_optimizer_1_requested_mode') }}"
+          planned_start: "{{ states('input_datetime.load_optimizer_1_requested_start') }}"
+          planned_finish: "{{ states('input_datetime.load_optimizer_1_requested_finish') }}"
+          optimizer_freshness: "{{ states('sensor.load_optimizer_1_data_freshness') }}"
+          guarantee: >-
+            Home Assistant retains and executes an already committed automatic
+            plan independently of subsequent Load Optimizer scans. If the plan
+            has not yet been committed, an optimizer outage prevents re-planning.
+
       - name: Load Optimizer 1 Negative Price Readiness
         unique_id: load_optimizer_1_negative_price_readiness
         icon: mdi:traffic-light
@@ -534,6 +569,119 @@ automation:
             detail={{ reason_detail if reason_detail not in ['unknown', 'unavailable', 'none', ''] else 'none' }};
             decision={{ decision_snapshot if decision_snapshot not in ['unknown', 'unavailable', 'none', ''] else 'none' }}
 
+  - id: load_optimizer_1_automatic_plan_watchdog
+    alias: Load Optimizer 1 - Automatic Plan Watchdog
+    description: >-
+      Alert when an automatic dishwasher plan is pending but the optimizer has
+      stopped publishing. The committed plan remains owned by Home Assistant.
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+      - trigger: state
+        entity_id: sensor.load_optimizer_1_data_freshness
+        to: stale
+    variables:
+      mode: "{{ states('input_select.load_optimizer_1_requested_mode') }}"
+      start: "{{ states('input_datetime.load_optimizer_1_requested_start') }}"
+      last_alert: "{{ states('input_datetime.load_optimizer_1_last_resilience_alert') }}"
+      cooldown_elapsed: >-
+        {{ last_alert in ['unknown', 'unavailable', 'none', None, '']
+           or as_timestamp(now()) >= as_timestamp(as_datetime(last_alert)) + 1800 }}
+      message: >-
+        Dishwasher automatic plan is retained, but Load Optimizer has not
+        refreshed for over seven minutes. planned_start={{ start }}.
+        Home Assistant will still attempt a committed plan; re-planning is
+        paused until optimizer data returns.
+    conditions:
+      - condition: template
+        value_template: "{{ mode == 'automatic' }}"
+      - condition: template
+        value_template: "{{ start not in ['unknown', 'unavailable', 'none', None, ''] }}"
+      - condition: state
+        entity_id: sensor.load_optimizer_1_data_freshness
+        state: stale
+      - condition: template
+        value_template: "{{ cooldown_elapsed }}"
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.load_optimizer_1_last_resilience_alert
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_resilience_status
+        data:
+          value: "{{ message[:255] }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_execution_event
+        data:
+          value: >-
+            {{ now().strftime('%Y-%m-%d %H:%M:%S') }} phase=optimizer_stale
+            mode=automatic planned_start={{ start }}
+      - action: logbook.log
+        data:
+          name: Load Optimizer Dishwasher 1
+          entity_id: sensor.load_optimizer_1_execution_status
+          message: "{{ message }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.announce_text
+        data:
+          value: "{{ message[:255] }}"
+      - action: script.turn_on
+        target:
+          entity_id: script.load_optimizer_announce
+
+  - id: load_optimizer_1_recover_automatic_plan
+    alias: Load Optimizer 1 - Recover Automatic Plan
+    description: >-
+      When fresh optimizer data returns before a committed automatic plan is
+      due, refresh it so the normal planner can safely revalidate or replace it.
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: sensor.load_optimizer_1_data_freshness
+        to: fresh
+      - trigger: homeassistant
+        event: start
+    variables:
+      mode: "{{ states('input_select.load_optimizer_1_requested_mode') }}"
+      start: "{{ states('input_datetime.load_optimizer_1_requested_start') }}"
+    conditions:
+      - condition: template
+        value_template: "{{ mode == 'automatic' }}"
+      - condition: template
+        value_template: >-
+          {{ start not in ['unknown', 'unavailable', 'none', None, '']
+             and as_timestamp(as_datetime(start)) > as_timestamp(now()) }}
+      - condition: state
+        entity_id: sensor.load_optimizer_1_data_freshness
+        state: fresh
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.load_optimizer_1_overnight_recommendation
+            - sensor.load_optimizer_1_schedule_status
+            - sensor.load_optimizer_1_data_freshness
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_resilience_status
+        data:
+          value: >-
+            {{ now().strftime('%Y-%m-%d %H:%M:%S') }} optimizer recovered;
+            automatic plan revalidation requested for {{ start }}.
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.load_optimizer_1_last_execution_event
+        data:
+          value: >-
+            {{ now().strftime('%Y-%m-%d %H:%M:%S') }} phase=optimizer_recovered
+            mode=automatic planned_start={{ start }}
+
   - id: load_optimizer_1_manual_recalculate
     alias: Load Optimizer 1 - Manual Recalculate
     description: Refresh Load Optimizer recommendations without starting the appliance.
@@ -572,7 +720,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.85"
+          value: "0.8.86"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
