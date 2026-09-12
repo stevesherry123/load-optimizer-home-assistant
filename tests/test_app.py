@@ -1005,6 +1005,37 @@ class InstanceMonitoringTests(unittest.TestCase):
 
     @patch("load_optimizer.app.main.publish_entity")
     @patch("load_optimizer.app.main.source_state")
+    def test_bosch_ready_finishes_cycle_without_waiting_for_power_debounce(self, source, _publish):
+        self.config.update(state_sensor="sensor.test_operation", finish_delay=5)
+        source.side_effect = lambda _token, entity_id: {
+            "sensor.test_power": {"state": "450"},
+            "sensor.test_energy": {"state": "4.2"},
+            "sensor.test_program": {"state": "Eco"},
+            "sensor.test_operation": {"state": "BSH.Common.EnumType.OperationState.Ready"},
+        }.get(entity_id)
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        database = {"schema_version": 1, "instances": {"1": {
+            "cycle_start": start.isoformat(), "start_energy": 3.5,
+            "peak_power": 1200, "samples": 2,
+            "profile": [
+                {"offset_seconds": 0, "power_w": 1200},
+                {"offset_seconds": 1800, "power_w": 800},
+            ],
+            "below_threshold": 0,
+            "program": "Eco",
+        }}}
+
+        finish = start + timedelta(minutes=60)
+        update_instance("token", database, self.config, finish)
+
+        instance = database["instances"]["1"]
+        self.assertNotIn("cycle_start", instance)
+        self.assertEqual(instance["runs"], 1)
+        self.assertEqual(instance["last_cycle"]["finish"], finish.isoformat())
+        self.assertEqual(instance["last_cycle"]["completion_signal"], "bosch_operation_ready")
+
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.source_state")
     def test_profile_energy_survives_daily_counter_reset(self, source, _publish):
         self.config["finish_delay"] = 1
         readings = {"power": "0", "energy": "0.1", "program": "Eco"}

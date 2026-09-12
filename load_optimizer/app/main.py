@@ -25,7 +25,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "0.8.87"
+APP_VERSION = "0.8.88"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -493,6 +493,24 @@ def numeric_state(entity: dict | None) -> float | None:
         return float(entity["state"]) if entity else None
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def operation_state_indicates_cycle_complete(entity: dict | None) -> bool:
+    """Return True only for an explicit appliance terminal state.
+
+    Bosch reports a completed dishwasher as ``...OperationState.Ready``. That
+    positive signal is more timely than waiting for a low-power debounce, while
+    power remains the fallback for appliances without an operation state.
+    """
+    state = str((entity or {}).get("state") or "").strip().casefold()
+    return state in {
+        "ready",
+        "finished",
+        "complete",
+        "completed",
+        "bsh.common.enumtype.operationstate.ready",
+        "bsh.common.enumtype.operationstate.finished",
+    }
 
 
 def normalise_program(value: object) -> str:
@@ -2147,6 +2165,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     device_state_entity = source_state(token, config["state_sensor"])
     power = numeric_state(power_entity)
     energy = numeric_state(energy_entity)
+    operation_state_finished = operation_state_indicates_cycle_complete(device_state_entity)
     publish_entity(token, f"{prefix}_power", power if power is not None else "unavailable", {
         "friendly_name": f"{name} Power", "device_class": "power", "unit_of_measurement": "W",
         "state_class": "measurement", "source_entity": config["power_sensor"] or None,
@@ -2161,7 +2180,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     })
 
     active = power is not None and power >= config["active_power_threshold"]
-    if active:
+    if active and not operation_state_finished:
         if not instance.get("cycle_start"):
             instance.update(cycle_start=now.isoformat(), start_energy=energy, peak_power=power, samples=0, profile=[], below_threshold=0)
             EVENTS.info("LO-CYCLE-START", "Cycle capture started", instance_id=instance_id, instance_name=name, power_w=power, program=program)
@@ -2175,7 +2194,10 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         start = datetime.fromisoformat(instance["cycle_start"])
         instance.setdefault("profile", []).append(profile_sample(start, now, power, energy))
         instance["samples"] = len(instance["profile"])
-        instance["below_threshold"] = int(instance.get("below_threshold", 0)) + 1
+        instance["below_threshold"] = (
+            config["finish_delay"] if operation_state_finished
+            else int(instance.get("below_threshold", 0)) + 1
+        )
         if not instance.get("finish_candidate"):
             instance["finish_candidate"] = {
                 "time": now.isoformat(),
@@ -2203,6 +2225,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 "sample_count": len(completed_profile),
                 "power_profile": completed_profile,
                 "finish": finish.isoformat(),
+                "completion_signal": "bosch_operation_ready" if operation_state_finished else "power_below_threshold",
             }
             if instance.get("capture_interrupted"):
                 last["learning_excluded"] = True

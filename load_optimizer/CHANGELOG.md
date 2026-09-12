@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Treat an explicit Bosch terminal operation state (including `Ready`) as the
+  authoritative end of an active dishwasher capture. Power debounce remains
+  the fallback, preventing a finished cycle from blocking an eligible
+  negative-price follow-up run.
+
 - Publish each appliance's optimizer and cycle safety state before reading its
   source sensors, so a temporary source/API failure cannot leave a pending
   automatic plan blocked by `unknown` safety entities after restart.
