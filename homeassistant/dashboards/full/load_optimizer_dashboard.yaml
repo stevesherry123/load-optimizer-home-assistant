@@ -592,6 +592,24 @@ views:
                 name: Must Finish By
               - entity: input_button.load_optimizer_1_clear_deadline
                 name: Clear Travel Deadline
+          - type: entities
+            title: Manual Free / Special Price Window
+            show_header_toggle: false
+            entities:
+              - entity: input_boolean.load_optimizer_special_price_window_enabled
+                name: Use This Window
+              - entity: input_datetime.load_optimizer_special_price_window_start
+                name: Starts
+              - entity: input_datetime.load_optimizer_special_price_window_end
+                name: Ends
+              - entity: input_number.load_optimizer_special_price_window_price
+                name: Price
+              - entity: input_text.load_optimizer_special_price_window_label
+                name: Label
+              - entity: sensor.load_optimizer_special_price_window
+                name: App Status
+              - entity: input_boolean.load_optimizer_1_auto_negative_price_enabled
+                name: Auto-run Free / Negative Price
           - type: markdown
             title: Automatic Engine Traffic Lights
             content: >-
@@ -610,7 +628,7 @@ views:
 
               **Waiting/warnings:** {{ (state_attr(overnight, 'warnings') or []) | join(', ') or 'none' }}
 
-              ## {{ icons.get(states(negative), '⚪') }} Negative price — {{ states(negative) | upper }}
+              ## {{ icons.get(states(negative), '⚪') }} Free / negative price — {{ states(negative) | upper }}
               **Program:** {{ state_attr(negative, 'program') or 'none' }}
 
               **Start:** {{ (state_attr(negative, 'start') | as_datetime | as_local).strftime('%a %d %b %H:%M') if state_attr(negative, 'start') else 'no active opportunity' }}
@@ -659,7 +677,7 @@ views:
               - entity: sensor.load_optimizer_1_greenest_recommendation
                 name: Greenest
               - entity: sensor.load_optimizer_1_negative_price_recommendation
-                name: Negative Price
+                name: Free / Negative Price
           - type: markdown
             title: Decision Comparison
             content: >
@@ -1175,7 +1193,7 @@ views:
               - entity: sensor.load_optimizer_1_overnight_window_active
                 name: Overnight Window Active
               - entity: sensor.load_optimizer_1_negative_price_window_active
-                name: Negative Price Window Active
+                name: Free / Negative Price Window Active
               - entity: sensor.load_optimizer_restart_safety
                 name: Restart Safety
               - entity: sensor.load_optimizer_1_automation_package_status

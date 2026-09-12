@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Add a persistent manual special-price window with start, end, price, label,
+  dashboard controls, and an app-published validation/status sensor. The app
+  overlays this explicit window onto the tariff forecast without modifying the
+  Bottlecap Dave source data.
+- Treat both free and negative-price windows as opt-in automatic opportunities.
+  A longer cycle remains eligible when its learned high-power phase fits inside
+  the opportunity; the published recommendation still reports the real later
+  finish and the paid cost outside the window.
+
 - Treat an explicit Bosch terminal operation state (including `Ready`) as the
   authoritative end of an active dishwasher capture. Power debounce remains
   the fallback, preventing a finished cycle from blocking an eligible

@@ -177,6 +177,44 @@ def tariff_periods_from_entity(
     raise ValueError("Tariff entity has no supported future-rate attribute")
 
 
+def overlay_price_window(
+    periods: list[dict],
+    *,
+    start: datetime,
+    end: datetime,
+    price_p_per_kwh: float,
+    label: str = "Manual special price window",
+) -> list[dict]:
+    """Overlay one explicitly supplied price window without changing the source feed."""
+    if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
+        raise ValueError("Special price window timestamps must include a UTC offset")
+    start = start.astimezone(timezone.utc)
+    end = end.astimezone(timezone.utc)
+    if end <= start:
+        raise ValueError("Special price window end must be after its start")
+
+    overlaid = []
+    for period in periods:
+        period_start = period["start"].astimezone(timezone.utc)
+        period_end = period["end"].astimezone(timezone.utc)
+        if period_end <= start or period_start >= end:
+            overlaid.append(dict(period))
+            continue
+        if period_start < start:
+            overlaid.append({**period, "end": start})
+        if period_end > end:
+            overlaid.append({**period, "start": end})
+    overlaid.append({
+        "start": start,
+        "end": end,
+        "price_p_per_kwh": float(price_p_per_kwh),
+        "source": "manual_special_price_window",
+        "label": label,
+        "is_special_price_window": True,
+    })
+    return sorted(overlaid, key=lambda period: period["start"])
+
+
 def _profile_segments(model: dict) -> list[dict]:
     profile = model.get("representative_profile_w", [])
     runtime_minutes = model.get("expected_runtime_minutes")
@@ -203,7 +241,7 @@ def _profile_segments(model: dict) -> list[dict]:
 
 
 def _negative_power_window_fit(start: datetime, model: dict, periods: list[dict]) -> dict:
-    """Check that the profile's high-power section fits inside one negative window."""
+    """Check that the profile's high-power section fits inside one free/negative window."""
     segments = _profile_segments(model)
     peak = max(segment["power_w"] for segment in segments)
     threshold = max(1.0, peak * 0.5)
@@ -214,7 +252,7 @@ def _negative_power_window_fit(start: datetime, model: dict, periods: list[dict]
     required_end = start + timedelta(seconds=high_power[-1]["offset_end"])
     negative_windows = []
     for period in sorted(periods, key=lambda item: item["start"]):
-        if float(period["price_p_per_kwh"]) >= 0:
+        if float(period["price_p_per_kwh"]) > 0:
             continue
         if negative_windows and period["start"] <= negative_windows[-1]["end"]:
             negative_windows[-1]["end"] = max(negative_windows[-1]["end"], period["end"])
@@ -870,14 +908,13 @@ def forecast_cycle_costs(
                 diagnostic["rejected_points"] += 1
                 start += timedelta(minutes=forecast_interval_minutes)
                 continue
-            negative = estimate["energy_cost_pence"] < 0
             negative_fit = _apply_negative_run_limit(
                 model,
                 policy,
                 _negative_power_window_fit(start, model, periods),
-            ) if negative else {"fits": False}
-            negative_eligible = negative and policy["allow_negative_price_run"] and negative_fit["fits"]
-            if negative and policy["allow_negative_price_run"] and not negative_fit["fits"]:
+            )
+            negative_eligible = policy["allow_negative_price_run"] and negative_fit["fits"]
+            if policy["allow_negative_price_run"] and not negative_fit["fits"]:
                 diagnostic["rejected_negative_power_window_points"] += 1
             if policy["allow_normal_recommendation"] or negative_eligible:
                 estimate = apply_operating_costs(estimate, policy)
@@ -1027,14 +1064,13 @@ def recommend_cycle(
                 diagnostic["rejected_unpriced_points"] += 1
                 start += timedelta(minutes=candidate_interval_minutes)
                 continue
-            negative = estimate["energy_cost_pence"] < 0
             negative_fit = _apply_negative_run_limit(
                 model,
                 policy,
                 _negative_power_window_fit(start, model, periods),
-            ) if negative else {"fits": False}
-            negative_eligible = negative and policy["allow_negative_price_run"] and negative_fit["fits"]
-            if negative and policy["allow_negative_price_run"] and not negative_fit["fits"]:
+            )
+            negative_eligible = policy["allow_negative_price_run"] and negative_fit["fits"]
+            if policy["allow_negative_price_run"] and not negative_fit["fits"]:
                 diagnostic["rejected_negative_power_window_points"] += 1
                 if negative_fit.get("reason") == "maximum_runs_per_window_reached":
                     diagnostic["rejected_negative_run_limit_points"] += 1

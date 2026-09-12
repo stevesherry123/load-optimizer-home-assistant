@@ -88,6 +88,25 @@ cards:
           target:
             entity_id: input_button.load_optimizer_1_cancel_schedule
 
+  - type: entities
+    title: Manual Free / Special Price Window
+    show_header_toggle: false
+    entities:
+      - entity: input_boolean.load_optimizer_special_price_window_enabled
+        name: Use This Window
+      - entity: input_datetime.load_optimizer_special_price_window_start
+        name: Starts
+      - entity: input_datetime.load_optimizer_special_price_window_end
+        name: Ends
+      - entity: input_number.load_optimizer_special_price_window_price
+        name: Price
+      - entity: input_text.load_optimizer_special_price_window_label
+        name: Label
+      - entity: sensor.load_optimizer_special_price_window
+        name: App Status
+      - entity: input_boolean.load_optimizer_1_auto_negative_price_enabled
+        name: Auto-run Free / Negative Price
+
   - type: markdown
     title: Why This Program?
     content: |-

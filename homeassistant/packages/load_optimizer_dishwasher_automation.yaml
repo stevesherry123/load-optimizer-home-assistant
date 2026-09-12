@@ -1,4 +1,4 @@
-# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.86.
+# Optional Home Assistant orchestration for Dishwasher 1, package version 0.8.89.
 #
 # Load Optimizer remains the recommendation engine. These helpers and
 # automations let dashboards, voice assistants, and household automations request
@@ -45,9 +45,13 @@ input_boolean:
     # Home Assistant restores the household's explicit opt-in after restarts.
 
   load_optimizer_1_auto_negative_price_enabled:
-    name: Dishwasher 1 Auto Negative Price
+    name: Dishwasher 1 Auto Free / Negative Price
     icon: mdi:transmission-tower-export
     # Home Assistant restores the household's explicit opt-in after restarts.
+
+  load_optimizer_special_price_window_enabled:
+    name: Load Optimizer Special Price Window Enabled
+    icon: mdi:calendar-star
 
   load_optimizer_1_door_opened_since_last_cycle:
     name: Dishwasher 1 Door Opened Since Last Cycle
@@ -59,7 +63,7 @@ input_text:
   load_optimizer_1_automation_package_version:
     name: Dishwasher 1 Automation Package Version
     icon: mdi:package-variant
-    initial: "0.8.86"
+    initial: "0.8.89"
     max: 32
 
   load_optimizer_1_bosch_device_id:
@@ -227,7 +231,22 @@ input_text:
     icon: mdi:playlist-remove
     max: 255
 
+  load_optimizer_special_price_window_label:
+    name: Load Optimizer Special Price Window Label
+    icon: mdi:label-outline
+    max: 64
+
 input_datetime:
+  load_optimizer_special_price_window_start:
+    name: Load Optimizer Special Price Window Start
+    has_date: true
+    has_time: true
+
+  load_optimizer_special_price_window_end:
+    name: Load Optimizer Special Price Window End
+    has_date: true
+    has_time: true
+
   load_optimizer_1_requested_start:
     name: Dishwasher 1 Requested Start
     has_date: true
@@ -244,7 +263,7 @@ input_datetime:
     has_time: true
 
   load_optimizer_1_last_auto_negative_price_request:
-    name: Dishwasher 1 Last Auto Negative Price Request
+    name: Dishwasher 1 Last Auto Free / Negative Price Request
     has_date: true
     has_time: true
 
@@ -257,6 +276,16 @@ input_datetime:
     name: Dishwasher 1 Last Resilience Alert
     has_date: true
     has_time: true
+
+input_number:
+  load_optimizer_special_price_window_price:
+    name: Load Optimizer Special Price
+    icon: mdi:currency-gbp
+    min: 0
+    max: 100
+    step: 0.01
+    mode: box
+    unit_of_measurement: p/kWh
 
 input_button:
   load_optimizer_1_request_now:
@@ -442,7 +471,7 @@ template:
             plan independently of subsequent Load Optimizer scans. If the plan
             has not yet been committed, an optimizer outage prevents re-planning.
 
-      - name: Load Optimizer 1 Negative Price Readiness
+      - name: Load Optimizer 1 Free / Negative Price Readiness
         unique_id: load_optimizer_1_negative_price_readiness
         icon: mdi:traffic-light
         state: >-
@@ -720,7 +749,7 @@ automation:
         target:
           entity_id: input_text.load_optimizer_1_automation_package_version
         data:
-          value: "0.8.86"
+          value: "0.8.89"
 
   - id: load_optimizer_1_capture_user_request
     alias: Load Optimizer 1 - Capture User Request
@@ -835,8 +864,8 @@ automation:
           option: "{{ requested_mode }}"
 
   - id: load_optimizer_1_auto_negative_price_request
-    alias: Load Optimizer 1 - Auto Negative Price Request
-    description: Opt-in unattended request creation when Load Optimizer finds a ready negative-price run.
+    alias: Load Optimizer 1 - Auto Free / Negative Price Request
+    description: Opt-in unattended request creation when Load Optimizer finds a ready free or negative-price run.
     mode: single
     triggers:
       - trigger: time_pattern
@@ -860,7 +889,7 @@ automation:
         {{ last_auto_request in ['unknown', 'unavailable', 'none', None, '']
            or as_timestamp(now()) >= as_timestamp(as_datetime(last_auto_request)) + (auto_cooldown_minutes * 60) }}
       message: >-
-        Dishwasher automatic negative-price request captured:
+        Dishwasher automatic free/negative-price request captured:
         {{ recommendation_program }} at {{ recommendation_start }}.
     conditions:
       - condition: state
@@ -1367,7 +1396,7 @@ automation:
         previous cycle. Open the door and submit a fresh request.
       negative_window_message: >-
         Negative-price start blocked because the power-hungry part of
-        {{ selected_program }} does not fit inside the negative-price window.
+        {{ selected_program }} does not fit inside the free/negative-price window.
       not_startable_message: >-
         Dishwasher program is not selectable from Home Assistant:
         program={{ selected_program }},
@@ -1607,7 +1636,7 @@ automation:
                 data:
                   value: >-
                     The power-hungry phase of {{ selected_program }} does not fit
-                    inside the current negative-price window.
+                    inside the current free/negative-price window.
               - action: input_text.set_value
                 target:
                   entity_id: input_text.load_optimizer_1_last_start_failure_reason

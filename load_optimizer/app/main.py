@@ -19,13 +19,13 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
-    from .costing import recommend_cycle, tariff_periods_from_entity
+    from .costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from .observability import EventEngine, configure_logging as configure_event_logging
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
-    from costing import recommend_cycle, tariff_periods_from_entity
+    from costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "0.8.88"
+APP_VERSION = "0.8.89"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -34,7 +34,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.86"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.89"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -42,6 +42,14 @@ OPTIONS_PATH = Path("/data/options.json")
 STATUS_ENTITY = "sensor.load_optimizer_status"
 RESTART_SAFETY_ENTITY = "sensor.load_optimizer_restart_safety"
 EMPTY_STATE = {"schema_version": 1, "instances": {}}
+
+SPECIAL_PRICE_WINDOW_ENTITIES = {
+    "enabled": "input_boolean.load_optimizer_special_price_window_enabled",
+    "start": "input_datetime.load_optimizer_special_price_window_start",
+    "end": "input_datetime.load_optimizer_special_price_window_end",
+    "price": "input_number.load_optimizer_special_price_window_price",
+    "label": "input_text.load_optimizer_special_price_window_label",
+}
 
 PROGRAM_CLASSIFICATIONS = {
     "unclassified",
@@ -273,6 +281,60 @@ def current_tariff_period(periods: list[dict], reference_utc: datetime) -> dict 
         if start.astimezone(timezone.utc) <= now_utc < end.astimezone(timezone.utc):
             return period
     return None
+
+
+def special_price_window(token: str, *, timezone_name: str, reference_utc: datetime) -> dict:
+    """Read and validate the manual special-price helpers from Home Assistant."""
+    states = {
+        key: source_state(token, entity_id)
+        for key, entity_id in SPECIAL_PRICE_WINDOW_ENTITIES.items()
+    }
+    enabled = bool(states["enabled"] and states["enabled"].get("state") == "on")
+    start = datetime_from_entity_state(states["start"], naive_timezone=timezone_name)
+    end = datetime_from_entity_state(states["end"], naive_timezone=timezone_name)
+    price = numeric_state(states["price"])
+    price = 0.0 if price is None else price
+    raw_label = str((states["label"] or {}).get("state") or "").strip()
+    label = raw_label if raw_label not in {"unknown", "unavailable", "none"} else "Octopus free electricity"
+    now = reference_utc.astimezone(timezone.utc)
+
+    if not enabled:
+        status = "disabled"
+        reason = "Manual special-price window is switched off."
+    elif start is None or end is None:
+        status = "invalid"
+        reason = "Set both a start and end time."
+    elif end <= start:
+        status = "invalid"
+        reason = "The end time must be after the start time."
+    elif end <= now:
+        status = "expired"
+        reason = "The configured window has ended and is not being applied."
+    elif start <= now < end:
+        status = "active"
+        reason = "The manual price is currently overriding the tariff feed."
+    else:
+        status = "scheduled"
+        reason = "The manual price will override the tariff feed during this window."
+
+    public = {
+        "status": status,
+        "enabled": enabled,
+        "start": start.isoformat() if start else None,
+        "end": end.isoformat() if end else None,
+        "price_p_per_kwh": round(price, 4),
+        "label": label,
+        "source": "manual_special_price_window",
+        "reason": reason,
+        "applied": status in {"scheduled", "active"},
+        "helper_entities": SPECIAL_PRICE_WINDOW_ENTITIES,
+    }
+    publish_entity(token, "sensor.load_optimizer_special_price_window", status, {
+        "friendly_name": "Load Optimizer Special Price Window",
+        "icon": "mdi:cash-clock",
+        **public,
+    })
+    return {**public, "start_datetime": start, "end_datetime": end}
 
 
 WINDOW_EVENT_KEYS = (
@@ -1523,6 +1585,7 @@ def publish_cost_entities(
         "blocked_window_entity": result.get("blocked_window_entity"),
         "blocked_window_count": result.get("blocked_window_count", 0),
         "blocked_window_candidate_count": result.get("blocked_window_candidate_count", 0),
+        "special_price_window": result.get("special_price_window"),
         "decision_policy": result.get("decision_policy"),
     }
     if publish_diagnostics:
@@ -2309,10 +2372,20 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     summaries = [program_summary(program_name, model) for program_name, model in sorted(models.items())]
     blocked_remote_start_programs = remote_start_blocked_programs(token, instance_id)
     tariff_entities = config.get("tariff_entities", [])
+    manual_window = special_price_window(
+        token,
+        timezone_name=config.get("tariff_timezone", "Europe/London"),
+        reference_utc=now,
+    )
+    manual_window_public = {
+        key: value for key, value in manual_window.items()
+        if key not in {"start_datetime", "end_datetime"}
+    }
     cost_result = {
         "status": "tariff_not_configured",
         "tariff_entity": config.get("tariff_entity"),
         "tariff_entities": tariff_entities,
+        "special_price_window": manual_window_public,
     }
     if tariff_entities:
         earliest_start_entity = config.get("schedule_earliest_start_entity")
@@ -2344,6 +2417,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 "tariff_entity": ", ".join(tariff_entities),
                 "tariff_entities": tariff_entities,
                 "reason": f"Home Assistant tariff entities could not be read: {', '.join(missing_entities)}",
+                "special_price_window": manual_window_public,
             }
         else:
             tariff_diagnostics = [tariff_entity_diagnostic(state) for state in tariff_states]
@@ -2365,6 +2439,14 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                         })
                 if not periods:
                     raise ValueError("No configured tariff entity produced a supported future-rate attribute")
+                if manual_window["applied"]:
+                    periods = overlay_price_window(
+                        periods,
+                        start=manual_window["start_datetime"],
+                        end=manual_window["end_datetime"],
+                        price_p_per_kwh=manual_window["price_p_per_kwh"],
+                        label=manual_window["label"],
+                    )
                 periods.sort(key=lambda period: period["start"])
                 current_period = current_tariff_period(periods, now)
                 current_price_p_per_kwh = (
@@ -2437,6 +2519,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                         for window in blocked_windows
                     ],
                     "remote_start_blocked_programs": blocked_remote_start_programs,
+                    "special_price_window": manual_window_public,
                 })
             except (TypeError, ValueError) as error:
                 cost_result = {
@@ -2445,6 +2528,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "tariff_entities": tariff_entities,
                     "tariff_diagnostics": tariff_diagnostics,
                     "reason": str(error),
+                    "special_price_window": manual_window_public,
                 }
     publish_cost_entities(
         token,

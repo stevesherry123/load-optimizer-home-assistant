@@ -16,6 +16,10 @@ to act on Load Optimizer recommendations.
   explicitly opt-in normal automatic mode. This mode requires a new door-open
   event after the previous cycle, restart safety to be clear, and a ready
   immediate recommendation before it requests an unattended start.
+  The package also creates a manual free/special-price window: set its start,
+  end, price (normally `0 p/kWh`) and optional label, then enable the window.
+  The existing opt-in `Auto Free / Negative Price` switch controls whether a
+  qualifying recommendation may create an unattended dishwasher request.
 - `packages/load_optimizer_travel_deadline_example.yaml` adds an editable
   Dishwasher 1 must-finish-by helper and a TripIt-style calendar automation
   example that seeds the helper to 90 minutes before travel.

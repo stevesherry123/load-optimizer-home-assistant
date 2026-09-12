@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from load_optimizer.app.costing import (
     _negative_power_window_fit,
     estimate_cycle_cost,
+    overlay_price_window,
     parse_ai_feed,
     parse_structured_rates,
     recommend_cycle,
@@ -32,6 +33,60 @@ class NegativePriceSafetyTests(unittest.TestCase):
 
         self.assertTrue(_negative_power_window_fit(start, model, full_window)["fits"])
         self.assertFalse(_negative_power_window_fit(start, model, partial_window)["fits"])
+
+    def test_zero_price_is_a_special_power_window(self):
+        start = datetime(2026, 7, 28, tzinfo=timezone.utc)
+        model = {
+            "representative_profile_w": [100, 100],
+            "expected_runtime_minutes": 30,
+            "expected_energy_kwh": 1.0,
+        }
+        periods = [{
+            "start": start,
+            "end": start + timedelta(minutes=30),
+            "price_p_per_kwh": 0,
+        }]
+
+        self.assertTrue(_negative_power_window_fit(start, model, periods)["fits"])
+
+    def test_free_hour_can_trigger_a_longer_cycle_when_high_power_fits(self):
+        start = datetime(2026, 7, 28, tzinfo=timezone.utc)
+        model = {
+            "program": "Heavy",
+            "representative_profile_w": [1200, 100, 100],
+            "expected_runtime_minutes": 120,
+            "expected_energy_kwh": 1.5,
+            "confidence": 80,
+        }
+        policy = {
+            "program": "Heavy",
+            "enabled": True,
+            "allow_normal_recommendation": False,
+            "allow_negative_price_run": True,
+            "preference_rank": 1,
+            "negative_price_priority": 100,
+            "maximum_runs_per_window": 1,
+        }
+        periods = [
+            {"start": start, "end": start + timedelta(hours=1), "price_p_per_kwh": 0},
+            {"start": start + timedelta(hours=1), "end": start + timedelta(hours=4), "price_p_per_kwh": 25},
+        ]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=start,
+            search_hours=1,
+            candidate_interval_minutes=30,
+        )
+
+        recommendation = result["negative_price_recommendation"]
+        self.assertEqual(recommendation["status"], "ready")
+        self.assertEqual(recommendation["program"], "Heavy")
+        self.assertGreater(recommendation["energy_cost_pence"], 0)
+        self.assertEqual(recommendation["negative_window_end"], (start + timedelta(hours=1)).isoformat())
+        self.assertEqual(recommendation["finish"], (start + timedelta(hours=2)).isoformat())
 
     def test_maximum_runs_per_negative_window_is_enforced(self):
         start = datetime(2026, 7, 28, tzinfo=timezone.utc)
@@ -118,6 +173,26 @@ class NegativePriceSafetyTests(unittest.TestCase):
 
 
 class TariffParsingTests(unittest.TestCase):
+    def test_manual_price_window_overlays_feed_and_preserves_surrounding_rates(self):
+        start = datetime(2026, 7, 6, tzinfo=timezone.utc)
+        periods = [{
+            "start": start,
+            "end": start + timedelta(hours=2),
+            "price_p_per_kwh": 25,
+        }]
+
+        overlaid = overlay_price_window(
+            periods,
+            start=start + timedelta(minutes=30),
+            end=start + timedelta(minutes=90),
+            price_p_per_kwh=0,
+            label="Octopus free hour",
+        )
+
+        self.assertEqual([period["price_p_per_kwh"] for period in overlaid], [25, 0, 25])
+        self.assertEqual(overlaid[1]["source"], "manual_special_price_window")
+        self.assertEqual(overlaid[1]["label"], "Octopus free hour")
+
     def test_ai_feed_becomes_utc_tariff_periods(self):
         periods = parse_ai_feed(
             "06/07 00:00=18.41p; 06/07 00:30=-2.5p;",

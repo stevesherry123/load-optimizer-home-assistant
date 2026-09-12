@@ -38,6 +38,7 @@ from load_optimizer.app.main import (
     publish_status,
     publish_restart_warning,
     refresh_publish_cache,
+    special_price_window,
     repair_learning_quality,
     runtime_health,
     save_state,
@@ -297,6 +298,32 @@ class DateTimeParsingTests(unittest.TestCase):
         )
 
         self.assertEqual(parsed, datetime(2026, 7, 14, 6, 0, tzinfo=timezone.utc))
+
+
+class SpecialPriceWindowTests(unittest.TestCase):
+    @patch("load_optimizer.app.main.publish_entity")
+    @patch("load_optimizer.app.main.source_state")
+    def test_scheduled_window_uses_local_helper_times_and_publishes_provenance(self, source, publish):
+        states = {
+            "input_boolean.load_optimizer_special_price_window_enabled": {"state": "on"},
+            "input_datetime.load_optimizer_special_price_window_start": {"state": "2026-09-13 13:00:00"},
+            "input_datetime.load_optimizer_special_price_window_end": {"state": "2026-09-13 14:00:00"},
+            "input_number.load_optimizer_special_price_window_price": {"state": "0"},
+            "input_text.load_optimizer_special_price_window_label": {"state": "Octopus free hour"},
+        }
+        source.side_effect = lambda _token, entity_id: states.get(entity_id)
+
+        result = special_price_window(
+            "token",
+            timezone_name="Europe/London",
+            reference_utc=datetime(2026, 9, 12, 10, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(result["status"], "scheduled")
+        self.assertEqual(result["start"], "2026-09-13T12:00:00+00:00")
+        self.assertEqual(result["price_p_per_kwh"], 0)
+        self.assertEqual(result["source"], "manual_special_price_window")
+        self.assertEqual(publish.call_args.args[1], "sensor.load_optimizer_special_price_window")
 
 
 class CurrentTariffPeriodTests(unittest.TestCase):
