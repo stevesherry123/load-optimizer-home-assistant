@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from load_optimizer.app.costing import (
     _negative_power_window_fit,
     estimate_cycle_cost,
+    operational_overnight_window,
     overlay_price_window,
     parse_ai_feed,
     parse_structured_rates,
@@ -714,6 +715,73 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(result["daytime_comparison"]["saving_vs_now_pence"], 15.0)
         self.assertEqual(result["comparison_candidate_count"], 2)
 
+    def test_operational_overnight_window_uses_the_current_night_after_start(self):
+        window_start, window_end = operational_overnight_window(
+            datetime(2026, 9, 17, 22, 51, tzinfo=timezone.utc),
+            "20:00",
+            "07:00",
+            "Europe/London",
+        )
+
+        self.assertEqual(window_start, datetime(2026, 9, 17, 19, 0, tzinfo=timezone.utc))
+        self.assertEqual(window_end, datetime(2026, 9, 18, 6, 0, tzinfo=timezone.utc))
+
+    def test_operational_overnight_window_uses_upcoming_night_during_daytime(self):
+        window_start, window_end = operational_overnight_window(
+            datetime(2026, 9, 18, 10, 0, tzinfo=timezone.utc),
+            "20:00",
+            "07:00",
+            "Europe/London",
+        )
+
+        self.assertEqual(window_start, datetime(2026, 9, 18, 19, 0, tzinfo=timezone.utc))
+        self.assertEqual(window_end, datetime(2026, 9, 19, 6, 0, tzinfo=timezone.utc))
+
+    def test_late_evening_overnight_recommendation_cannot_roll_into_following_evening(self):
+        reference = datetime(2026, 9, 17, 22, 51, tzinfo=timezone.utc)
+        period_start = datetime(2026, 9, 17, 22, 30, tzinfo=timezone.utc)
+        periods = []
+        for index in range(51):
+            start = period_start + timedelta(minutes=30 * index)
+            periods.append({
+                "start": start,
+                "end": start + timedelta(minutes=30),
+                "price_p_per_kwh": 1 if start >= datetime(2026, 9, 18, 19, 0, tzinfo=timezone.utc) else 10,
+            })
+        model = {
+            **self.model,
+            "program": "Quick45",
+            "expected_runtime_minutes": 30,
+        }
+        policy = {
+            "program": "Quick45",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": False,
+            "preference_rank": 1,
+            "estimated_overhead_cost_pence": 0,
+        }
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=reference,
+            search_hours=24,
+            candidate_interval_minutes=30,
+            overnight_start="20:00",
+            overnight_end="07:00",
+            schedule_timezone="Europe/London",
+        )
+
+        recommendation = result["overnight_recommendation"]
+        self.assertEqual(recommendation["start"], "2026-09-17T23:00:00+00:00")
+        self.assertLess(
+            datetime.fromisoformat(recommendation["start"]),
+            datetime.fromisoformat(result["operational_overnight_end"]),
+        )
+        self.assertEqual(result["operational_overnight_end"], "2026-09-18T06:00:00+00:00")
+
     def test_recommendation_includes_frontend_intents(self):
         model = {**self.model, "expected_runtime_minutes": 30}
         policy = {
@@ -829,7 +897,8 @@ class CostEstimationTests(unittest.TestCase):
         self.assertEqual(super_now["cost_pence"], 30.0)
         overnight_options = result["overnight_recommendation"]["program_options"]
         self.assertEqual({item["program"] for item in overnight_options}, {"Quick45", "Super60"})
-        self.assertEqual(overnight_options[0]["start"], "2026-07-06T20:00:00+00:00")
+        self.assertEqual(overnight_options[0]["start"], "2026-07-06T01:00:00+00:00")
+        self.assertEqual(result["operational_overnight_end"], "2026-07-06T08:00:00+00:00")
         display_options = result["now_recommendation"]["display_program_options"]
         self.assertEqual(
             {item["program"] for item in display_options},

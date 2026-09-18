@@ -25,7 +25,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "0.8.89"
+APP_VERSION = "0.8.90"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -1530,6 +1530,8 @@ def schedule_advice(
             "start": result.get("overnight_start"),
             "end": result.get("overnight_end"),
             "timezone": result.get("schedule_timezone"),
+            "operational_start": result.get("operational_overnight_start"),
+            "operational_end": result.get("operational_overnight_end"),
         },
         "schedule_earliest_start_entity": result.get("schedule_earliest_start_entity"),
         "schedule_latest_finish_entity": result.get("schedule_latest_finish_entity"),
@@ -1586,6 +1588,8 @@ def publish_cost_entities(
         "blocked_window_count": result.get("blocked_window_count", 0),
         "blocked_window_candidate_count": result.get("blocked_window_candidate_count", 0),
         "special_price_window": result.get("special_price_window"),
+        "operational_overnight_start": result.get("operational_overnight_start"),
+        "operational_overnight_end": result.get("operational_overnight_end"),
         "decision_policy": result.get("decision_policy"),
     }
     if publish_diagnostics:
@@ -1703,6 +1707,8 @@ def publish_cost_entities(
                     "start": result.get("overnight_start"),
                     "end": result.get("overnight_end"),
                     "timezone": result.get("schedule_timezone"),
+                    "operational_start": result.get("operational_overnight_start"),
+                    "operational_end": result.get("operational_overnight_end"),
                 },
                 "constraints": {
                     "earliest_allowed_start": result.get("earliest_allowed_start"),

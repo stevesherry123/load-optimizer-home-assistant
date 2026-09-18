@@ -400,6 +400,54 @@ def in_time_window(value: datetime, start: str, end: str, timezone_name: str) ->
     return current_minutes >= start_minutes or current_minutes < end_minutes
 
 
+def operational_overnight_window(
+    reference_utc: datetime,
+    start: str,
+    end: str,
+    timezone_name: str,
+) -> tuple[datetime, datetime]:
+    """Return the single current or next local overnight window in UTC."""
+    if reference_utc.tzinfo is None or reference_utc.utcoffset() is None:
+        raise ValueError("reference_utc must be timezone-aware")
+    try:
+        local_timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError(f"Unknown schedule timezone: {timezone_name}") from error
+    local = reference_utc.astimezone(local_timezone)
+    start_hour, start_minute = parse_clock(start)
+    end_hour, end_minute = parse_clock(end)
+    current_minutes = local.hour * 60 + local.minute
+    start_minutes = start_hour * 60 + start_minute
+    end_minutes = end_hour * 60 + end_minute
+    start_today = local.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+    end_today = local.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+
+    if start_minutes == end_minutes:
+        window_start = start_today if local >= start_today else start_today - timedelta(days=1)
+        window_end = window_start + timedelta(days=1)
+    elif start_minutes > end_minutes:
+        if current_minutes >= start_minutes:
+            window_start = start_today
+            window_end = end_today + timedelta(days=1)
+        elif current_minutes < end_minutes:
+            window_start = start_today - timedelta(days=1)
+            window_end = end_today
+        else:
+            window_start = start_today
+            window_end = end_today + timedelta(days=1)
+    elif start_minutes <= current_minutes < end_minutes:
+        window_start = start_today
+        window_end = end_today
+    elif current_minutes < start_minutes:
+        window_start = start_today
+        window_end = end_today
+    else:
+        window_start = start_today + timedelta(days=1)
+        window_end = end_today + timedelta(days=1)
+
+    return window_start.astimezone(timezone.utc), window_end.astimezone(timezone.utc)
+
+
 def candidate_window_score(candidate: dict, preference: str) -> int:
     if preference == "prefer_overnight":
         return 0 if candidate.get("is_overnight_start") else 1
@@ -1192,7 +1240,27 @@ def recommend_cycle(
         now_cost = None
         now_breakdown = []
         now_operating_breakdown = None
-    best_overnight = best_window_candidate(comparison_candidates, overnight=True)
+    operational_overnight_start, operational_overnight_end = operational_overnight_window(
+        reference_utc,
+        overnight_start,
+        overnight_end,
+        schedule_timezone,
+    )
+    operational_overnight_candidates = [
+        candidate for candidate in comparison_candidates
+        if (
+            candidate.get("is_overnight_start")
+            and max(reference_utc, operational_overnight_start) <= candidate["start"] < operational_overnight_end
+        )
+    ]
+    operational_overnight_display_candidates = [
+        candidate for candidate in display_candidates
+        if (
+            candidate.get("is_overnight_start")
+            and max(reference_utc, operational_overnight_start) <= candidate["start"] < operational_overnight_end
+        )
+    ]
+    best_overnight = best_window_candidate(operational_overnight_candidates, overnight=True)
     best_daytime = best_window_candidate(comparison_candidates, overnight=False)
     greenest = best_green_candidate(comparison_candidates)
     immediate_candidate = min(
@@ -1231,7 +1299,7 @@ def recommend_cycle(
         intent="soon",
     )
     overnight_program_options = summarize_program_options(
-        comparison_candidates,
+        operational_overnight_candidates,
         reference_utc=reference_utc,
         now_cost=now_cost,
         intent="overnight",
@@ -1261,7 +1329,7 @@ def recommend_cycle(
         intent="soon",
     )
     overnight_display_program_options = summarize_program_options(
-        display_candidates,
+        operational_overnight_display_candidates,
         reference_utc=reference_utc,
         now_cost=now_cost,
         intent="overnight",
@@ -1384,5 +1452,7 @@ def recommend_cycle(
         "window_preference": window_preference,
         "overnight_start": overnight_start,
         "overnight_end": overnight_end,
+        "operational_overnight_start": operational_overnight_start.isoformat(),
+        "operational_overnight_end": operational_overnight_end.isoformat(),
         "schedule_timezone": schedule_timezone,
     }

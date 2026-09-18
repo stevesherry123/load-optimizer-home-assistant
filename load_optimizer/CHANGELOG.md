@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Keep each overnight recommendation inside one concrete local-time night. If
+  the scheduler runs during the overnight window it now considers only the
+  remainder of that night; during daytime it considers only the next window.
+  This prevents a cheaper slot on the following evening from being queued at
+  23:51 while the immediately current overnight window is skipped.
+
 - Add a persistent manual special-price window with start, end, price, label,
   dashboard controls, and an app-published validation/status sensor. The app
   overlays this explicit window onto the tariff forecast without modifying the
