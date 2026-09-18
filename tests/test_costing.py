@@ -89,6 +89,51 @@ class NegativePriceSafetyTests(unittest.TestCase):
         self.assertEqual(recommendation["negative_window_end"], (start + timedelta(hours=1)).isoformat())
         self.assertEqual(recommendation["finish"], (start + timedelta(hours=2)).isoformat())
 
+    def test_negative_price_bypasses_normal_program_cooldown_only_for_negative_intent(self):
+        start = datetime(2026, 7, 28, tzinfo=timezone.utc)
+        model = {
+            "program": "Intensive",
+            "representative_profile_w": [1400, 1200, 100],
+            "expected_runtime_minutes": 30,
+            "expected_energy_kwh": 1.2,
+            "confidence": 90,
+            "last_seen": (start - timedelta(minutes=10)).isoformat(),
+        }
+        policy = {
+            "program": "Intensive",
+            "enabled": True,
+            "allow_normal_recommendation": True,
+            "allow_negative_price_run": True,
+            "preference_rank": 1,
+            "negative_price_priority": 100,
+            "minimum_hours_between_runs": 48,
+            "maximum_runs_per_window": 2,
+        }
+        periods = [{
+            "start": start,
+            "end": start + timedelta(hours=2),
+            "price_p_per_kwh": -5,
+        }]
+
+        result = recommend_cycle(
+            [model],
+            [policy],
+            periods,
+            reference_utc=start,
+            search_hours=1,
+            candidate_interval_minutes=30,
+        )
+
+        negative = result["negative_price_recommendation"]
+        self.assertEqual(negative["status"], "ready")
+        self.assertEqual(negative["program"], "Intensive")
+        self.assertTrue(negative["cooldown_bypassed_for_negative_price"])
+        self.assertEqual(result["now_recommendation"]["status"], "not_ready")
+        self.assertEqual(result["soon_recommendation"]["status"], "not_ready")
+        diagnostic = result["program_diagnostics"][0]
+        self.assertGreater(diagnostic["negative_cooldown_bypass_points"], 0)
+        self.assertGreater(diagnostic["rejected_cooldown_points"], 0)
+
     def test_maximum_runs_per_negative_window_is_enforced(self):
         start = datetime(2026, 7, 28, tzinfo=timezone.utc)
         model = {

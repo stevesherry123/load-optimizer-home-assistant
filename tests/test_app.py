@@ -155,6 +155,41 @@ class VersionTests(unittest.TestCase):
             self.assertNotIn("entity_id: input_text.load_optimizer_1_requested_program", block[commit:])
             self.assertNotIn("entity_id: input_datetime.load_optimizer_1_requested_start", block[commit:])
 
+    def test_dishwasher_automatic_requests_are_not_blocked_by_other_active_captures(self):
+        root = Path(__file__).resolve().parents[1]
+        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
+
+        for automation_id in (
+            "load_optimizer_1_auto_negative_price_request",
+            "load_optimizer_1_auto_normal_request",
+        ):
+            block = package.split(f"  - id: {automation_id}\n", 1)[1].split("\n  - id:", 1)[0]
+            self.assertNotIn("sensor.load_optimizer_restart_safety", block, automation_id)
+            self.assertIn("sensor.load_optimizer_1_cycle_state", block, automation_id)
+
+        readiness = package.split("      - name: Load Optimizer 1 Overnight Readiness\n", 1)[1].split(
+            "\n      - name: Load Optimizer 1 Remote Activation Check",
+            1,
+        )[0]
+        negative_readiness = package.split(
+            "      - name: Load Optimizer 1 Free / Negative Price Readiness\n",
+            1,
+        )[1].split("\nautomation:", 1)[0]
+        self.assertNotIn("sensor.load_optimizer_restart_safety", readiness)
+        self.assertNotIn("sensor.load_optimizer_restart_safety", negative_readiness)
+        self.assertIn("not negative_price_mode", package)
+
+    def test_explicit_start_now_bypasses_only_historical_door_gate(self):
+        root = Path(__file__).resolve().parents[1]
+        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
+
+        self.assertIn("load_optimizer_1_explicit_program_override:", package)
+        self.assertIn("and is_state('input_boolean.load_optimizer_1_explicit_program_override', 'on')", package)
+        self.assertIn("not explicit_program_now\n           and not door_opened_since_last_cycle", package)
+        self.assertIn("manual_now_override: >-\n        {{ explicit_program_now", package)
+        self.assertIn("and states(bosch_door_sensor) == 'off'", package)
+        self.assertIn("and states(bosch_remote_start_sensor) == 'on'", package)
+
 
 class StatusHeartbeatTests(unittest.TestCase):
     @patch("load_optimizer.app.main.publish_entity")

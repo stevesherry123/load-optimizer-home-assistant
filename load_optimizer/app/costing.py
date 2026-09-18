@@ -625,6 +625,10 @@ def summarize_decision(
         "energy_kwh": candidate.get("energy_kwh"),
         "confidence": candidate.get("confidence"),
         "negative_price_run": candidate.get("negative_price_run"),
+        "cooldown_bypassed_for_negative_price": candidate.get(
+            "cooldown_bypassed_for_negative_price",
+            False,
+        ),
         "power_hungry_window_fits_negative_price": candidate.get("negative_power_window", {}).get("fits"),
         "power_hungry_window_reason": candidate.get("negative_power_window", {}).get("reason"),
         "negative_window_start": candidate.get("negative_power_window", {}).get("window_start"),
@@ -667,6 +671,10 @@ def summarize_program_option(candidate: dict, reference_utc: datetime, now_cost:
         "preference_rank": candidate.get("preference_rank"),
         "negative_price_priority": candidate.get("negative_price_priority"),
         "negative_price_run": candidate.get("negative_price_run"),
+        "cooldown_bypassed_for_negative_price": candidate.get(
+            "cooldown_bypassed_for_negative_price",
+            False,
+        ),
         "energy_kwh_per_minute": candidate.get("energy_kwh_per_minute"),
         "is_overnight_start": candidate.get("is_overnight_start"),
         "is_daytime_start": candidate.get("is_daytime_start"),
@@ -909,6 +917,7 @@ def forecast_cycle_costs(
             "priced_points": 0,
             "rejected_points": 0,
             "rejected_cooldown_points": 0,
+            "negative_cooldown_bypass_points": 0,
             "rejected_blocked_points": 0,
             "rejected_negative_power_window_points": 0,
             "runtime_minutes": model.get("expected_runtime_minutes"),
@@ -940,10 +949,7 @@ def forecast_cycle_costs(
         start = start_at
         while start <= forecast_end:
             diagnostic["candidate_points"] += 1
-            if cooldown_until and start < cooldown_until:
-                diagnostic["rejected_cooldown_points"] += 1
-                start += timedelta(minutes=forecast_interval_minutes)
-                continue
+            cooldown_active = bool(cooldown_until and start < cooldown_until)
             finish = start + timedelta(minutes=float(model["expected_runtime_minutes"]))
             probe = {"start": start, "finish": finish}
             if candidate_overlaps_windows(probe, blocked_windows or []):
@@ -964,7 +970,12 @@ def forecast_cycle_costs(
             negative_eligible = policy["allow_negative_price_run"] and negative_fit["fits"]
             if policy["allow_negative_price_run"] and not negative_fit["fits"]:
                 diagnostic["rejected_negative_power_window_points"] += 1
-            if policy["allow_normal_recommendation"] or negative_eligible:
+            normal_eligible = bool(policy["allow_normal_recommendation"] and not cooldown_active)
+            if cooldown_active:
+                diagnostic["rejected_cooldown_points"] += 1
+                if negative_eligible:
+                    diagnostic["negative_cooldown_bypass_points"] += 1
+            if normal_eligible or negative_eligible:
                 estimate = apply_operating_costs(estimate, policy)
                 diagnostic["priced_points"] += 1
                 is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
@@ -980,6 +991,7 @@ def forecast_cycle_costs(
                     "is_overnight_start": is_overnight,
                     "is_daytime_start": not is_overnight,
                     "negative_price_run": negative_eligible,
+                    "cooldown_bypassed_for_negative_price": cooldown_active and negative_eligible,
                     "negative_power_window": negative_fit,
                 }
                 candidates.append(annotate_green_context(candidate, green_windows or []))
@@ -1033,6 +1045,7 @@ def recommend_cycle(
     excluded = set(excluded_programs or [])
     candidates = []
     comparison_candidates = []
+    normal_candidates = []
     display_candidates = []
     negative_candidates = []
     rejected_profiles = 0
@@ -1055,6 +1068,7 @@ def recommend_cycle(
             "display_priced_points": 0,
             "rejected_constraints": 0,
             "rejected_cooldown_points": 0,
+            "negative_cooldown_bypass_points": 0,
             "rejected_blocked_points": 0,
             "rejected_unpriced_points": 0,
             "rejected_negative_power_window_points": 0,
@@ -1094,11 +1108,7 @@ def recommend_cycle(
                 diagnostic["rejected_constraints"] += 1
                 start += timedelta(minutes=candidate_interval_minutes)
                 continue
-            if cooldown_until and start < cooldown_until:
-                rejected_cooldowns += 1
-                diagnostic["rejected_cooldown_points"] += 1
-                start += timedelta(minutes=candidate_interval_minutes)
-                continue
+            cooldown_active = bool(cooldown_until and start < cooldown_until)
             if candidate_overlaps_windows({"start": start, "finish": finish}, blocked_windows or []):
                 rejected_blocked += 1
                 diagnostic["rejected_blocked_points"] += 1
@@ -1124,7 +1134,13 @@ def recommend_cycle(
                     diagnostic["rejected_negative_run_limit_points"] += 1
                     rejected_negative_run_limits += 1
             estimate = apply_operating_costs(estimate, policy)
-            automatic_eligible = bool(policy["allow_normal_recommendation"] or negative_eligible)
+            normal_eligible = bool(policy["allow_normal_recommendation"] and not cooldown_active)
+            automatic_eligible = bool(normal_eligible or negative_eligible)
+            if cooldown_active:
+                rejected_cooldowns += 1
+                diagnostic["rejected_cooldown_points"] += 1
+                if negative_eligible:
+                    diagnostic["negative_cooldown_bypass_points"] += 1
             candidate = {
                 "program": model["program"],
                 "start": start,
@@ -1145,6 +1161,7 @@ def recommend_cycle(
                 "preference_rank": policy["preference_rank"],
                 "negative_price_priority": policy.get("negative_price_priority", 50),
                 "negative_price_run": negative_eligible,
+                "cooldown_bypassed_for_negative_price": cooldown_active and negative_eligible,
                 "negative_power_window": negative_fit,
                 "energy_kwh_per_minute": round(estimate["energy_kwh"] / float(model["expected_runtime_minutes"]), 6),
                 "is_overnight_start": is_overnight,
@@ -1152,7 +1169,7 @@ def recommend_cycle(
                 "automatic_eligible": automatic_eligible,
                 "eligibility_reason": (
                     "normal_recommendation"
-                    if policy["allow_normal_recommendation"]
+                    if normal_eligible
                     else ("negative_price" if negative_eligible else "manual_only")
                 ),
             }
@@ -1162,12 +1179,14 @@ def recommend_cycle(
             if automatic_eligible:
                 diagnostic["priced_points"] += 1
                 comparison_candidates.append(candidate)
+                if normal_eligible:
+                    normal_candidates.append(candidate)
                 if negative_eligible:
                     negative_candidates.append(candidate)
-                if window_preference == "overnight_only" and not is_overnight:
+                if not negative_eligible and window_preference == "overnight_only" and not is_overnight:
                     start += timedelta(minutes=candidate_interval_minutes)
                     continue
-                if window_preference == "daytime_only" and not is_daytime:
+                if not negative_eligible and window_preference == "daytime_only" and not is_daytime:
                     start += timedelta(minutes=candidate_interval_minutes)
                     continue
                 candidates.append(candidate)
@@ -1247,7 +1266,7 @@ def recommend_cycle(
         schedule_timezone,
     )
     operational_overnight_candidates = [
-        candidate for candidate in comparison_candidates
+        candidate for candidate in normal_candidates
         if (
             candidate.get("is_overnight_start")
             and max(reference_utc, operational_overnight_start) <= candidate["start"] < operational_overnight_end
@@ -1261,15 +1280,15 @@ def recommend_cycle(
         )
     ]
     best_overnight = best_window_candidate(operational_overnight_candidates, overnight=True)
-    best_daytime = best_window_candidate(comparison_candidates, overnight=False)
-    greenest = best_green_candidate(comparison_candidates)
+    best_daytime = best_window_candidate(normal_candidates, overnight=False)
+    greenest = best_green_candidate(normal_candidates)
     immediate_candidate = min(
-        comparison_candidates,
+        normal_candidates,
         key=lambda item: (abs((item["start"] - reference_utc).total_seconds()), item["total_cost_pence"], item["preference_rank"]),
-    )
+    ) if normal_candidates else None
     soon_end = reference_utc + timedelta(hours=2)
     soon_candidates = [
-        candidate for candidate in comparison_candidates
+        candidate for candidate in normal_candidates
         if reference_utc <= candidate["start"] <= soon_end
     ]
     best_soon = min(
@@ -1287,13 +1306,13 @@ def recommend_cycle(
         ),
     ) if negative_candidates else None
     now_program_options = summarize_program_options(
-        comparison_candidates,
+        normal_candidates,
         reference_utc=reference_utc,
         now_cost=now_cost,
         intent="now",
     )
     soon_program_options = summarize_program_options(
-        comparison_candidates,
+        normal_candidates,
         reference_utc=reference_utc,
         now_cost=now_cost,
         intent="soon",
@@ -1311,7 +1330,7 @@ def recommend_cycle(
         intent="negative_price",
     )
     greenest_program_options = summarize_program_options(
-        comparison_candidates,
+        normal_candidates,
         reference_utc=reference_utc,
         now_cost=now_cost,
         intent="greenest",

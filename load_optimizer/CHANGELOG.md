@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Treat free and negative-price runs as explicit exceptions to normal program
+  cooldowns. A qualifying high-power window may now select a recently used
+  program without making it eligible for ordinary Now, Soon, Overnight, or
+  Greenest recommendations. Keep the physical Bosch door, connection, remote
+  start, per-window run limit, and dishwasher-idle gates in force.
+- Make unattended dishwasher readiness appliance-specific. Active learning on
+  a washing machine or robo-vac continues to block Load Optimizer restarts and
+  updates, but no longer prevents an otherwise safe dishwasher request.
+- Treat an explicitly selected program submitted with **Start Selected Program
+  Now** as a direct household command. It bypasses the historical door-opened
+  flag while retaining the physical closed-door, connection, remote-start,
+  dishwasher-idle, and Bosch program-selectability checks. Engine-selected Now
+  requests retain the historical door-opened safeguard.
+
 - Add an optional side-by-side `Load Optimizer Lab` dashboard design with six
   views covering household controls, concrete overnight boundaries, every
   recommendation and cost statistic, learning models, Bosch/automation safety,

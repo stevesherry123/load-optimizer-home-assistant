@@ -25,7 +25,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "0.8.90"
+APP_VERSION = "0.8.91"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -34,7 +34,7 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.89"
+DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.91"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -1804,6 +1804,10 @@ def publish_cost_entities(
             "blocked_by_active_capture": cycle_running and recommendation_ready,
             "active_cycle_start": active_cycle_start,
             "negative_price_run": recommendation.get("negative_price_run"),
+            "cooldown_bypassed_for_negative_price": recommendation.get(
+                "cooldown_bypassed_for_negative_price",
+                False,
+            ),
             "power_hungry_window_fits_negative_price": recommendation.get("power_hungry_window_fits_negative_price"),
             "power_hungry_window_reason": recommendation.get("power_hungry_window_reason"),
             "negative_window_start": recommendation.get("negative_window_start"),
