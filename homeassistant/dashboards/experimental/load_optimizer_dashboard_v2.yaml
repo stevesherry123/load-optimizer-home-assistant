@@ -1,0 +1,864 @@
+# Load Optimizer dashboard v2 design lab.
+#
+# This is intentionally separate from the production dashboard. Install it as
+# an additional YAML dashboard while the layout and wording are refined.
+# Requires the Dishwasher 1 automation package 0.8.89 and Load Optimizer 0.8.90.
+
+title: Load Optimizer Lab
+views:
+  - title: Tonight
+    path: tonight
+    icon: mdi:home-lightning-bolt-outline
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        column_span: 3
+        cards:
+          - type: markdown
+            title: What happens next?
+            grid_options:
+              columns: full
+            content: >-
+              {% set cycle = states('sensor.load_optimizer_1_cycle_state') %}
+              {% set mode = states('input_select.load_optimizer_1_requested_mode') %}
+              {% set program = states('input_text.load_optimizer_1_requested_program') %}
+              {% set start = states('input_datetime.load_optimizer_1_requested_start') %}
+              {% set finish = states('input_datetime.load_optimizer_1_requested_finish') %}
+              {% set message = states('input_text.load_optimizer_1_scheduler_message') %}
+              {% set empty = ['unknown', 'unavailable', 'none', '', '—'] %}
+              {% if cycle == 'running' %}
+              # 🟦 Dishwasher running
+              **Program:** {{ states('sensor.load_optimizer_1_program') }}  
+              **Power:** {{ states('sensor.load_optimizer_1_power') }} W  
+              **Bosch state:** {{ state_attr('sensor.load_optimizer_1_execution_status', 'bosch_operation_state') or 'unknown' }}
+              {% elif mode not in empty %}
+              # 🟠 A run is committed
+              **Mode:** {{ mode | replace('_', ' ') | title }}  
+              **Program:** {{ program if program not in empty else 'engine selection' }}  
+              **Start:** {{ (start | as_datetime | as_local).strftime('%a %d %b at %H:%M') if start not in empty else 'not set' }}  
+              **Expected finish:** {{ (finish | as_datetime | as_local).strftime('%a %d %b at %H:%M') if finish not in empty else 'not set' }}  
+              **Plan protection:** {{ states('sensor.load_optimizer_1_automatic_plan_resilience') }}
+              {% else %}
+              # ⚪ No run is currently committed
+              **Tonight's recommendation:** {{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'program') or 'not available' }}  
+              **Suggested start:** {% set rec_start = state_attr('sensor.load_optimizer_1_overnight_recommendation', 'start') %}{{ (rec_start | as_datetime | as_local).strftime('%a %d %b at %H:%M') if rec_start else 'not scheduled' }}  
+              **Automatic overnight:** {{ states('input_boolean.load_optimizer_1_auto_mode_enabled') }}
+              {% endif %}
+
+              {% if message not in empty %}**Scheduler says:** {{ message }}{% endif %}
+
+          - type: markdown
+            title: Tonight's boundary
+            content: >-
+              {% set source = 'sensor.load_optimizer_1_cost_status' %}
+              {% set start = state_attr(source, 'operational_overnight_start') %}
+              {% set end = state_attr(source, 'operational_overnight_end') %}
+              {% set finish = states('input_datetime.load_optimizer_1_requested_finish') %}
+              {% set queued = states('input_select.load_optimizer_1_requested_mode') %}
+              {% set overrun = queued != 'none' and finish not in ['unknown', 'unavailable', 'none', ''] and end and as_timestamp(as_datetime(finish), 0) > as_timestamp(as_datetime(end), 0) %}
+              **Operational night:**  
+              {{ (start | as_datetime | as_local).strftime('%a %d %b %H:%M') if start else 'unknown' }} →
+              {{ (end | as_datetime | as_local).strftime('%a %d %b %H:%M') if end else 'unknown' }}
+
+              **Window currently active:** {{ states('sensor.load_optimizer_1_overnight_window_active') }}  
+              **Queued finish:** {{ (finish | as_datetime | as_local).strftime('%a %d %b %H:%M') if finish not in ['unknown', 'unavailable', 'none', ''] else 'none' }}
+
+              {% if overrun %}
+              ## ⚠️ The committed cycle knowingly finishes after the overnight boundary
+              {% else %}
+              **Boundary check:** {{ 'within the operational night' if queued != 'none' else 'no committed plan to check' }}
+              {% endif %}
+
+          - type: entities
+            title: Household controls
+            show_header_toggle: false
+            entities:
+              - entity: input_boolean.load_optimizer_1_auto_mode_enabled
+                name: Automatic Overnight
+              - entity: input_boolean.load_optimizer_1_auto_negative_price_enabled
+                name: Auto Free / Negative Price
+              - entity: input_boolean.load_optimizer_1_door_opened_since_last_cycle
+                name: Reloaded Since Last Cycle
+              - entity: input_datetime.load_optimizer_1_must_finish_by
+                name: Must Finish By
+
+          - type: horizontal-stack
+            cards:
+              - type: button
+                entity: input_button.load_optimizer_1_request_now
+                name: Start Now
+                icon: mdi:play-circle
+                tap_action:
+                  action: perform-action
+                  perform_action: input_button.press
+                  target:
+                    entity_id: input_button.load_optimizer_1_request_now
+              - type: button
+                entity: input_button.load_optimizer_1_request_soon
+                name: Soon
+                icon: mdi:clock-fast
+                tap_action:
+                  action: perform-action
+                  perform_action: input_button.press
+                  target:
+                    entity_id: input_button.load_optimizer_1_request_soon
+              - type: button
+                entity: input_button.load_optimizer_1_request_overnight
+                name: Overnight
+                icon: mdi:weather-night
+                tap_action:
+                  action: perform-action
+                  perform_action: input_button.press
+                  target:
+                    entity_id: input_button.load_optimizer_1_request_overnight
+              - type: button
+                entity: input_button.load_optimizer_1_cancel_schedule
+                name: Cancel
+                icon: mdi:cancel
+                tap_action:
+                  action: perform-action
+                  perform_action: input_button.press
+                  target:
+                    entity_id: input_button.load_optimizer_1_cancel_schedule
+
+          - type: markdown
+            title: Automatic run readiness
+            content: >-
+              {% set overnight = 'sensor.load_optimizer_1_overnight_readiness' %}
+              {% set negative = 'sensor.load_optimizer_1_negative_price_readiness' %}
+              {% set icons = {'green': '🟢', 'amber': '🟠', 'red': '🔴'} %}
+              ## {{ icons.get(states(overnight), '⚪') }} Overnight — {{ states(overnight) | upper }}
+              **Program:** {{ state_attr(overnight, 'program') or 'none' }}  
+              **Confidence:** {{ state_attr(overnight, 'confidence') or 0 }}% / {{ state_attr(overnight, 'confidence_threshold') or 20 }}%  
+              **Blockers:** {{ (state_attr(overnight, 'blockers') or []) | join(', ') or 'none' }}  
+              **Waiting:** {{ (state_attr(overnight, 'warnings') or []) | join(', ') or 'none' }}
+
+              ## {{ icons.get(states(negative), '⚪') }} Free / negative — {{ states(negative) | upper }}
+              **Program:** {{ state_attr(negative, 'program') or 'none' }}  
+              **Runs in window:** {{ state_attr(negative, 'runs_in_window') or 0 }} / {{ state_attr(negative, 'maximum_runs_per_window') or 'unlimited' }}  
+              **Blockers:** {{ (state_attr(negative, 'blockers') or []) | join(', ') or 'none' }}  
+              **Waiting:** {{ (state_attr(negative, 'warnings') or []) | join(', ') or 'none' }}
+
+          - type: entities
+            title: Live appliance
+            entities:
+              - entity: sensor.load_optimizer_1_cycle_state
+                name: Cycle State
+              - entity: sensor.load_optimizer_1_program
+                name: Program
+              - entity: sensor.load_optimizer_1_power
+                name: Power
+              - entity: sensor.load_optimizer_1_energy
+                name: Energy Meter
+              - entity: sensor.load_optimizer_1_peak_power
+                name: Cycle Peak Power
+              - entity: sensor.load_optimizer_1_remote_activation_check
+                name: Remote Activation
+              - entity: sensor.load_optimizer_restart_safety
+                name: Restart Safety
+              - entity: sensor.load_optimizer_1_data_freshness
+                name: Data Freshness
+
+          - type: entities
+            title: Current recommendation
+            entities:
+              - entity: sensor.load_optimizer_1_schedule_status
+                name: Schedule Status
+              - entity: sensor.load_optimizer_1_recommended_program
+                name: Program
+              - entity: sensor.load_optimizer_1_recommended_start
+                name: Start
+              - entity: sensor.load_optimizer_1_recommended_finish
+                name: Finish
+              - entity: sensor.load_optimizer_1_estimated_scheduled_cost
+                name: Estimated Cost
+              - entity: sensor.load_optimizer_1_good_to_start
+                name: Good To Start
+              - entity: sensor.load_optimizer_1_cost_confidence
+                name: Confidence
+
+          - type: entities
+            title: Component health
+            entities:
+              - entity: sensor.load_optimizer_status
+                name: App
+              - entity: sensor.load_optimizer_1_automation_package_status
+                name: Automation Package
+              - entity: sensor.load_optimizer_diagnostics
+                name: Diagnostics
+              - entity: sensor.load_optimizer_1_execution_lifecycle
+                name: Execution Lifecycle
+
+  - title: Plans & Price
+    path: plans-price
+    icon: mdi:calendar-cash
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        column_span: 3
+        cards:
+          - type: custom:apexcharts-card
+            grid_options:
+              columns: full
+            header:
+              show: true
+              title: Import Price Forecast
+              show_states: true
+              colorize_states: true
+            graph_span: 48h
+            span:
+              start: hour
+            now:
+              show: true
+              label: Now
+              color: "#0ea5e9"
+            experimental:
+              color_threshold: true
+            apex_config:
+              chart:
+                height: 320
+              stroke:
+                curve: stepline
+                width: 2
+              xaxis:
+                labels:
+                  datetimeUTC: false
+              yaxis:
+                - min: |
+                    EVAL:function(min) { return Math.min(0, min); }
+                  decimalsInFloat: 2
+                  title:
+                    text: p/kWh
+              annotations:
+                yaxis:
+                  - "y": 0
+                    borderColor: "#16a34a"
+                    strokeDashArray: 4
+                    label:
+                      text: Free / paid
+            all_series_config:
+              type: area
+              unit: p/kWh
+              float_precision: 2
+            series:
+              - entity: sensor.load_optimizer_1_current_energy_price
+                name: Current
+                type: line
+                show:
+                  in_chart: false
+                  in_header: true
+                transform: return Number(x);
+              - entity: sensor.load_optimizer_status
+                name: Forecast
+                show:
+                  in_header: false
+                color_threshold:
+                  - value: -50
+                    color: "#00b050"
+                  - value: 0
+                    color: "#00b050"
+                  - value: 15
+                    color: "#92d050"
+                  - value: 25
+                    color: "#ffc000"
+                  - value: 35
+                    color: "#ff8000"
+                  - value: 50
+                    color: "#c00000"
+                data_generator: |
+                  const status = hass.states['sensor.load_optimizer_1_cost_status'];
+                  const ids = String(status?.attributes?.tariff_entities || status?.attributes?.tariff_entity || '')
+                    .split(',').map(value => value.trim()).filter(Boolean);
+                  const points = new Map();
+                  let lastEnd = null;
+                  for (const id of ids) {
+                    for (const row of (hass.states[id]?.attributes?.rates || [])) {
+                      const start = new Date(row.start || row.valid_from || row.from).getTime();
+                      const end = new Date(row.end || row.valid_to || row.to).getTime();
+                      let price = Number(row.price_p_per_kwh ?? row.value_inc_vat ?? row.value ?? row.price);
+                      if (row.price_p_per_kwh === undefined) price *= 100;
+                      if (!Number.isFinite(start) || !Number.isFinite(price)) continue;
+                      points.set(start, [start, price]);
+                      if (Number.isFinite(end)) {
+                        points.set(end, [end, price]);
+                        lastEnd = Math.max(lastEnd || end, end);
+                      }
+                    }
+                  }
+                  const result = Array.from(points.values()).sort((a, b) => a[0] - b[0]);
+                  if (result.length && Number.isFinite(lastEnd)) result.push([lastEnd + 1, null]);
+                  return result;
+
+          - type: markdown
+            title: Recommendation comparison
+            content: >-
+              {% set intents = [
+                ('Now', 'sensor.load_optimizer_1_now_recommendation'),
+                ('Soon', 'sensor.load_optimizer_1_soon_recommendation'),
+                ('Overnight', 'sensor.load_optimizer_1_overnight_recommendation'),
+                ('Free / negative', 'sensor.load_optimizer_1_negative_price_recommendation'),
+                ('Greenest', 'sensor.load_optimizer_1_greenest_recommendation')
+              ] %}
+              | Intent | Status / program | Start | Finish | Cost | Saving | Confidence |
+              |---|---|---:|---:|---:|---:|---:|
+              {% for label, entity in intents %}
+              {% set start = state_attr(entity, 'start') %}{% set finish = state_attr(entity, 'finish') %}{% set cost = state_attr(entity, 'cost_pence') %}{% set saving = state_attr(entity, 'saving_vs_now_pence') %}
+              | {{ label }} | {{ states(entity) }} | {{ (start | as_datetime | as_local).strftime('%a %H:%M') if start else '—' }} | {{ (finish | as_datetime | as_local).strftime('%a %H:%M') if finish else '—' }} | {{ (cost | round(2)) ~ 'p' if cost is number else '—' }} | {{ (saving | round(2)) ~ 'p' if saving is number else '—' }} | {{ state_attr(entity, 'confidence') or '—' }}% |
+              {% endfor %}
+
+          - type: entities
+            title: Price and forecast statistics
+            entities:
+              - entity: sensor.load_optimizer_1_current_energy_price
+                name: Current Price
+              - entity: sensor.load_optimizer_1_tariff_horizon
+                name: Tariff Horizon
+              - entity: sensor.load_optimizer_1_cost_status
+                name: Cost Engine Status
+              - entity: sensor.load_optimizer_1_cost_if_started_now
+                name: Cost Now
+              - entity: sensor.load_optimizer_1_cheapest_start
+                name: Cheapest Start
+              - entity: sensor.load_optimizer_1_cheapest_cost
+                name: Cheapest Cost
+              - entity: sensor.load_optimizer_1_potential_saving
+                name: Potential Saving
+              - entity: sensor.load_optimizer_1_overnight_cost
+                name: Overnight Cost
+              - entity: sensor.load_optimizer_1_overnight_saving
+                name: Overnight Saving
+              - entity: sensor.load_optimizer_1_daytime_cost
+                name: Daytime Cost
+              - entity: sensor.load_optimizer_1_daytime_saving
+                name: Daytime Saving
+              - entity: sensor.load_optimizer_1_greenest_cost
+                name: Greenest Cost
+              - entity: sensor.load_optimizer_1_greenest_extra_cost
+                name: Greenest Premium
+
+          - type: markdown
+            title: All program options by intent
+            content: >-
+              {% set intents = [
+                ('Now', 'sensor.load_optimizer_1_now_recommendation'),
+                ('Soon', 'sensor.load_optimizer_1_soon_recommendation'),
+                ('Overnight', 'sensor.load_optimizer_1_overnight_recommendation'),
+                ('Free / negative', 'sensor.load_optimizer_1_negative_price_recommendation'),
+                ('Greenest', 'sensor.load_optimizer_1_greenest_recommendation')
+              ] %}
+              {% for label, entity in intents %}
+              ### {{ label }}
+              {% set options = state_attr(entity, 'display_program_options') or state_attr(entity, 'program_options') or [] %}
+              {% if options %}
+              | Program | Start | Finish | Cost | Energy | Confidence |
+              |---|---:|---:|---:|---:|---:|
+              {% for item in options %}
+              | {{ item.program }} | {{ (item.start | as_datetime | as_local).strftime('%a %H:%M') if item.start else '—' }} | {{ (item.finish | as_datetime | as_local).strftime('%a %H:%M') if item.finish else '—' }} | {{ (item.cost_pence | round(2)) ~ 'p' if item.cost_pence is number else '—' }} | {{ (item.energy_kwh | round(3)) ~ ' kWh' if item.energy_kwh is number else '—' }} | {{ item.confidence | default('—') }}% |
+              {% endfor %}
+              {% else %}No options published.{% endif %}
+              {% endfor %}
+
+          - type: entities
+            title: Manual special-price window
+            show_header_toggle: false
+            entities:
+              - entity: input_boolean.load_optimizer_special_price_window_enabled
+                name: Use Window
+              - entity: input_datetime.load_optimizer_special_price_window_start
+                name: Start
+              - entity: input_datetime.load_optimizer_special_price_window_end
+                name: End
+              - entity: input_number.load_optimizer_special_price_window_price
+                name: Price
+              - entity: input_text.load_optimizer_special_price_window_label
+                name: Label
+              - entity: sensor.load_optimizer_special_price_window
+                name: App Validation
+
+          - type: entities
+            title: Constraints and window state
+            entities:
+              - entity: input_datetime.load_optimizer_1_must_finish_by
+                name: Must Finish By
+              - entity: input_button.load_optimizer_1_clear_deadline
+                name: Clear Deadline
+              - entity: sensor.load_optimizer_1_overnight_window_active
+                name: Overnight Window Active
+              - entity: sensor.load_optimizer_1_negative_price_window_active
+                name: Free / Negative Window Active
+              - entity: sensor.load_optimizer_1_greenest_recommendation
+                name: Greenest Recommendation
+              - entity: input_button.load_optimizer_1_recalculate_now
+                name: Recalculate Now
+
+  - title: Learning
+    path: learning
+    icon: mdi:chart-bell-curve-cumulative
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        column_span: 3
+        cards:
+          - type: entities
+            title: Learning totals
+            entities:
+              - entity: sensor.load_optimizer_1_total_runs
+                name: Learned Runs
+              - entity: sensor.load_optimizer_1_learned_programs
+                name: Learned Programs
+              - entity: sensor.load_optimizer_1_program_catalogue
+                name: Catalogue Entries
+              - entity: sensor.load_optimizer_1_discovered_programs
+                name: Unconfigured Discoveries
+              - entity: sensor.load_optimizer_1_program_policies
+                name: Program Policies
+              - entity: sensor.load_optimizer_1_program_capabilities
+                name: Auto-startable Programs
+              - entity: sensor.load_optimizer_1_sample_count
+                name: Current / Last Samples
+
+          - type: entities
+            title: Last completed cycle
+            entities:
+              - entity: sensor.load_optimizer_1_last_program
+                name: Program
+              - entity: sensor.load_optimizer_1_last_runtime
+                name: Runtime
+              - entity: sensor.load_optimizer_1_last_energy
+                name: Energy
+              - entity: sensor.load_optimizer_1_last_finish
+                name: Finished
+              - entity: sensor.load_optimizer_1_last_profile
+                name: Power Profile
+              - entity: sensor.load_optimizer_1_peak_power
+                name: Peak Power
+              - entity: sensor.load_optimizer_1_last_discarded_cycle
+                name: Last Discarded Cycle
+
+          - type: markdown
+            title: Program catalogue — every learned statistic
+            grid_options:
+              columns: full
+            content: >-
+              {% set programs = state_attr('sensor.load_optimizer_1_program_catalogue', 'programs') or [] %}
+              {% if programs %}
+              | Program | Status | Runs | Runtime | Energy | Peak | Confidence | Class | Enabled | Normal | Negative | Cooldown | Water | Wear |
+              |---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|
+              {% for p in programs %}
+              | {{ p.program }} | {{ p.status }} | {{ p.runs }} | {{ (p.expected_runtime_minutes | round(1)) ~ 'm' if p.expected_runtime_minutes is number else '—' }} | {{ (p.expected_energy_kwh | round(3)) ~ 'kWh' if p.expected_energy_kwh is number else '—' }} | {{ (p.average_peak_power_w | round(0)) ~ 'W' if p.average_peak_power_w is number else '—' }} | {{ p.confidence | default('—') }}% | {{ p.classification | default('—') }} | {{ 'yes' if p.enabled | default(false) else 'no' }} | {{ 'yes' if p.allow_normal_recommendation | default(false) else 'no' }} | {{ 'yes' if p.allow_negative_price_run | default(false) else 'no' }} | {{ p.minimum_hours_between_runs | default(0) }}h | {{ p.water_litres | default('—') }} | {{ p.wear_cost_pence | default('—') }}p |
+              {% endfor %}
+              {% else %}No catalogue data has been published.{% endif %}
+
+          - type: markdown
+            title: Learned model statistics
+            grid_options:
+              columns: full
+            content: >-
+              {% set programs = state_attr('sensor.load_optimizer_1_learned_programs', 'programs') or [] %}
+              {% if programs %}
+              | Program | First seen | Last seen | Runs | Profiles | Runtime mean | Runtime σ | Energy mean | Energy σ | Peak mean | Confidence |
+              |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+              {% for p in programs %}
+              | {{ p.program }} | {{ (p.first_seen | as_datetime | as_local).strftime('%d %b %Y') if p.first_seen else '—' }} | {{ (p.last_seen | as_datetime | as_local).strftime('%d %b %Y') if p.last_seen else '—' }} | {{ p.runs }} | {{ p.profile_count }} | {{ (p.expected_runtime_minutes | round(2)) ~ 'm' if p.expected_runtime_minutes is number else '—' }} | {{ (p.runtime_stddev_minutes | round(2)) ~ 'm' if p.runtime_stddev_minutes is number else '—' }} | {{ (p.expected_energy_kwh | round(4)) ~ 'kWh' if p.expected_energy_kwh is number else '—' }} | {{ (p.energy_stddev_kwh | round(4)) ~ 'kWh' if p.energy_stddev_kwh is number else '—' }} | {{ (p.average_peak_power_w | round(1)) ~ 'W' if p.average_peak_power_w is number else '—' }} | {{ p.confidence }}% |
+              {% endfor %}
+              {% else %}No learned model data has been published.{% endif %}
+
+          - type: markdown
+            title: Automation capabilities
+            content: >-
+              {% set programs = state_attr('sensor.load_optimizer_1_program_capabilities', 'programs') or [] %}
+              | Program | Runs | Confidence | Classification | Normal | Negative | Auto | Remote |
+              |---|---:|---:|---|---:|---:|---:|---|
+              {% for p in programs %}
+              | {{ p.program }} | {{ p.runs }} | {{ p.confidence }}% | {{ p.classification }} | {{ 'yes' if p.can_recommend else 'no' }} | {{ 'yes' if p.can_negative_price else 'no' }} | {{ 'yes' if p.can_auto_start else 'no' }} | {{ p.remote_start_status }} |
+              {% endfor %}
+
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Last Cycle Power Profile
+            graph_span: 4h
+            apex_config:
+              chart:
+                height: 280
+              xaxis:
+                type: numeric
+                title:
+                  text: Minutes since start
+              yaxis:
+                title:
+                  text: Power (W)
+            series:
+              - entity: sensor.load_optimizer_1_last_profile
+                name: Actual power
+                type: line
+                data_generator: |
+                  return (entity.attributes.samples || []).map(row => [Number(row[0]) / 60, Number(row[1])]);
+
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Selected Program Model
+            graph_span: 100min
+            apex_config:
+              chart:
+                height: 280
+              xaxis:
+                type: numeric
+                title:
+                  text: Progress (%)
+              yaxis:
+                title:
+                  text: Typical power (W)
+            series:
+              - entity: sensor.load_optimizer_1_program_model
+                name: Representative profile
+                type: line
+                data_generator: |
+                  return (entity.attributes.representative_profile || []).map(row => [Number(row[0]), Number(row[1])]);
+
+          - type: entities
+            title: Raw learning entities
+            entities:
+              - entity: sensor.load_optimizer_1_program_model
+              - entity: sensor.load_optimizer_1_profile_data
+              - entity: sensor.load_optimizer_1_last_profile
+              - entity: sensor.load_optimizer_1_last_discarded_cycle
+              - entity: sensor.load_optimizer_1_learned_programs
+              - entity: sensor.load_optimizer_1_program_catalogue
+              - entity: sensor.load_optimizer_1_discovered_programs
+              - entity: sensor.load_optimizer_1_program_policies
+
+  - title: Automation
+    path: automation
+    icon: mdi:robot-industrial-outline
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        column_span: 3
+        cards:
+          - type: markdown
+            title: Safety gate matrix
+            content: >-
+              {% set execution = 'sensor.load_optimizer_1_execution_status' %}
+              | Gate | State |
+              |---|---|
+              | Optimizer | {{ states('sensor.load_optimizer_1_status') }} |
+              | Restart safety | {{ states('sensor.load_optimizer_restart_safety') }} |
+              | Cycle state | {{ states('sensor.load_optimizer_1_cycle_state') }} |
+              | Door opened since last cycle | {{ states('input_boolean.load_optimizer_1_door_opened_since_last_cycle') }} |
+              | Bosch connected | {{ state_attr(execution, 'bosch_connected_state') or 'unknown' }} |
+              | Bosch door | {{ state_attr(execution, 'bosch_door_state') or 'unknown' }} |
+              | Bosch power | {{ state_attr(execution, 'bosch_power_state') or 'unknown' }} |
+              | Bosch remote control | {{ state_attr(execution, 'bosch_remote_control_state') or 'unknown' }} |
+              | Bosch remote start | {{ state_attr(execution, 'bosch_remote_start_state') or 'unknown' }} |
+              | Bosch operation | {{ state_attr(execution, 'bosch_operation_state') or 'unknown' }} |
+              | Remote activation check | {{ states('sensor.load_optimizer_1_remote_activation_check') }} |
+              | Data freshness | {{ states('sensor.load_optimizer_1_data_freshness') }} |
+              | Package alignment | {{ states('sensor.load_optimizer_1_automation_package_status') }} |
+
+          - type: markdown
+            title: Cycle-completion evidence
+            content: >-
+              {% set execution = 'sensor.load_optimizer_1_execution_status' %}
+              **Optimizer cycle state:** {{ states('sensor.load_optimizer_1_cycle_state') }}  
+              **Current Bosch operation:** {{ state_attr(execution, 'bosch_operation_state') or 'unknown' }}  
+              **Last recorded operation:** {{ state_attr(execution, 'last_start_operation_state') or 'unknown' }}  
+              **Execution lifecycle:** {{ states('sensor.load_optimizer_1_execution_lifecycle') }}  
+              **Last execution event:** {{ state_attr(execution, 'last_execution_event') or states('input_text.load_optimizer_1_last_execution_event') }}  
+              **Power-monitor state:** {{ states('sensor.load_optimizer_1_cycle_state') }}
+
+              Bosch `Finished`/ready evidence is authoritative. The power monitor remains the fallback when Bosch does not publish a terminal state.
+
+          - type: markdown
+            title: Committed request
+            content: >-
+              {% set start = states('input_datetime.load_optimizer_1_requested_start') %}
+              {% set finish = states('input_datetime.load_optimizer_1_requested_finish') %}
+              {% set empty = ['unknown', 'unavailable', 'none', ''] %}
+              | Field | Value |
+              |---|---|
+              | Mode | {{ states('input_select.load_optimizer_1_requested_mode') }} |
+              | Program | {{ states('input_text.load_optimizer_1_requested_program') }} |
+              | Start | {{ (start | as_datetime | as_local).strftime('%a %d %b %H:%M') if start not in empty else 'none' }} |
+              | Finish | {{ (finish | as_datetime | as_local).strftime('%a %d %b %H:%M') if finish not in empty else 'none' }} |
+              | Scheduler message | {{ states('input_text.load_optimizer_1_scheduler_message') }} |
+              | Plan resilience | {{ states('sensor.load_optimizer_1_automatic_plan_resilience') }} |
+
+          - type: entities
+            title: Last start outcome
+            entities:
+              - entity: sensor.load_optimizer_1_execution_status
+              - entity: sensor.load_optimizer_1_execution_lifecycle
+              - entity: sensor.load_optimizer_1_last_start_attempt
+              - entity: sensor.load_optimizer_1_last_start_program
+              - entity: sensor.load_optimizer_1_last_start_result
+              - entity: sensor.load_optimizer_1_last_start_failure_reason
+              - entity: sensor.load_optimizer_1_last_start_reason_code
+              - entity: sensor.load_optimizer_1_last_start_reason_detail
+              - entity: sensor.load_optimizer_1_last_start_decision_snapshot
+              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
+
+          - type: markdown
+            title: Persistent audit helpers
+            content: >-
+              | Helper | Value |
+              |---|---|
+              | Attempt status | {{ states('input_text.load_optimizer_1_start_attempt_status') }} |
+              | Attempt message | {{ states('input_text.load_optimizer_1_start_attempt_message') }} |
+              | Execution event | {{ states('input_text.load_optimizer_1_last_execution_event') }} |
+              | Start audit | {{ states('input_text.load_optimizer_1_last_start_audit') }} |
+              | Queue cancellation | {{ states('input_text.load_optimizer_1_last_queue_cancellation') }} |
+              | Command diagnostics | {{ states('input_text.load_optimizer_1_last_start_command_diagnostics') }} |
+              | Run history | {{ states('input_text.load_optimizer_1_run_history') }} |
+              | Last automatic request | {{ states('input_datetime.load_optimizer_1_last_auto_normal_request') }} |
+              | Last free/negative request | {{ states('input_datetime.load_optimizer_1_last_auto_negative_price_request') }} |
+              | Last resilience alert | {{ states('input_datetime.load_optimizer_1_last_resilience_alert') }} |
+
+          - type: entities
+            title: Manual program override tests
+            entities:
+              - entity: input_select.load_optimizer_1_override_program
+                name: Override Program
+              - entity: input_button.load_optimizer_1_request_now_override
+                name: Start Now With Override
+              - entity: input_button.load_optimizer_1_request_soon_override
+                name: Start Soon With Override
+              - entity: input_button.load_optimizer_1_request_overnight_override
+                name: Overnight With Override
+
+          - type: markdown
+            title: Version alignment
+            content: >-
+              {% set package = 'sensor.load_optimizer_1_automation_package_status' %}
+              | Component | Version / state |
+              |---|---|
+              | App version | {{ state_attr('sensor.load_optimizer_status', 'version') or state_attr(package, 'app_version') or 'unknown' }} |
+              | Package installed | {{ state_attr(package, 'installed_package_version') or 'not detected' }} |
+              | Package expected | {{ state_attr(package, 'expected_package_version') or 'unknown' }} |
+              | Alignment | {{ states(package) }} |
+              | Message | {{ state_attr(package, 'message') or 'none' }} |
+
+          - type: markdown
+            title: Bosch entity mapping
+            content: >-
+              | Function | Entity ID |
+              |---|---|
+              | Device ID | {{ states('input_text.load_optimizer_1_bosch_device_id') }} |
+              | Power switch | {{ states('input_text.load_optimizer_1_bosch_power_switch') }} |
+              | Program select | {{ states('input_text.load_optimizer_1_bosch_program_select') }} |
+              | Start button | {{ states('input_text.load_optimizer_1_bosch_start_button') }} |
+              | Selected program | {{ states('input_text.load_optimizer_1_bosch_selected_program_sensor') }} |
+              | Power state | {{ states('input_text.load_optimizer_1_bosch_power_state_sensor') }} |
+              | Connected | {{ states('input_text.load_optimizer_1_bosch_connected_sensor') }} |
+              | Door | {{ states('input_text.load_optimizer_1_bosch_door_sensor') }} |
+              | Remote control | {{ states('input_text.load_optimizer_1_bosch_remote_control_sensor') }} |
+              | Remote start | {{ states('input_text.load_optimizer_1_bosch_remote_start_sensor') }} |
+              | Operation state | {{ states('input_text.load_optimizer_1_bosch_operation_state_sensor') }} |
+
+  - title: System
+    path: system
+    icon: mdi:heart-pulse
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        column_span: 3
+        cards:
+          - type: markdown
+            title: App heartbeat
+            content: >-
+              {% set app = 'sensor.load_optimizer_status' %}
+              {% set diagnostics = 'sensor.load_optimizer_diagnostics' %}
+              | Statistic | Value |
+              |---|---|
+              | State | {{ states(app) }} |
+              | Version | {{ state_attr(app, 'version') or 'unknown' }} |
+              | Instances | {{ state_attr(app, 'instances') or 0 }} |
+              | Last heartbeat | {% set value = state_attr(app, 'last_heartbeat') %}{{ (value | as_datetime | as_local).strftime('%a %d %b %H:%M:%S') if value else 'unknown' }} |
+              | Last scan started | {% set value = state_attr(app, 'last_scan_started') %}{{ (value | as_datetime | as_local).strftime('%a %d %b %H:%M:%S') if value else 'unknown' }} |
+              | Last scan completed | {% set value = state_attr(app, 'last_scan_completed') %}{{ (value | as_datetime | as_local).strftime('%a %d %b %H:%M:%S') if value else 'unknown' }} |
+              | Full republish interval | {{ state_attr(app, 'full_republish_interval_minutes') or 'unknown' }} min |
+              | Restart blocked | {{ state_attr(app, 'restart_blocked') | default(false) }} |
+              | Diagnostic state | {{ states(diagnostics) }} |
+              | Last error | {{ state_attr(diagnostics, 'last_error') or 'none' }} |
+
+          - type: markdown
+            title: Tariff and candidate statistics
+            content: >-
+              {% set cost = 'sensor.load_optimizer_1_cost_status' %}
+              {% set forecast = 'sensor.load_optimizer_1_cost_forecast' %}
+              {% set constraints = state_attr(cost, 'constraints') or {} %}
+              | Statistic | Value |
+              |---|---|
+              | Cost state | {{ states(cost) }} |
+              | Tariff entities | {{ state_attr(cost, 'tariff_entities') or state_attr(cost, 'tariff_entity') or 'none' }} |
+              | Tariff periods | {{ state_attr(cost, 'tariff_periods') or 0 }} |
+              | Tariff start | {{ state_attr(cost, 'tariff_start') or 'unknown' }} |
+              | Tariff end | {{ state_attr(cost, 'tariff_end') or 'unknown' }} |
+              | Forecast hours | {{ state_attr(forecast, 'forecast_hours') or 'unknown' }} |
+              | Forecast interval | {{ state_attr(forecast, 'forecast_interval_minutes') or 'unknown' }} min |
+              | Published / total points | {{ state_attr(forecast, 'forecast_points') or 0 }} / {{ state_attr(forecast, 'forecast_total_points') or 0 }} |
+              | Forecast stride | {{ state_attr(forecast, 'forecast_stride') or 1 }} |
+              | Forecast truncated | {{ state_attr(forecast, 'forecast_truncated') | default(false) }} |
+              | Green windows / candidates | {{ state_attr(cost, 'green_window_count') or 0 }} / {{ state_attr(cost, 'green_window_candidate_count') or 0 }} |
+              | Blocked windows / candidates | {{ state_attr(cost, 'blocked_window_count') or 0 }} / {{ state_attr(cost, 'blocked_window_candidate_count') or 0 }} |
+              | Rejected constraints | {{ constraints.get('rejected_constraints', 0) }} |
+              | Rejected cooldowns | {{ constraints.get('rejected_cooldowns', 0) }} |
+              | Rejected blocked | {{ constraints.get('rejected_blocked', 0) }} |
+
+          - type: markdown
+            title: Diagnostics event counters
+            content: >-
+              {% set d = 'sensor.load_optimizer_diagnostics' %}
+              {% set counters = state_attr(d, 'event_counts') or state_attr(d, 'counts') or {} %}
+              **Last warning:** {{ state_attr(d, 'last_warning') or 'none' }}  
+              **Last error:** {{ state_attr(d, 'last_error') or 'none' }}  
+              **Recent events:** {{ state_attr(d, 'recent_events') or [] }}
+
+              {% if counters %}
+              | Event | Count |
+              |---|---:|
+              {% for key, value in counters.items() | sort %}| {{ key }} | {{ value }} |
+              {% endfor %}
+              {% else %}No event counters have been published.{% endif %}
+
+          - type: entities
+            title: Every core app entity
+            entities:
+              - sensor.load_optimizer_status
+              - sensor.load_optimizer_diagnostics
+              - sensor.load_optimizer_restart_safety
+              - sensor.load_optimizer_special_price_window
+              - sensor.load_optimizer_1_status
+              - sensor.load_optimizer_1_cycle_state
+              - sensor.load_optimizer_1_power
+              - sensor.load_optimizer_1_energy
+              - sensor.load_optimizer_1_program
+              - sensor.load_optimizer_1_sample_count
+              - sensor.load_optimizer_1_peak_power
+              - sensor.load_optimizer_1_current_energy_price
+              - sensor.load_optimizer_1_cost_status
+              - sensor.load_optimizer_1_tariff_horizon
+              - sensor.load_optimizer_1_cost_forecast
+              - sensor.load_optimizer_1_schedule_status
+              - sensor.load_optimizer_1_recommended_start
+              - sensor.load_optimizer_1_recommended_finish
+              - sensor.load_optimizer_1_estimated_scheduled_cost
+              - sensor.load_optimizer_1_good_to_start
+
+          - type: entities
+            title: Every recommendation and cost entity
+            entities:
+              - sensor.load_optimizer_1_now_recommendation
+              - sensor.load_optimizer_1_soon_recommendation
+              - sensor.load_optimizer_1_overnight_recommendation
+              - sensor.load_optimizer_1_negative_price_recommendation
+              - sensor.load_optimizer_1_greenest_recommendation
+              - sensor.load_optimizer_1_cost_if_started_now
+              - sensor.load_optimizer_1_cheapest_start
+              - sensor.load_optimizer_1_cheapest_cost
+              - sensor.load_optimizer_1_overnight_cost
+              - sensor.load_optimizer_1_daytime_cost
+              - sensor.load_optimizer_1_greenest_cost
+              - sensor.load_optimizer_1_greenest_extra_cost
+              - sensor.load_optimizer_1_potential_saving
+              - sensor.load_optimizer_1_overnight_saving
+              - sensor.load_optimizer_1_daytime_saving
+              - sensor.load_optimizer_1_cost_confidence
+              - sensor.load_optimizer_1_recommended_program
+
+          - type: entities
+            title: Every execution and reliability entity
+            entities:
+              - sensor.load_optimizer_1_overnight_readiness
+              - sensor.load_optimizer_1_negative_price_readiness
+              - sensor.load_optimizer_1_remote_activation_check
+              - sensor.load_optimizer_1_data_freshness
+              - sensor.load_optimizer_1_automatic_plan_resilience
+              - sensor.load_optimizer_1_automation_package_status
+              - sensor.load_optimizer_1_execution_status
+              - sensor.load_optimizer_1_execution_lifecycle
+              - sensor.load_optimizer_1_last_start_attempt
+              - sensor.load_optimizer_1_last_start_program
+              - sensor.load_optimizer_1_last_start_result
+              - sensor.load_optimizer_1_last_start_failure_reason
+              - sensor.load_optimizer_1_last_start_reason_code
+              - sensor.load_optimizer_1_last_start_reason_detail
+              - sensor.load_optimizer_1_last_start_decision_snapshot
+              - sensor.load_optimizer_1_remote_start_blocked_programs
+
+  - title: Other Appliances
+    path: other-appliances
+    icon: mdi:devices
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: entities
+            title: Washing Machine 1 — live and learning
+            entities:
+              - sensor.load_optimizer_2_status
+              - sensor.load_optimizer_2_cycle_state
+              - sensor.load_optimizer_2_program
+              - sensor.load_optimizer_2_power
+              - sensor.load_optimizer_2_energy
+              - sensor.load_optimizer_2_peak_power
+              - sensor.load_optimizer_2_sample_count
+              - sensor.load_optimizer_2_total_runs
+              - sensor.load_optimizer_2_last_program
+              - sensor.load_optimizer_2_last_runtime
+              - sensor.load_optimizer_2_last_energy
+              - sensor.load_optimizer_2_last_finish
+              - sensor.load_optimizer_2_learned_programs
+              - sensor.load_optimizer_2_program_catalogue
+          - type: entities
+            title: Washing Machine 1 — cost
+            entities:
+              - sensor.load_optimizer_2_cost_status
+              - sensor.load_optimizer_2_current_energy_price
+              - sensor.load_optimizer_2_recommended_program
+              - sensor.load_optimizer_2_recommended_start
+              - sensor.load_optimizer_2_recommended_finish
+              - sensor.load_optimizer_2_cheapest_start
+              - sensor.load_optimizer_2_cheapest_cost
+              - sensor.load_optimizer_2_cost_if_started_now
+              - sensor.load_optimizer_2_potential_saving
+              - sensor.load_optimizer_2_cost_confidence
+      - type: grid
+        cards:
+          - type: entities
+            title: Robo Vac 1 — live and learning
+            entities:
+              - sensor.load_optimizer_3_status
+              - sensor.load_optimizer_3_cycle_state
+              - sensor.load_optimizer_3_program
+              - sensor.load_optimizer_3_power
+              - sensor.load_optimizer_3_energy
+              - sensor.load_optimizer_3_peak_power
+              - sensor.load_optimizer_3_sample_count
+              - sensor.load_optimizer_3_total_runs
+              - sensor.load_optimizer_3_last_program
+              - sensor.load_optimizer_3_last_runtime
+              - sensor.load_optimizer_3_last_energy
+              - sensor.load_optimizer_3_last_finish
+              - sensor.load_optimizer_3_learned_programs
+              - sensor.load_optimizer_3_program_catalogue
+          - type: entities
+            title: Robo Vac 1 — cost
+            entities:
+              - sensor.load_optimizer_3_cost_status
+              - sensor.load_optimizer_3_current_energy_price
+              - sensor.load_optimizer_3_recommended_program
+              - sensor.load_optimizer_3_recommended_start
+              - sensor.load_optimizer_3_recommended_finish
+              - sensor.load_optimizer_3_cheapest_start
+              - sensor.load_optimizer_3_cheapest_cost
+              - sensor.load_optimizer_3_cost_if_started_now
+              - sensor.load_optimizer_3_potential_saving
+              - sensor.load_optimizer_3_cost_confidence

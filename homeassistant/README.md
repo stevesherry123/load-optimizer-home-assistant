@@ -28,3 +28,8 @@ to act on Load Optimizer recommendations.
 
 - `dashboards/load_optimizer_dishwasher_controls.yaml` adds raw dashboard cards
   for the Dishwasher 1 request helpers and buttons.
+- `dashboards/experimental/load_optimizer_dashboard_v2.yaml` is a separate,
+  installable design-lab dashboard. It leaves the production dashboard intact
+  and exposes the full control, recommendation, learning, automation, and
+  diagnostic data set for side-by-side evaluation. See the README beside that
+  file for installation and removal instructions.

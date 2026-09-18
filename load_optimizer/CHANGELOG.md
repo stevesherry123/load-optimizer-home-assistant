@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add an optional side-by-side `Load Optimizer Lab` dashboard design with six
+  views covering household controls, concrete overnight boundaries, every
+  recommendation and cost statistic, learning models, Bosch/automation safety,
+  execution audit data, system diagnostics, and the other configured
+  appliances. Existing dashboards are unchanged while this design is refined.
+
 - Keep each overnight recommendation inside one concrete local-time night. If
   the scheduler runs during the overnight window it now considers only the
   remainder of that night; during daytime it considers only the next window.
