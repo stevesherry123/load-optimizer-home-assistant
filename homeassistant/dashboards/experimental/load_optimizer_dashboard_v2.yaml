@@ -19,7 +19,7 @@ views:
             title: What happens next?
             grid_options:
               columns: full
-            content: >-
+            content: |-
               {% set cycle = states('sensor.load_optimizer_1_cycle_state') %}
               {% set mode = states('input_select.load_optimizer_1_requested_mode') %}
               {% set program = states('input_text.load_optimizer_1_requested_program') %}
@@ -50,7 +50,7 @@ views:
 
           - type: markdown
             title: Tonight's boundary
-            content: >-
+            content: |-
               {% set source = 'sensor.load_optimizer_1_cost_status' %}
               {% set start = state_attr(source, 'operational_overnight_start') %}
               {% set end = state_attr(source, 'operational_overnight_end') %}
@@ -124,7 +124,7 @@ views:
 
           - type: markdown
             title: Automatic run readiness
-            content: >-
+            content: |-
               {% set overnight = 'sensor.load_optimizer_1_overnight_readiness' %}
               {% set negative = 'sensor.load_optimizer_1_negative_price_readiness' %}
               {% set icons = {'green': '🟢', 'amber': '🟠', 'red': '🔴'} %}
@@ -293,7 +293,7 @@ views:
 
           - type: markdown
             title: Recommendation comparison
-            content: >-
+            content: |-
               {% set intents = [
                 ('Now', 'sensor.load_optimizer_1_now_recommendation'),
                 ('Soon', 'sensor.load_optimizer_1_soon_recommendation'),
@@ -340,7 +340,7 @@ views:
 
           - type: markdown
             title: All program options by intent
-            content: >-
+            content: |-
               {% set intents = [
                 ('Now', 'sensor.load_optimizer_1_now_recommendation'),
                 ('Soon', 'sensor.load_optimizer_1_soon_recommendation'),
@@ -442,7 +442,7 @@ views:
             title: Program catalogue — every learned statistic
             grid_options:
               columns: full
-            content: >-
+            content: |-
               {% set programs = state_attr('sensor.load_optimizer_1_program_catalogue', 'programs') or [] %}
               {% if programs %}
               | Program | Status | Runs | Runtime | Energy | Peak | Confidence | Class | Enabled | Normal | Negative | Cooldown | Water | Wear |
@@ -456,7 +456,7 @@ views:
             title: Learned model statistics
             grid_options:
               columns: full
-            content: >-
+            content: |-
               {% set programs = state_attr('sensor.load_optimizer_1_learned_programs', 'programs') or [] %}
               {% if programs %}
               | Program | First seen | Last seen | Runs | Profiles | Runtime mean | Runtime σ | Energy mean | Energy σ | Peak mean | Confidence |
@@ -468,13 +468,22 @@ views:
 
           - type: markdown
             title: Automation capabilities
-            content: >-
+            content: |-
               {% set programs = state_attr('sensor.load_optimizer_1_program_capabilities', 'programs') or [] %}
-              | Program | Runs | Confidence | Classification | Normal | Negative | Auto | Remote |
-              |---|---:|---:|---|---:|---:|---:|---|
+              {% if programs %}
               {% for p in programs %}
-              | {{ p.program }} | {{ p.runs }} | {{ p.confidence }}% | {{ p.classification }} | {{ 'yes' if p.can_recommend else 'no' }} | {{ 'yes' if p.can_negative_price else 'no' }} | {{ 'yes' if p.can_auto_start else 'no' }} | {{ p.remote_start_status }} |
+              ### {{ '✅' if p.can_auto_start else '⛔' }} {{ p.program }}
+
+              **Learned:** {{ p.runs }} runs · {{ p.confidence }}% confidence · {{ p.classification }}
+
+              **Normal:** {{ 'eligible' if p.can_recommend else 'not eligible' }} · **Free/negative:** {{ 'eligible' if p.can_negative_price else 'not eligible' }}
+
+              **Automatic start:** {{ 'available' if p.can_auto_start else 'blocked' }} · **Remote:** {{ p.remote_start_status | replace('_', ' ') }}
+
               {% endfor %}
+              {% else %}
+              No automation-capability data has been published.
+              {% endif %}
 
           - type: custom:apexcharts-card
             header:
@@ -543,40 +552,52 @@ views:
         cards:
           - type: markdown
             title: Safety gate matrix
-            content: >-
+            content: |-
               {% set execution = 'sensor.load_optimizer_1_execution_status' %}
+              {% set connected = states('input_text.load_optimizer_1_bosch_connected_sensor') %}
+              {% set door = states('input_text.load_optimizer_1_bosch_door_sensor') %}
+              {% set power = states('input_text.load_optimizer_1_bosch_power_state_sensor') %}
+              {% set remote = states('input_text.load_optimizer_1_bosch_remote_control_sensor') %}
+              {% set remote_start = states('input_text.load_optimizer_1_bosch_remote_start_sensor') %}
+              {% set operation = states('input_text.load_optimizer_1_bosch_operation_state_sensor') %}
               | Gate | State |
               |---|---|
-              | Optimizer | {{ states('sensor.load_optimizer_1_status') }} |
+              | Optimizer | {{ states('sensor.load_optimizer_1_status') if has_value('sensor.load_optimizer_1_status') else states('sensor.load_optimizer_status') }} |
               | Restart safety | {{ states('sensor.load_optimizer_restart_safety') }} |
               | Cycle state | {{ states('sensor.load_optimizer_1_cycle_state') }} |
               | Door opened since last cycle | {{ states('input_boolean.load_optimizer_1_door_opened_since_last_cycle') }} |
-              | Bosch connected | {{ state_attr(execution, 'bosch_connected_state') or 'unknown' }} |
-              | Bosch door | {{ state_attr(execution, 'bosch_door_state') or 'unknown' }} |
-              | Bosch power | {{ state_attr(execution, 'bosch_power_state') or 'unknown' }} |
-              | Bosch remote control | {{ state_attr(execution, 'bosch_remote_control_state') or 'unknown' }} |
-              | Bosch remote start | {{ state_attr(execution, 'bosch_remote_start_state') or 'unknown' }} |
-              | Bosch operation | {{ state_attr(execution, 'bosch_operation_state') or 'unknown' }} |
+              | Bosch connected | {{ state_attr(execution, 'bosch_connected_state') or states(connected) }} |
+              | Bosch door | {{ state_attr(execution, 'bosch_door_state') or states(door) }} |
+              | Bosch power | {{ state_attr(execution, 'bosch_power_state') or states(power) }} |
+              | Bosch remote control | {{ state_attr(execution, 'bosch_remote_control_state') or states(remote) }} |
+              | Bosch remote start | {{ state_attr(execution, 'bosch_remote_start_state') or states(remote_start) }} |
+              | Bosch operation | {{ state_attr(execution, 'bosch_operation_state') or states(operation) }} |
               | Remote activation check | {{ states('sensor.load_optimizer_1_remote_activation_check') }} |
               | Data freshness | {{ states('sensor.load_optimizer_1_data_freshness') }} |
               | Package alignment | {{ states('sensor.load_optimizer_1_automation_package_status') }} |
 
           - type: markdown
             title: Cycle-completion evidence
-            content: >-
+            content: |-
               {% set execution = 'sensor.load_optimizer_1_execution_status' %}
-              **Optimizer cycle state:** {{ states('sensor.load_optimizer_1_cycle_state') }}  
-              **Current Bosch operation:** {{ state_attr(execution, 'bosch_operation_state') or 'unknown' }}  
-              **Last recorded operation:** {{ state_attr(execution, 'last_start_operation_state') or 'unknown' }}  
-              **Execution lifecycle:** {{ states('sensor.load_optimizer_1_execution_lifecycle') }}  
-              **Last execution event:** {{ state_attr(execution, 'last_execution_event') or states('input_text.load_optimizer_1_last_execution_event') }}  
+              {% set operation = states('input_text.load_optimizer_1_bosch_operation_state_sensor') %}
+              **Optimizer cycle state:** {{ states('sensor.load_optimizer_1_cycle_state') }}
+
+              **Current Bosch operation:** {{ state_attr(execution, 'bosch_operation_state') or states(operation) }}
+
+              **Last recorded operation:** {{ state_attr(execution, 'last_start_operation_state') or states('input_text.load_optimizer_1_last_start_operation_state') }}
+
+              **Execution lifecycle:** {{ states('sensor.load_optimizer_1_execution_lifecycle') }}
+
+              **Last execution event:** {{ state_attr(execution, 'last_execution_event') or states('input_text.load_optimizer_1_last_execution_event') }}
+
               **Power-monitor state:** {{ states('sensor.load_optimizer_1_cycle_state') }}
 
               Bosch `Finished`/ready evidence is authoritative. The power monitor remains the fallback when Bosch does not publish a terminal state.
 
           - type: markdown
             title: Committed request
-            content: >-
+            content: |-
               {% set start = states('input_datetime.load_optimizer_1_requested_start') %}
               {% set finish = states('input_datetime.load_optimizer_1_requested_finish') %}
               {% set empty = ['unknown', 'unavailable', 'none', ''] %}
@@ -589,23 +610,25 @@ views:
               | Scheduler message | {{ states('input_text.load_optimizer_1_scheduler_message') }} |
               | Plan resilience | {{ states('sensor.load_optimizer_1_automatic_plan_resilience') }} |
 
-          - type: entities
+          - type: markdown
             title: Last start outcome
-            entities:
-              - entity: sensor.load_optimizer_1_execution_status
-              - entity: sensor.load_optimizer_1_execution_lifecycle
-              - entity: sensor.load_optimizer_1_last_start_attempt
-              - entity: sensor.load_optimizer_1_last_start_program
-              - entity: sensor.load_optimizer_1_last_start_result
-              - entity: sensor.load_optimizer_1_last_start_failure_reason
-              - entity: sensor.load_optimizer_1_last_start_reason_code
-              - entity: sensor.load_optimizer_1_last_start_reason_detail
-              - entity: sensor.load_optimizer_1_last_start_decision_snapshot
-              - entity: sensor.load_optimizer_1_remote_start_blocked_programs
+            content: |-
+              | Field | Value |
+              |---|---|
+              | Execution status | {{ states('sensor.load_optimizer_1_execution_status') if has_value('sensor.load_optimizer_1_execution_status') else states('input_text.load_optimizer_1_start_attempt_status') }} |
+              | Lifecycle | {{ states('sensor.load_optimizer_1_execution_lifecycle') }} |
+              | Attempt | {{ states('sensor.load_optimizer_1_last_start_attempt') if has_value('sensor.load_optimizer_1_last_start_attempt') else states('input_datetime.load_optimizer_1_last_start_attempt') }} |
+              | Program | {{ states('sensor.load_optimizer_1_last_start_program') if has_value('sensor.load_optimizer_1_last_start_program') else states('input_text.load_optimizer_1_last_start_program') }} |
+              | Result | {{ states('sensor.load_optimizer_1_last_start_result') if has_value('sensor.load_optimizer_1_last_start_result') else states('input_text.load_optimizer_1_last_start_result') }} |
+              | Failure | {{ states('sensor.load_optimizer_1_last_start_failure_reason') if has_value('sensor.load_optimizer_1_last_start_failure_reason') else states('input_text.load_optimizer_1_last_start_failure_reason') }} |
+              | Reason code | {{ states('sensor.load_optimizer_1_last_start_reason_code') if has_value('sensor.load_optimizer_1_last_start_reason_code') else states('input_text.load_optimizer_1_last_start_reason_code') }} |
+              | Reason detail | {{ states('sensor.load_optimizer_1_last_start_reason_detail') if has_value('sensor.load_optimizer_1_last_start_reason_detail') else states('input_text.load_optimizer_1_last_start_reason_detail') }} |
+              | Decision | {{ states('sensor.load_optimizer_1_last_start_decision_snapshot') if has_value('sensor.load_optimizer_1_last_start_decision_snapshot') else states('input_text.load_optimizer_1_last_start_decision_snapshot') }} |
+              | Remote-blocked programs | {{ states('sensor.load_optimizer_1_remote_start_blocked_programs') if has_value('sensor.load_optimizer_1_remote_start_blocked_programs') else states('input_text.load_optimizer_1_remote_start_blocked_programs') }} |
 
           - type: markdown
             title: Persistent audit helpers
-            content: >-
+            content: |-
               | Helper | Value |
               |---|---|
               | Attempt status | {{ states('input_text.load_optimizer_1_start_attempt_status') }} |
@@ -633,22 +656,22 @@ views:
 
           - type: markdown
             title: Version alignment
-            content: >-
+            content: |-
               {% set package = 'sensor.load_optimizer_1_automation_package_status' %}
+              {% set package_helper = states('input_text.load_optimizer_1_automation_package_version') %}
               | Component | Version / state |
               |---|---|
               | App version | {{ state_attr('sensor.load_optimizer_status', 'version') or state_attr(package, 'app_version') or 'unknown' }} |
-              | Package installed | {{ state_attr(package, 'installed_package_version') or 'not detected' }} |
+              | Package installed | {{ state_attr(package, 'installed_package_version') or package_helper }} |
               | Package expected | {{ state_attr(package, 'expected_package_version') or 'unknown' }} |
               | Alignment | {{ states(package) }} |
               | Message | {{ state_attr(package, 'message') or 'none' }} |
 
           - type: markdown
             title: Bosch entity mapping
-            content: >-
+            content: |-
               | Function | Entity ID |
               |---|---|
-              | Device ID | {{ states('input_text.load_optimizer_1_bosch_device_id') }} |
               | Power switch | {{ states('input_text.load_optimizer_1_bosch_power_switch') }} |
               | Program select | {{ states('input_text.load_optimizer_1_bosch_program_select') }} |
               | Start button | {{ states('input_text.load_optimizer_1_bosch_start_button') }} |
@@ -671,7 +694,7 @@ views:
         cards:
           - type: markdown
             title: App heartbeat
-            content: >-
+            content: |-
               {% set app = 'sensor.load_optimizer_status' %}
               {% set diagnostics = 'sensor.load_optimizer_diagnostics' %}
               | Statistic | Value |
@@ -689,7 +712,7 @@ views:
 
           - type: markdown
             title: Tariff and candidate statistics
-            content: >-
+            content: |-
               {% set cost = 'sensor.load_optimizer_1_cost_status' %}
               {% set forecast = 'sensor.load_optimizer_1_cost_forecast' %}
               {% set constraints = state_attr(cost, 'constraints') or {} %}
@@ -713,7 +736,7 @@ views:
 
           - type: markdown
             title: Diagnostics event counters
-            content: >-
+            content: |-
               {% set d = 'sensor.load_optimizer_diagnostics' %}
               {% set counters = state_attr(d, 'event_counts') or state_attr(d, 'counts') or {} %}
               **Last warning:** {{ state_attr(d, 'last_warning') or 'none' }}  

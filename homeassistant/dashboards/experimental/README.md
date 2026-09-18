@@ -27,6 +27,7 @@ without changing any Load Optimizer entities, helpers, automations, or views.
          title: Load Optimizer Lab
          icon: mdi:flask-outline
          show_in_sidebar: true
+         require_admin: true
          filename: dashboards/load_optimizer_dashboard_v2.yaml
    ```
 

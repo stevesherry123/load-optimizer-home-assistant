@@ -7,6 +7,10 @@
   recommendation and cost statistic, learning models, Bosch/automation safety,
   execution audit data, system diagnostics, and the other configured
   appliances. Existing dashboards are unchanged while this design is refined.
+- Preserve Markdown line breaks throughout the design-lab dashboard so tables
+  render as tables rather than collapsed paragraphs. Make automation
+  capabilities mobile-friendly, add helper fallbacks when optional app sensors
+  are unavailable, and make the suggested dashboard registration admin-only.
 
 - Keep each overnight recommendation inside one concrete local-time night. If
   the scheduler runs during the overnight window it now considers only the
