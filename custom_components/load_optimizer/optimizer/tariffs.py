@@ -1,0 +1,1477 @@
+"""Tariff normalization and read-only cycle cost estimation."""
+
+from __future__ import annotations
+
+import math
+import re
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+FEED_ENTRY = re.compile(
+    r"(?P<day>\d{1,2})/(?P<month>\d{1,2})\s+"
+    r"(?P<hour>\d{1,2}):(?P<minute>\d{2})\s*=\s*"
+    r"(?P<price>[+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*p",
+    re.IGNORECASE,
+)
+STRUCTURED_RATE_KEYS = ("rates", "prices", "forecast", "all_rates")
+SCHEDULE_STRATEGIES = {"cheapest_absolute", "cheapest_earliest_finish", "cheapest_latest_finish"}
+WINDOW_PREFERENCES = {"any", "overnight_only", "daytime_only", "prefer_overnight", "prefer_daytime"}
+
+
+def _nearest_year(day: int, month: int, reference_local: datetime) -> int:
+    candidates = []
+    for year in (reference_local.year - 1, reference_local.year, reference_local.year + 1):
+        try:
+            candidate = datetime(year, month, day)
+        except ValueError:
+            continue
+        candidates.append((abs((candidate.date() - reference_local.date()).days), year))
+    if not candidates:
+        raise ValueError(f"Invalid tariff date: {day:02d}/{month:02d}")
+    return min(candidates)[1]
+
+
+def _utc_candidates(wall_time: datetime, local_timezone: ZoneInfo) -> list[datetime]:
+    candidates = []
+    for fold in (0, 1):
+        aware = wall_time.replace(tzinfo=local_timezone, fold=fold)
+        utc = aware.astimezone(timezone.utc)
+        if utc.astimezone(local_timezone).replace(tzinfo=None) == wall_time and utc not in candidates:
+            candidates.append(utc)
+    return sorted(candidates)
+
+
+def parse_ai_feed(
+    feed: str,
+    *,
+    reference_utc: datetime,
+    timezone_name: str = "Europe/London",
+) -> list[dict]:
+    """Convert the Octopus Intelligence ``ai_feed`` format into tariff periods."""
+    if reference_utc.tzinfo is None or reference_utc.utcoffset() is None:
+        raise ValueError("reference_utc must be timezone-aware")
+    try:
+        local_timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError(f"Unknown tariff timezone: {timezone_name}") from error
+    reference_local = reference_utc.astimezone(local_timezone)
+    occurrences: dict[datetime, int] = {}
+    points = []
+    for match in FEED_ENTRY.finditer(feed):
+        values = match.groupdict()
+        year = _nearest_year(int(values["day"]), int(values["month"]), reference_local)
+        wall_time = datetime(
+            year,
+            int(values["month"]),
+            int(values["day"]),
+            int(values["hour"]),
+            int(values["minute"]),
+        )
+        candidates = _utc_candidates(wall_time, local_timezone)
+        occurrence = occurrences.get(wall_time, 0)
+        occurrences[wall_time] = occurrence + 1
+        if not candidates or occurrence >= len(candidates):
+            raise ValueError(f"Invalid or duplicate tariff timestamp: {wall_time.isoformat()}")
+        points.append((candidates[occurrence], float(values["price"])))
+    if len(points) < 2:
+        raise ValueError("Tariff feed must contain at least two price points")
+    points.sort()
+    if len({point[0] for point in points}) != len(points):
+        raise ValueError("Tariff feed resolves to duplicate UTC timestamps")
+    periods = []
+    for index, (start, price) in enumerate(points):
+        if index + 1 < len(points):
+            end = points[index + 1][0]
+        else:
+            end = start + (points[-1][0] - points[-2][0])
+        periods.append({"start": start, "end": end, "price_p_per_kwh": price})
+    return periods
+
+
+def _parse_timestamp(value: object) -> datetime:
+    if not isinstance(value, str):
+        raise ValueError("Tariff timestamp must be a string")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("Tariff timestamp must include a UTC offset")
+    return parsed.astimezone(timezone.utc)
+
+
+def _model_last_seen_utc(model: dict) -> datetime | None:
+    """Return the latest known successful finish time for a learned program."""
+    candidates = []
+    for value in (model.get("last_seen"), model.get("last_updated")):
+        try:
+            candidates.append(_parse_timestamp(value))
+        except (TypeError, ValueError):
+            pass
+    for cycle in model.get("recent_cycles", []) or []:
+        try:
+            candidates.append(_parse_timestamp(cycle.get("finish")))
+        except (AttributeError, TypeError, ValueError):
+            pass
+    return max(candidates) if candidates else None
+
+
+def _cooldown_until_utc(model: dict, policy: dict) -> datetime | None:
+    hours = int(policy.get("minimum_hours_between_runs") or 0)
+    if hours <= 0:
+        return None
+    last_seen = _model_last_seen_utc(model)
+    if last_seen is None:
+        return None
+    return last_seen + timedelta(hours=hours)
+
+
+def parse_structured_rates(rates: list[dict], *, price_unit: str) -> list[dict]:
+    """Normalize common structured Home Assistant rate attributes."""
+    periods = []
+    for rate in rates:
+        start_value = next((rate.get(key) for key in ("start", "start_time", "valid_from", "from") if rate.get(key)), None)
+        end_value = next((rate.get(key) for key in ("end", "end_time", "valid_to", "to") if rate.get(key)), None)
+        price_value = next((rate.get(key) for key in ("price_p_per_kwh", "price", "value_inc_vat", "value") if rate.get(key) is not None), None)
+        if start_value is None or end_value is None or price_value is None:
+            raise ValueError("Structured tariff rate is missing start, end, or price")
+        price = float(price_value)
+        if price_unit == "gbp_per_kwh":
+            price *= 100
+        periods.append({
+            "start": _parse_timestamp(start_value),
+            "end": _parse_timestamp(end_value),
+            "price_p_per_kwh": round(price, 6),
+        })
+    periods.sort(key=lambda period: period["start"])
+    return periods
+
+
+def _find_structured_rates(value: object, *, depth: int = 0) -> list[dict] | None:
+    """Find rate lists on direct attributes or nested Home Assistant event payloads."""
+    if depth > 4:
+        return None
+    if isinstance(value, dict):
+        for key in STRUCTURED_RATE_KEYS:
+            rates = value.get(key)
+            if isinstance(rates, list) and rates:
+                return rates
+        for nested_value in value.values():
+            rates = _find_structured_rates(nested_value, depth=depth + 1)
+            if rates:
+                return rates
+    return None
+
+
+def tariff_periods_from_entity(
+    entity: dict,
+    *,
+    reference_utc: datetime,
+    timezone_name: str,
+    price_unit: str,
+) -> list[dict]:
+    attributes = entity.get("attributes", {}) if entity else {}
+    feed = attributes.get("ai_feed")
+    if isinstance(feed, str) and feed.strip():
+        return parse_ai_feed(feed, reference_utc=reference_utc, timezone_name=timezone_name)
+    rates = _find_structured_rates(attributes)
+    if rates:
+        return parse_structured_rates(rates, price_unit=price_unit)
+    raise ValueError("Tariff entity has no supported future-rate attribute")
+
+
+def overlay_price_window(
+    periods: list[dict],
+    *,
+    start: datetime,
+    end: datetime,
+    price_p_per_kwh: float,
+    label: str = "Manual special price window",
+) -> list[dict]:
+    """Overlay one explicitly supplied price window without changing the source feed."""
+    if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
+        raise ValueError("Special price window timestamps must include a UTC offset")
+    start = start.astimezone(timezone.utc)
+    end = end.astimezone(timezone.utc)
+    if end <= start:
+        raise ValueError("Special price window end must be after its start")
+
+    overlaid = []
+    for period in periods:
+        period_start = period["start"].astimezone(timezone.utc)
+        period_end = period["end"].astimezone(timezone.utc)
+        if period_end <= start or period_start >= end:
+            overlaid.append(dict(period))
+            continue
+        if period_start < start:
+            overlaid.append({**period, "end": start})
+        if period_end > end:
+            overlaid.append({**period, "start": end})
+    overlaid.append({
+        "start": start,
+        "end": end,
+        "price_p_per_kwh": float(price_p_per_kwh),
+        "source": "manual_special_price_window",
+        "label": label,
+        "is_special_price_window": True,
+    })
+    return sorted(overlaid, key=lambda period: period["start"])
+
+
+def _profile_segments(model: dict) -> list[dict]:
+    profile = model.get("representative_profile_w", [])
+    runtime_minutes = model.get("expected_runtime_minutes")
+    expected_energy = model.get("expected_energy_kwh")
+    if len(profile) < 2 or not runtime_minutes or not expected_energy:
+        raise ValueError("Program model has no costable power profile")
+    duration_seconds = float(runtime_minutes) * 60
+    segment_seconds = duration_seconds / (len(profile) - 1)
+    unscaled_energy = sum(
+        ((float(profile[index]) + float(profile[index + 1])) / 2) * segment_seconds / 3_600_000
+        for index in range(len(profile) - 1)
+    )
+    if unscaled_energy <= 0:
+        raise ValueError("Program profile contains no measurable energy")
+    scale = float(expected_energy) / unscaled_energy
+    return [
+        {
+            "offset_start": index * segment_seconds,
+            "offset_end": (index + 1) * segment_seconds,
+            "power_w": ((float(profile[index]) + float(profile[index + 1])) / 2) * scale,
+        }
+        for index in range(len(profile) - 1)
+    ]
+
+
+def _negative_power_window_fit(start: datetime, model: dict, periods: list[dict]) -> dict:
+    """Check that the profile's high-power section fits inside one free/negative window."""
+    segments = _profile_segments(model)
+    peak = max(segment["power_w"] for segment in segments)
+    threshold = max(1.0, peak * 0.5)
+    high_power = [segment for segment in segments if segment["power_w"] >= threshold]
+    if not high_power:
+        return {"fits": False, "reason": "no_high_power_segment", "peak_power_w": peak, "threshold_w": threshold}
+    required_start = start + timedelta(seconds=high_power[0]["offset_start"])
+    required_end = start + timedelta(seconds=high_power[-1]["offset_end"])
+    negative_windows = []
+    for period in sorted(periods, key=lambda item: item["start"]):
+        if float(period["price_p_per_kwh"]) > 0:
+            continue
+        if negative_windows and period["start"] <= negative_windows[-1]["end"]:
+            negative_windows[-1]["end"] = max(negative_windows[-1]["end"], period["end"])
+        else:
+            negative_windows.append({"start": period["start"], "end": period["end"]})
+    fits = next((window for window in negative_windows
+                 if required_start >= window["start"] and required_end <= window["end"]), None)
+    return {
+        "fits": fits is not None,
+        "reason": None if fits else "high_power_section_outside_negative_window",
+        "window_start": fits["start"].isoformat() if fits else None,
+        "window_end": fits["end"].isoformat() if fits else None,
+        "required_start": required_start.isoformat(),
+        "required_end": required_end.isoformat(),
+        "duration_seconds": round((required_end - required_start).total_seconds()),
+        "negative_window_count": len(negative_windows),
+        "peak_power_w": round(peak, 3),
+        "threshold_w": round(threshold, 3),
+    }
+
+
+def _recent_runs_in_window(model: dict, window_start: datetime, window_end: datetime) -> int:
+    """Count learned runs that overlap a tariff opportunity window."""
+    count = 0
+    for cycle in model.get("recent_cycles", []) or []:
+        try:
+            finish = _parse_timestamp(cycle.get("finish"))
+            runtime = float(cycle.get("runtime_minutes"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        cycle_start = finish - timedelta(minutes=runtime)
+        if cycle_start < window_end and finish > window_start:
+            count += 1
+    return count
+
+
+def _apply_negative_run_limit(model: dict, policy: dict, negative_fit: dict) -> dict:
+    """Annotate and enforce the configured per-negative-window run limit."""
+    result = dict(negative_fit)
+    maximum = int(policy.get("maximum_runs_per_window") or 0)
+    runs = 0
+    if result.get("fits") and result.get("window_start") and result.get("window_end"):
+        runs = _recent_runs_in_window(
+            model,
+            _parse_timestamp(result["window_start"]),
+            _parse_timestamp(result["window_end"]),
+        )
+    limit_reached = maximum > 0 and runs >= maximum
+    result.update({
+        "runs_in_window": runs,
+        "maximum_runs_per_window": maximum,
+        "run_limit_reached": limit_reached,
+    })
+    if limit_reached:
+        result.update(fits=False, reason="maximum_runs_per_window_reached")
+    return result
+
+
+def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> dict:
+    """Overlay a scaled learned profile on tariff periods."""
+    if start.tzinfo is None or start.utcoffset() is None:
+        raise ValueError("Cycle start must be timezone-aware")
+    start = start.astimezone(timezone.utc)
+    cost = 0.0
+    energy = 0.0
+    breakdown_by_start: dict[datetime, dict] = {}
+    for segment in _profile_segments(model):
+        segment_start = start + timedelta(seconds=segment["offset_start"])
+        segment_end = start + timedelta(seconds=segment["offset_end"])
+        covered_seconds = 0.0
+        for period in periods:
+            overlap_start = max(segment_start, period["start"])
+            overlap_end = min(segment_end, period["end"])
+            if overlap_end <= overlap_start:
+                continue
+            seconds = (overlap_end - overlap_start).total_seconds()
+            segment_energy = segment["power_w"] * seconds / 3_600_000
+            segment_cost = segment_energy * period["price_p_per_kwh"]
+            energy += segment_energy
+            cost += segment_cost
+            covered_seconds += seconds
+            bucket = breakdown_by_start.setdefault(period["start"], {
+                "start": period["start"],
+                "end": period["end"],
+                "price_p_per_kwh": period["price_p_per_kwh"],
+                "energy_kwh": 0.0,
+                "energy_cost_pence": 0.0,
+            })
+            bucket["energy_kwh"] += segment_energy
+            bucket["energy_cost_pence"] += segment_cost
+        if covered_seconds + 0.001 < (segment_end - segment_start).total_seconds():
+            raise ValueError("Tariff does not fully cover the cycle")
+    breakdown = [
+        {
+            "start": item["start"].isoformat(),
+            "end": item["end"].isoformat(),
+            "price_p_per_kwh": item["price_p_per_kwh"],
+            "energy_kwh": round(item["energy_kwh"], 6),
+            "energy_cost_pence": round(item["energy_cost_pence"], 4),
+        }
+        for item in sorted(breakdown_by_start.values(), key=lambda value: value["start"])
+        if item["energy_kwh"] > 0
+    ]
+    return {
+        "energy_kwh": round(energy, 6),
+        "energy_cost_pence": round(cost, 4),
+        "cost_breakdown": breakdown,
+    }
+
+
+def _next_candidate(reference: datetime, interval_minutes: int) -> datetime:
+    reference = reference.astimezone(timezone.utc)
+    seconds = interval_minutes * 60
+    rounded = math.ceil(reference.timestamp() / seconds) * seconds
+    return datetime.fromtimestamp(rounded, timezone.utc)
+
+
+def parse_clock(value: str) -> tuple[int, int]:
+    try:
+        hour, minute = str(value).split(":", 1)
+        hour = int(hour)
+        minute = int(minute)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid clock time: {value}") from None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ValueError(f"Invalid clock time: {value}")
+    return hour, minute
+
+
+def in_time_window(value: datetime, start: str, end: str, timezone_name: str) -> bool:
+    try:
+        local_timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError(f"Unknown schedule timezone: {timezone_name}") from error
+    local = value.astimezone(local_timezone)
+    start_hour, start_minute = parse_clock(start)
+    end_hour, end_minute = parse_clock(end)
+    current_minutes = local.hour * 60 + local.minute
+    start_minutes = start_hour * 60 + start_minute
+    end_minutes = end_hour * 60 + end_minute
+    if start_minutes == end_minutes:
+        return True
+    if start_minutes < end_minutes:
+        return start_minutes <= current_minutes < end_minutes
+    return current_minutes >= start_minutes or current_minutes < end_minutes
+
+
+def operational_overnight_window(
+    reference_utc: datetime,
+    start: str,
+    end: str,
+    timezone_name: str,
+) -> tuple[datetime, datetime]:
+    """Return the single current or next local overnight window in UTC."""
+    if reference_utc.tzinfo is None or reference_utc.utcoffset() is None:
+        raise ValueError("reference_utc must be timezone-aware")
+    try:
+        local_timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError(f"Unknown schedule timezone: {timezone_name}") from error
+    local = reference_utc.astimezone(local_timezone)
+    start_hour, start_minute = parse_clock(start)
+    end_hour, end_minute = parse_clock(end)
+    current_minutes = local.hour * 60 + local.minute
+    start_minutes = start_hour * 60 + start_minute
+    end_minutes = end_hour * 60 + end_minute
+    start_today = local.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+    end_today = local.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+
+    if start_minutes == end_minutes:
+        window_start = start_today if local >= start_today else start_today - timedelta(days=1)
+        window_end = window_start + timedelta(days=1)
+    elif start_minutes > end_minutes:
+        if current_minutes >= start_minutes:
+            window_start = start_today
+            window_end = end_today + timedelta(days=1)
+        elif current_minutes < end_minutes:
+            window_start = start_today - timedelta(days=1)
+            window_end = end_today
+        else:
+            window_start = start_today
+            window_end = end_today + timedelta(days=1)
+    elif start_minutes <= current_minutes < end_minutes:
+        window_start = start_today
+        window_end = end_today
+    elif current_minutes < start_minutes:
+        window_start = start_today
+        window_end = end_today
+    else:
+        window_start = start_today + timedelta(days=1)
+        window_end = end_today + timedelta(days=1)
+
+    return window_start.astimezone(timezone.utc), window_end.astimezone(timezone.utc)
+
+
+def candidate_window_score(candidate: dict, preference: str) -> int:
+    if preference == "prefer_overnight":
+        return 0 if candidate.get("is_overnight_start") else 1
+    if preference == "prefer_daytime":
+        return 0 if candidate.get("is_daytime_start") else 1
+    return 0
+
+
+def best_window_candidate(candidates: list[dict], *, overnight: bool) -> dict | None:
+    matching = [
+        candidate for candidate in candidates
+        if bool(candidate.get("is_overnight_start")) is overnight
+    ]
+    if not matching:
+        return None
+    return min(matching, key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]))
+
+
+def candidate_green_overlap_seconds(candidate: dict, green_windows: list[dict]) -> float:
+    """Return how many seconds of a candidate cycle overlap preferred green windows."""
+    return candidate_window_overlap_seconds(candidate, green_windows)
+
+
+def candidate_window_overlap_seconds(candidate: dict, windows: list[dict]) -> float:
+    """Return how many seconds of a candidate cycle overlap supplied windows."""
+    start = candidate.get("start")
+    finish = candidate.get("finish")
+    if not start or not finish or not windows:
+        return 0.0
+    overlap_seconds = 0.0
+    for window in windows:
+        window_start = window.get("start")
+        window_end = window.get("end")
+        if not window_start or not window_end:
+            continue
+        overlap_start = max(start, window_start)
+        overlap_end = min(finish, window_end)
+        if overlap_end > overlap_start:
+            overlap_seconds += (overlap_end - overlap_start).total_seconds()
+    return overlap_seconds
+
+
+def candidate_overlaps_windows(candidate: dict, windows: list[dict]) -> bool:
+    """Return true when any part of a candidate cycle falls inside a blocked window."""
+    return candidate_window_overlap_seconds(candidate, windows) > 0
+
+
+def annotate_green_context(candidate: dict, green_windows: list[dict]) -> dict:
+    """Attach provider-neutral green-window context to a candidate."""
+    overlap_seconds = candidate_green_overlap_seconds(candidate, green_windows)
+    runtime_seconds = max(1.0, (candidate["finish"] - candidate["start"]).total_seconds())
+    return {
+        **candidate,
+        "green_window_overlap_seconds": round(overlap_seconds),
+        "green_window_overlap_percent": round((overlap_seconds / runtime_seconds) * 100, 2),
+        "is_green_window_start": overlap_seconds > 0,
+    }
+
+
+def best_green_candidate(candidates: list[dict]) -> dict | None:
+    """Choose the cheapest candidate that materially overlaps a green window."""
+    matching = [candidate for candidate in candidates if candidate.get("green_window_overlap_seconds", 0) > 0]
+    if not matching:
+        return None
+    return min(
+        matching,
+        key=lambda item: (
+            item["total_cost_pence"],
+            -item.get("green_window_overlap_seconds", 0),
+            item["preference_rank"],
+            item["finish"],
+        ),
+    )
+
+
+def non_energy_cost_breakdown(policy: dict) -> dict:
+    """Return configurable non-energy cycle costs for one program policy."""
+    fixed_cost = float(policy.get("fixed_cost_pence", policy.get("estimated_overhead_cost_pence", 0)) or 0)
+    water_litres = float(policy.get("water_litres", 0) or 0)
+    water_cost_per_litre = float(policy.get("water_cost_pence_per_litre", 0) or 0)
+    water_cost = water_litres * water_cost_per_litre
+    wear_cost = float(policy.get("wear_cost_pence", 0) or 0)
+    total = fixed_cost + water_cost + wear_cost
+    return {
+        "fixed_cost_pence": round(fixed_cost, 4),
+        "water_litres": round(water_litres, 4),
+        "water_cost_pence_per_litre": round(water_cost_per_litre, 6),
+        "water_cost_pence": round(water_cost, 4),
+        "wear_cost_pence": round(wear_cost, 4),
+        "non_energy_cost_pence": round(total, 4),
+    }
+
+
+def apply_operating_costs(estimate: dict, policy: dict) -> dict:
+    """Combine tariff energy cost with configurable per-cycle operating costs."""
+    non_energy = non_energy_cost_breakdown(policy)
+    energy_cost = float(estimate["energy_cost_pence"])
+    total_cost = energy_cost + non_energy["non_energy_cost_pence"]
+    return {
+        **estimate,
+        **non_energy,
+        "energy_cost_pence": round(energy_cost, 4),
+        "total_cost_pence": round(total_cost, 4),
+        "operating_cost_breakdown": {
+            "energy_cost_pence": round(energy_cost, 4),
+            **non_energy,
+            "total_cost_pence": round(total_cost, 4),
+        },
+    }
+
+
+def summarize_window_candidate(candidate: dict | None, now_cost: float | None) -> dict | None:
+    if not candidate:
+        return None
+    saving = None
+    if now_cost is not None:
+        saving = round(max(0.0, now_cost - candidate["total_cost_pence"]), 4)
+    return {
+        "program": candidate.get("program"),
+        "start": candidate.get("start").isoformat() if candidate.get("start") else None,
+        "finish": candidate.get("finish").isoformat() if candidate.get("finish") else None,
+        "cost_pence": candidate.get("total_cost_pence"),
+        "energy_cost_pence": candidate.get("energy_cost_pence"),
+        "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
+        "saving_vs_now_pence": saving,
+        "energy_kwh": candidate.get("energy_kwh"),
+        "confidence": candidate.get("confidence"),
+        "green_window_overlap_seconds": candidate.get("green_window_overlap_seconds"),
+        "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
+        "is_green_window_start": candidate.get("is_green_window_start"),
+    }
+
+
+def summarize_decision(
+    *,
+    intent: str,
+    candidate: dict | None,
+    reference_utc: datetime,
+    now_cost: float | None,
+    ready_to_start: bool = False,
+    reason: str | None = None,
+    program_options: list[dict] | None = None,
+    display_program_options: list[dict] | None = None,
+) -> dict:
+    if not candidate:
+        return {
+            "intent": intent,
+            "status": "not_ready",
+            "reason": reason or "no_candidate",
+            "ready_to_start": False,
+            "program_options": program_options or [],
+            "display_program_options": display_program_options or program_options or [],
+        }
+    cost = candidate.get("total_cost_pence")
+    saving = None
+    if now_cost is not None and cost is not None:
+        saving = round(max(0.0, now_cost - cost), 4)
+    start = candidate.get("start")
+    seconds_until_start = None
+    if start:
+        seconds_until_start = max(0, round((start - reference_utc).total_seconds()))
+    return {
+        "intent": intent,
+        "status": "ready",
+        "reason": reason,
+        "ready_to_start": ready_to_start,
+        "program": candidate.get("program"),
+        "start": start.isoformat() if start else None,
+        "finish": candidate.get("finish").isoformat() if candidate.get("finish") else None,
+        "seconds_until_start": seconds_until_start,
+        "cost_pence": cost,
+        "energy_cost_pence": candidate.get("energy_cost_pence"),
+        "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
+        "saving_vs_now_pence": saving,
+        "energy_kwh": candidate.get("energy_kwh"),
+        "confidence": candidate.get("confidence"),
+        "negative_price_run": candidate.get("negative_price_run"),
+        "cooldown_bypassed_for_negative_price": candidate.get(
+            "cooldown_bypassed_for_negative_price",
+            False,
+        ),
+        "power_hungry_window_fits_negative_price": candidate.get("negative_power_window", {}).get("fits"),
+        "power_hungry_window_reason": candidate.get("negative_power_window", {}).get("reason"),
+        "negative_window_start": candidate.get("negative_power_window", {}).get("window_start"),
+        "negative_window_end": candidate.get("negative_power_window", {}).get("window_end"),
+        "negative_window_runs": candidate.get("negative_power_window", {}).get("runs_in_window"),
+        "maximum_runs_per_window": candidate.get("negative_power_window", {}).get("maximum_runs_per_window"),
+        "is_overnight_start": candidate.get("is_overnight_start"),
+        "is_daytime_start": candidate.get("is_daytime_start"),
+        "energy_kwh_per_minute": candidate.get("energy_kwh_per_minute"),
+        "green_window_overlap_seconds": candidate.get("green_window_overlap_seconds"),
+        "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
+        "is_green_window_start": candidate.get("is_green_window_start"),
+        "program_options": program_options or [],
+        "display_program_options": display_program_options or program_options or [],
+    }
+
+
+def summarize_program_option(candidate: dict, reference_utc: datetime, now_cost: float | None) -> dict:
+    """Return a dashboard/automation-safe summary of one selectable program option."""
+    start = candidate.get("start")
+    finish = candidate.get("finish")
+    seconds_until_start = None
+    if start:
+        seconds_until_start = max(0, round((start - reference_utc).total_seconds()))
+    saving = None
+    cost = candidate.get("total_cost_pence")
+    if now_cost is not None and cost is not None:
+        saving = round(max(0.0, now_cost - cost), 4)
+    return {
+        "program": candidate.get("program"),
+        "start": start.isoformat() if start else None,
+        "finish": finish.isoformat() if finish else None,
+        "seconds_until_start": seconds_until_start,
+        "cost_pence": cost,
+        "energy_cost_pence": candidate.get("energy_cost_pence"),
+        "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
+        "saving_vs_now_pence": saving,
+        "energy_kwh": candidate.get("energy_kwh"),
+        "confidence": candidate.get("confidence"),
+        "preference_rank": candidate.get("preference_rank"),
+        "negative_price_priority": candidate.get("negative_price_priority"),
+        "negative_price_run": candidate.get("negative_price_run"),
+        "cooldown_bypassed_for_negative_price": candidate.get(
+            "cooldown_bypassed_for_negative_price",
+            False,
+        ),
+        "energy_kwh_per_minute": candidate.get("energy_kwh_per_minute"),
+        "is_overnight_start": candidate.get("is_overnight_start"),
+        "is_daytime_start": candidate.get("is_daytime_start"),
+        "green_window_overlap_seconds": candidate.get("green_window_overlap_seconds"),
+        "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
+        "is_green_window_start": candidate.get("is_green_window_start"),
+        "automatic_eligible": candidate.get("automatic_eligible", True),
+        "eligibility_reason": candidate.get("eligibility_reason", "automatic"),
+    }
+
+
+def summarize_program_options(
+    candidates: list[dict],
+    *,
+    reference_utc: datetime,
+    now_cost: float | None,
+    intent: str,
+    limit: int = 20,
+) -> list[dict]:
+    """Return the best candidate for each program for a given front-end intent."""
+    if intent == "now":
+        eligible = list(candidates)
+
+        def sort_key(item: dict) -> tuple:
+            return (
+                abs((item["start"] - reference_utc).total_seconds()),
+                item["total_cost_pence"],
+                item.get("preference_rank", 50),
+                item["finish"],
+            )
+    elif intent == "soon":
+        soon_end = reference_utc + timedelta(hours=2)
+        eligible = [item for item in candidates if reference_utc <= item["start"] <= soon_end]
+
+        def sort_key(item: dict) -> tuple:
+            return (item["total_cost_pence"], item.get("preference_rank", 50), item["finish"])
+    elif intent == "overnight":
+        eligible = [item for item in candidates if item.get("is_overnight_start")]
+
+        def sort_key(item: dict) -> tuple:
+            return (item["total_cost_pence"], item.get("preference_rank", 50), item["finish"])
+    elif intent == "negative_price":
+        eligible = [item for item in candidates if item.get("negative_price_run")]
+
+        def sort_key(item: dict) -> tuple:
+            return (
+                -item.get("negative_price_priority", 50),
+                -item.get("energy_kwh_per_minute", 0),
+                -item.get("energy_kwh", 0),
+                item["total_cost_pence"],
+                item.get("preference_rank", 50),
+            )
+    elif intent == "greenest":
+        eligible = [item for item in candidates if item.get("green_window_overlap_seconds", 0) > 0]
+
+        def sort_key(item: dict) -> tuple:
+            return (
+                -item.get("green_window_overlap_percent", 0),
+                item["total_cost_pence"],
+                item.get("preference_rank", 50),
+                item["finish"],
+            )
+    else:
+        eligible = []
+
+        def sort_key(item: dict) -> tuple:
+            return (item["total_cost_pence"], item.get("preference_rank", 50), item["finish"])
+
+    best_by_program = {}
+    for candidate in sorted(eligible, key=sort_key):
+        best_by_program.setdefault(candidate.get("program"), candidate)
+    return [
+        summarize_program_option(candidate, reference_utc, now_cost)
+        for candidate in sorted(best_by_program.values(), key=sort_key)[:limit]
+    ]
+
+
+def summarize_program_rotation(program_diagnostics: list[dict], limit: int = 10) -> dict:
+    """Return a compact explanation of program availability and cooldown state."""
+    excluded = []
+    cooldowns = []
+    for diagnostic in program_diagnostics:
+        item = {
+            "program": diagnostic.get("program"),
+            "status": diagnostic.get("status"),
+            "reason": diagnostic.get("reason"),
+            "confidence": diagnostic.get("confidence"),
+            "priced_points": diagnostic.get("priced_points", 0),
+        }
+        if diagnostic.get("cooldown_until"):
+            item["cooldown_until"] = diagnostic["cooldown_until"]
+            item["minimum_hours_between_runs"] = diagnostic.get("minimum_hours_between_runs")
+        if diagnostic.get("status") != "included":
+            excluded.append(item)
+        if diagnostic.get("reason") == "cooldown_active" or diagnostic.get("rejected_cooldown_points", 0):
+            cooldowns.append(item)
+    return {
+        "excluded_programs": excluded[:limit],
+        "cooldown_programs": cooldowns[:limit],
+    }
+
+
+def summarize_alternative_programs(candidates: list[dict], selected: dict, limit: int = 8) -> list[dict]:
+    """Summarise the cheapest visible option for each alternative program."""
+    best_by_program = {}
+    for candidate in candidates:
+        program = candidate.get("program")
+        if not program or program == selected.get("program"):
+            continue
+        previous = best_by_program.get(program)
+        if previous is None or candidate["total_cost_pence"] < previous["total_cost_pence"]:
+            best_by_program[program] = candidate
+    alternatives = sorted(
+        best_by_program.values(),
+        key=lambda item: (item["total_cost_pence"], item.get("preference_rank", 50), item["finish"]),
+    )
+    return [
+        {
+            "program": item.get("program"),
+            "start": item.get("start").isoformat() if item.get("start") else None,
+            "finish": item.get("finish").isoformat() if item.get("finish") else None,
+            "cost_pence": item.get("total_cost_pence"),
+            "confidence": item.get("confidence"),
+            "preference_rank": item.get("preference_rank"),
+            "negative_price_run": item.get("negative_price_run"),
+            "green_window_overlap_percent": item.get("green_window_overlap_percent"),
+        }
+        for item in alternatives[:limit]
+    ]
+
+
+def summarize_selection_policy(
+    *,
+    selected: dict,
+    candidates: list[dict],
+    comparison_candidates: list[dict],
+    program_diagnostics: list[dict],
+    schedule_strategy: str,
+    window_preference: str,
+    equivalent_cost_tolerance_pence: float,
+    now_cost: float | None,
+    best_overnight: dict | None,
+    best_daytime: dict | None,
+    greenest: dict | None,
+    best_negative: dict | None,
+    latest_allowed_finish: datetime | None,
+) -> dict:
+    rotation = summarize_program_rotation(program_diagnostics)
+    selected_cost = selected.get("total_cost_pence")
+    factors = [
+        f"schedule_strategy:{schedule_strategy}",
+        f"window_preference:{window_preference}",
+    ]
+    if equivalent_cost_tolerance_pence:
+        factors.append(f"equivalent_cost_tolerance_pence:{equivalent_cost_tolerance_pence}")
+    if latest_allowed_finish:
+        factors.append("latest_finish_constraint_active")
+    if rotation["cooldown_programs"]:
+        factors.append("cooldown_rotation_active")
+    if selected.get("negative_price_run"):
+        factors.append("negative_price_candidate")
+    if selected.get("green_window_overlap_seconds", 0) > 0:
+        factors.append("green_window_overlap")
+
+    def delta(candidate: dict | None) -> float | None:
+        if not candidate or selected_cost is None or candidate.get("total_cost_pence") is None:
+            return None
+        return round(candidate["total_cost_pence"] - selected_cost, 4)
+
+    return {
+        "selected_program": selected.get("program"),
+        "selected_start": selected.get("start").isoformat() if selected.get("start") else None,
+        "selected_finish": selected.get("finish").isoformat() if selected.get("finish") else None,
+        "selected_cost_pence": selected_cost,
+        "selected_confidence": selected.get("confidence"),
+        "selected_preference_rank": selected.get("preference_rank"),
+        "selection_factors": factors,
+        "eligible_program_count": len({item.get("program") for item in candidates}),
+        "costed_program_count": len({item.get("program") for item in comparison_candidates}),
+        "alternative_programs": summarize_alternative_programs(comparison_candidates, selected),
+        "excluded_programs": rotation["excluded_programs"],
+        "cooldown_programs": rotation["cooldown_programs"],
+        "cost_if_started_now_pence": now_cost,
+        "overnight_delta_pence": delta(best_overnight),
+        "daytime_delta_pence": delta(best_daytime),
+        "greenest_delta_pence": delta(greenest),
+        "negative_price_program": best_negative.get("program") if best_negative else None,
+    }
+
+
+def summarize_forecast_candidates(candidates: list[dict], limit: int = 300) -> list[dict]:
+    forecast = []
+    for candidate in sorted(candidates, key=lambda item: (item["program"], item["start"]))[:limit]:
+        forecast.append({
+            "program": candidate.get("program"),
+            "start": candidate.get("start").isoformat() if candidate.get("start") else None,
+            "finish": candidate.get("finish").isoformat() if candidate.get("finish") else None,
+            "cost_pence": candidate.get("total_cost_pence"),
+            "energy_cost_pence": candidate.get("energy_cost_pence"),
+            "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
+            "energy_kwh": candidate.get("energy_kwh"),
+            "confidence": candidate.get("confidence"),
+            "is_overnight_start": candidate.get("is_overnight_start"),
+            "is_daytime_start": candidate.get("is_daytime_start"),
+            "green_window_overlap_seconds": candidate.get("green_window_overlap_seconds"),
+            "green_window_overlap_percent": candidate.get("green_window_overlap_percent"),
+            "is_green_window_start": candidate.get("is_green_window_start"),
+        })
+    return forecast
+
+
+def forecast_cycle_costs(
+    models: list[dict],
+    policies: list[dict],
+    periods: list[dict],
+    *,
+    reference_utc: datetime,
+    forecast_hours: int,
+    forecast_interval_minutes: int,
+    overnight_start: str,
+    overnight_end: str,
+    schedule_timezone: str,
+    forecast_limit: int,
+    green_windows: list[dict] | None = None,
+    blocked_windows: list[dict] | None = None,
+    excluded_programs: list[str] | None = None,
+) -> tuple[list[dict], list[dict]]:
+    policy_by_program = {policy["program"]: policy for policy in policies}
+    excluded = set(excluded_programs or [])
+    forecast_end = reference_utc + timedelta(hours=max(0, forecast_hours))
+    start_at = _next_candidate(reference_utc, forecast_interval_minutes)
+    candidates = []
+    diagnostics = []
+    for model in models:
+        diagnostic = {
+            "program": model.get("program"),
+            "status": "included",
+            "reason": None,
+            "candidate_points": 0,
+            "priced_points": 0,
+            "rejected_points": 0,
+            "rejected_cooldown_points": 0,
+            "negative_cooldown_bypass_points": 0,
+            "rejected_blocked_points": 0,
+            "rejected_negative_power_window_points": 0,
+            "runtime_minutes": model.get("expected_runtime_minutes"),
+            "confidence": model.get("confidence"),
+        }
+        if model.get("program") in excluded:
+            diagnostic.update(status="excluded", reason="remote_start_blocked")
+            diagnostics.append(diagnostic)
+            continue
+        policy = policy_by_program.get(model["program"])
+        if not policy or not policy["enabled"]:
+            diagnostic.update(status="excluded", reason="policy_missing_or_disabled")
+            diagnostics.append(diagnostic)
+            continue
+        if not (policy["allow_normal_recommendation"] or policy["allow_negative_price_run"]):
+            diagnostic.update(status="excluded", reason="policy_not_allowed_for_recommendation")
+            diagnostics.append(diagnostic)
+            continue
+        try:
+            _profile_segments(model)
+        except ValueError:
+            diagnostic.update(status="excluded", reason="insufficient_profile")
+            diagnostics.append(diagnostic)
+            continue
+        cooldown_until = _cooldown_until_utc(model, policy)
+        if cooldown_until:
+            diagnostic["cooldown_until"] = cooldown_until.isoformat()
+            diagnostic["minimum_hours_between_runs"] = policy.get("minimum_hours_between_runs")
+        start = start_at
+        while start <= forecast_end:
+            diagnostic["candidate_points"] += 1
+            cooldown_active = bool(cooldown_until and start < cooldown_until)
+            finish = start + timedelta(minutes=float(model["expected_runtime_minutes"]))
+            probe = {"start": start, "finish": finish}
+            if candidate_overlaps_windows(probe, blocked_windows or []):
+                diagnostic["rejected_blocked_points"] += 1
+                start += timedelta(minutes=forecast_interval_minutes)
+                continue
+            try:
+                estimate = estimate_cycle_cost(start, model, periods)
+            except ValueError:
+                diagnostic["rejected_points"] += 1
+                start += timedelta(minutes=forecast_interval_minutes)
+                continue
+            negative_fit = _apply_negative_run_limit(
+                model,
+                policy,
+                _negative_power_window_fit(start, model, periods),
+            )
+            negative_eligible = policy["allow_negative_price_run"] and negative_fit["fits"]
+            if policy["allow_negative_price_run"] and not negative_fit["fits"]:
+                diagnostic["rejected_negative_power_window_points"] += 1
+            normal_eligible = bool(policy["allow_normal_recommendation"] and not cooldown_active)
+            if cooldown_active:
+                diagnostic["rejected_cooldown_points"] += 1
+                if negative_eligible:
+                    diagnostic["negative_cooldown_bypass_points"] += 1
+            if normal_eligible or negative_eligible:
+                estimate = apply_operating_costs(estimate, policy)
+                diagnostic["priced_points"] += 1
+                is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
+                candidate = {
+                    "program": model["program"],
+                    "start": start,
+                    "finish": finish,
+                    "total_cost_pence": estimate["total_cost_pence"],
+                    "energy_cost_pence": estimate["energy_cost_pence"],
+                    "non_energy_cost_pence": estimate["non_energy_cost_pence"],
+                    "energy_kwh": estimate["energy_kwh"],
+                    "confidence": model.get("confidence", 0),
+                    "is_overnight_start": is_overnight,
+                    "is_daytime_start": not is_overnight,
+                    "negative_price_run": negative_eligible,
+                    "cooldown_bypassed_for_negative_price": cooldown_active and negative_eligible,
+                    "negative_power_window": negative_fit,
+                }
+                candidates.append(annotate_green_context(candidate, green_windows or []))
+            start += timedelta(minutes=forecast_interval_minutes)
+        if diagnostic["priced_points"] == 0:
+            if diagnostic["rejected_cooldown_points"]:
+                reason = "cooldown_active"
+            elif diagnostic["rejected_blocked_points"]:
+                reason = "blocked_window"
+            elif diagnostic["rejected_negative_power_window_points"]:
+                reason = "negative_power_window_mismatch"
+            else:
+                reason = "no_fully_priced_forecast_points"
+            diagnostic.update(status="excluded", reason=reason)
+        diagnostics.append(diagnostic)
+    return summarize_forecast_candidates(candidates, forecast_limit), diagnostics
+
+
+def recommend_cycle(
+    models: list[dict],
+    policies: list[dict],
+    periods: list[dict],
+    *,
+    reference_utc: datetime,
+    search_hours: int,
+    candidate_interval_minutes: int,
+    schedule_strategy: str = "cheapest_absolute",
+    equivalent_cost_tolerance_pence: float = 0.0,
+    preference_weight_pence: float = 0.1,
+    window_preference: str = "any",
+    overnight_start: str = "20:00",
+    overnight_end: str = "08:00",
+    schedule_timezone: str = "Europe/London",
+    earliest_start_utc: datetime | None = None,
+    latest_finish_utc: datetime | None = None,
+    forecast_hours: int = 12,
+    forecast_interval_minutes: int = 30,
+    forecast_limit: int = 300,
+    green_windows: list[dict] | None = None,
+    blocked_windows: list[dict] | None = None,
+    excluded_programs: list[str] | None = None,
+) -> dict:
+    """Find the least-cost policy-eligible program and start time."""
+    if schedule_strategy not in SCHEDULE_STRATEGIES:
+        raise ValueError(f"Unsupported schedule strategy: {schedule_strategy}")
+    if window_preference not in WINDOW_PREFERENCES:
+        raise ValueError(f"Unsupported window preference: {window_preference}")
+    equivalent_cost_tolerance_pence = max(0.0, float(equivalent_cost_tolerance_pence))
+    preference_weight_pence = max(0.0, float(preference_weight_pence))
+    policy_by_program = {policy["program"]: policy for policy in policies}
+    excluded = set(excluded_programs or [])
+    candidates = []
+    comparison_candidates = []
+    normal_candidates = []
+    display_candidates = []
+    negative_candidates = []
+    rejected_profiles = 0
+    rejected_constraints = 0
+    rejected_cooldowns = 0
+    rejected_blocked = 0
+    rejected_negative_run_limits = 0
+    program_diagnostics = []
+    search_end = reference_utc + timedelta(hours=search_hours)
+    earliest_allowed_start = earliest_start_utc.astimezone(timezone.utc) if earliest_start_utc else reference_utc
+    latest_allowed_finish = latest_finish_utc.astimezone(timezone.utc) if latest_finish_utc else None
+    first_start = _next_candidate(max(reference_utc, earliest_allowed_start), candidate_interval_minutes)
+    for model in models:
+        diagnostic = {
+            "program": model.get("program"),
+            "status": "included",
+            "reason": None,
+            "candidate_points": 0,
+            "priced_points": 0,
+            "display_priced_points": 0,
+            "rejected_constraints": 0,
+            "rejected_cooldown_points": 0,
+            "negative_cooldown_bypass_points": 0,
+            "rejected_blocked_points": 0,
+            "rejected_unpriced_points": 0,
+            "rejected_negative_power_window_points": 0,
+            "rejected_negative_run_limit_points": 0,
+            "runtime_minutes": model.get("expected_runtime_minutes"),
+            "confidence": model.get("confidence"),
+        }
+        if model.get("program") in excluded:
+            diagnostic.update(status="excluded", reason="remote_start_blocked")
+            program_diagnostics.append(diagnostic)
+            continue
+        policy = policy_by_program.get(model["program"])
+        if not policy or not policy["enabled"]:
+            diagnostic.update(status="excluded", reason="policy_missing_or_disabled")
+            program_diagnostics.append(diagnostic)
+            continue
+        automatic_policy_allowed = bool(
+            policy["allow_normal_recommendation"] or policy["allow_negative_price_run"]
+        )
+        try:
+            _profile_segments(model)
+        except ValueError:
+            rejected_profiles += 1
+            diagnostic.update(status="excluded", reason="insufficient_profile")
+            program_diagnostics.append(diagnostic)
+            continue
+        cooldown_until = _cooldown_until_utc(model, policy)
+        if cooldown_until:
+            diagnostic["cooldown_until"] = cooldown_until.isoformat()
+            diagnostic["minimum_hours_between_runs"] = policy.get("minimum_hours_between_runs")
+        start = first_start
+        while start <= search_end:
+            diagnostic["candidate_points"] += 1
+            finish = start + timedelta(minutes=float(model["expected_runtime_minutes"]))
+            if latest_allowed_finish and finish > latest_allowed_finish:
+                rejected_constraints += 1
+                diagnostic["rejected_constraints"] += 1
+                start += timedelta(minutes=candidate_interval_minutes)
+                continue
+            cooldown_active = bool(cooldown_until and start < cooldown_until)
+            if candidate_overlaps_windows({"start": start, "finish": finish}, blocked_windows or []):
+                rejected_blocked += 1
+                diagnostic["rejected_blocked_points"] += 1
+                start += timedelta(minutes=candidate_interval_minutes)
+                continue
+            is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
+            is_daytime = not is_overnight
+            try:
+                estimate = estimate_cycle_cost(start, model, periods)
+            except ValueError:
+                diagnostic["rejected_unpriced_points"] += 1
+                start += timedelta(minutes=candidate_interval_minutes)
+                continue
+            negative_fit = _apply_negative_run_limit(
+                model,
+                policy,
+                _negative_power_window_fit(start, model, periods),
+            )
+            negative_eligible = policy["allow_negative_price_run"] and negative_fit["fits"]
+            if policy["allow_negative_price_run"] and not negative_fit["fits"]:
+                diagnostic["rejected_negative_power_window_points"] += 1
+                if negative_fit.get("reason") == "maximum_runs_per_window_reached":
+                    diagnostic["rejected_negative_run_limit_points"] += 1
+                    rejected_negative_run_limits += 1
+            estimate = apply_operating_costs(estimate, policy)
+            normal_eligible = bool(policy["allow_normal_recommendation"] and not cooldown_active)
+            automatic_eligible = bool(normal_eligible or negative_eligible)
+            if cooldown_active:
+                rejected_cooldowns += 1
+                diagnostic["rejected_cooldown_points"] += 1
+                if negative_eligible:
+                    diagnostic["negative_cooldown_bypass_points"] += 1
+            candidate = {
+                "program": model["program"],
+                "start": start,
+                "finish": finish,
+                "energy_cost_pence": estimate["energy_cost_pence"],
+                "energy_kwh": estimate["energy_kwh"],
+                "cost_breakdown": estimate["cost_breakdown"],
+                "overhead_cost_pence": estimate["fixed_cost_pence"],
+                "fixed_cost_pence": estimate["fixed_cost_pence"],
+                "water_litres": estimate["water_litres"],
+                "water_cost_pence_per_litre": estimate["water_cost_pence_per_litre"],
+                "water_cost_pence": estimate["water_cost_pence"],
+                "wear_cost_pence": estimate["wear_cost_pence"],
+                "non_energy_cost_pence": estimate["non_energy_cost_pence"],
+                "operating_cost_breakdown": estimate["operating_cost_breakdown"],
+                "total_cost_pence": estimate["total_cost_pence"],
+                "confidence": model.get("confidence", 0),
+                "preference_rank": policy["preference_rank"],
+                "negative_price_priority": policy.get("negative_price_priority", 50),
+                "negative_price_run": negative_eligible,
+                "cooldown_bypassed_for_negative_price": cooldown_active and negative_eligible,
+                "negative_power_window": negative_fit,
+                "energy_kwh_per_minute": round(estimate["energy_kwh"] / float(model["expected_runtime_minutes"]), 6),
+                "is_overnight_start": is_overnight,
+                "is_daytime_start": is_daytime,
+                "automatic_eligible": automatic_eligible,
+                "eligibility_reason": (
+                    "normal_recommendation"
+                    if normal_eligible
+                    else ("negative_price" if negative_eligible else "manual_only")
+                ),
+            }
+            candidate = annotate_green_context(candidate, green_windows or [])
+            display_candidates.append(candidate)
+            diagnostic["display_priced_points"] += 1
+            if automatic_eligible:
+                diagnostic["priced_points"] += 1
+                comparison_candidates.append(candidate)
+                if normal_eligible:
+                    normal_candidates.append(candidate)
+                if negative_eligible:
+                    negative_candidates.append(candidate)
+                if not negative_eligible and window_preference == "overnight_only" and not is_overnight:
+                    start += timedelta(minutes=candidate_interval_minutes)
+                    continue
+                if not negative_eligible and window_preference == "daytime_only" and not is_daytime:
+                    start += timedelta(minutes=candidate_interval_minutes)
+                    continue
+                candidates.append(candidate)
+            start += timedelta(minutes=candidate_interval_minutes)
+        if diagnostic["priced_points"] == 0:
+            if not automatic_policy_allowed:
+                diagnostic.update(status="excluded", reason="policy_not_allowed_for_recommendation")
+            elif diagnostic["rejected_cooldown_points"]:
+                diagnostic.update(status="excluded", reason="cooldown_active")
+            elif diagnostic["rejected_constraints"]:
+                diagnostic.update(status="excluded", reason="outside_schedule_constraints")
+            elif diagnostic["rejected_blocked_points"]:
+                diagnostic.update(status="excluded", reason="blocked_window")
+            elif diagnostic["rejected_unpriced_points"]:
+                diagnostic.update(status="excluded", reason="no_fully_priced_points")
+            elif diagnostic["rejected_negative_run_limit_points"]:
+                diagnostic.update(status="excluded", reason="maximum_runs_per_window_reached")
+            elif diagnostic["rejected_negative_power_window_points"]:
+                diagnostic.update(status="excluded", reason="negative_power_window_mismatch")
+            else:
+                diagnostic.update(status="excluded", reason="no_eligible_candidates")
+        program_diagnostics.append(diagnostic)
+    if not candidates:
+        return {
+            "status": "insufficient_profile" if rejected_profiles else "no_eligible_programs",
+            "reason": (
+                "maximum_runs_per_window_reached"
+                if rejected_negative_run_limits else
+                ("insufficient_profile" if rejected_profiles else "no_eligible_programs")
+            ),
+            "rejected_profiles": rejected_profiles,
+            "rejected_constraints": rejected_constraints,
+            "rejected_cooldowns": rejected_cooldowns,
+            "rejected_blocked": rejected_blocked,
+            "blocked_window_count": len(blocked_windows or []),
+            "blocked_window_candidate_count": rejected_blocked,
+            "remote_start_blocked_programs": sorted(excluded),
+            "green_window_count": len(green_windows or []),
+            "green_window_candidate_count": 0,
+            "program_diagnostics": program_diagnostics,
+            "earliest_allowed_start": earliest_allowed_start.isoformat() if earliest_allowed_start else None,
+            "latest_allowed_finish": latest_allowed_finish.isoformat() if latest_allowed_finish else None,
+        }
+    cheapest_cost = min(item["total_cost_pence"] for item in candidates)
+    equivalent_candidates = [
+        item for item in candidates
+        if item["total_cost_pence"] <= cheapest_cost + equivalent_cost_tolerance_pence
+    ]
+    if schedule_strategy == "cheapest_earliest_finish":
+        cheapest = min(equivalent_candidates, key=lambda item: (candidate_window_score(item, window_preference), item["finish"], item["total_cost_pence"], item["preference_rank"]))
+    elif schedule_strategy == "cheapest_latest_finish":
+        cheapest = min(equivalent_candidates, key=lambda item: (candidate_window_score(item, window_preference), -item["finish"].timestamp(), item["total_cost_pence"], item["preference_rank"]))
+    else:
+        cheapest = min(candidates, key=lambda item: (item["total_cost_pence"] + (item["preference_rank"] * preference_weight_pence), candidate_window_score(item, window_preference), item["total_cost_pence"], item["preference_rank"], item["finish"]))
+    selected_model = next(model for model in models if model["program"] == cheapest["program"])
+    try:
+        now_finish = reference_utc + timedelta(minutes=float(selected_model["expected_runtime_minutes"]))
+        if candidate_overlaps_windows({"start": reference_utc, "finish": now_finish}, blocked_windows or []):
+            now_cost = None
+            now_breakdown = []
+            now_operating_breakdown = None
+        else:
+            now_estimate = estimate_cycle_cost(reference_utc, selected_model, periods)
+            policy = policy_by_program[cheapest["program"]]
+            now_estimate = apply_operating_costs(now_estimate, policy)
+            now_cost = now_estimate["total_cost_pence"]
+            now_breakdown = now_estimate["cost_breakdown"]
+            now_operating_breakdown = now_estimate["operating_cost_breakdown"]
+    except ValueError:
+        now_cost = None
+        now_breakdown = []
+        now_operating_breakdown = None
+    operational_overnight_start, operational_overnight_end = operational_overnight_window(
+        reference_utc,
+        overnight_start,
+        overnight_end,
+        schedule_timezone,
+    )
+    operational_overnight_candidates = [
+        candidate for candidate in normal_candidates
+        if (
+            candidate.get("is_overnight_start")
+            and max(reference_utc, operational_overnight_start) <= candidate["start"] < operational_overnight_end
+        )
+    ]
+    operational_overnight_display_candidates = [
+        candidate for candidate in display_candidates
+        if (
+            candidate.get("is_overnight_start")
+            and max(reference_utc, operational_overnight_start) <= candidate["start"] < operational_overnight_end
+        )
+    ]
+    best_overnight = best_window_candidate(operational_overnight_candidates, overnight=True)
+    best_daytime = best_window_candidate(normal_candidates, overnight=False)
+    greenest = best_green_candidate(normal_candidates)
+    immediate_candidate = min(
+        normal_candidates,
+        key=lambda item: (abs((item["start"] - reference_utc).total_seconds()), item["total_cost_pence"], item["preference_rank"]),
+    ) if normal_candidates else None
+    soon_end = reference_utc + timedelta(hours=2)
+    soon_candidates = [
+        candidate for candidate in normal_candidates
+        if reference_utc <= candidate["start"] <= soon_end
+    ]
+    best_soon = min(
+        soon_candidates,
+        key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]),
+    ) if soon_candidates else None
+    best_negative = max(
+        negative_candidates,
+        key=lambda item: (
+            item["negative_price_priority"],
+            item["energy_kwh_per_minute"],
+            item["energy_kwh"],
+            -item["total_cost_pence"],
+            -item["preference_rank"],
+        ),
+    ) if negative_candidates else None
+    now_program_options = summarize_program_options(
+        normal_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="now",
+    )
+    soon_program_options = summarize_program_options(
+        normal_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="soon",
+    )
+    overnight_program_options = summarize_program_options(
+        operational_overnight_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="overnight",
+    )
+    negative_price_program_options = summarize_program_options(
+        comparison_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="negative_price",
+    )
+    greenest_program_options = summarize_program_options(
+        normal_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="greenest",
+    )
+    now_display_program_options = summarize_program_options(
+        display_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="now",
+    )
+    soon_display_program_options = summarize_program_options(
+        display_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="soon",
+    )
+    overnight_display_program_options = summarize_program_options(
+        operational_overnight_display_candidates,
+        reference_utc=reference_utc,
+        now_cost=now_cost,
+        intent="overnight",
+    )
+    cost_forecast, forecast_diagnostics = forecast_cycle_costs(
+        models,
+        policies,
+        periods,
+        reference_utc=reference_utc,
+        forecast_hours=forecast_hours,
+        forecast_interval_minutes=forecast_interval_minutes,
+        overnight_start=overnight_start,
+        overnight_end=overnight_end,
+        schedule_timezone=schedule_timezone,
+        forecast_limit=forecast_limit,
+        green_windows=green_windows,
+        blocked_windows=blocked_windows,
+        excluded_programs=excluded_programs,
+    )
+    return {
+        "status": "ready",
+        **cheapest,
+        "cost_if_started_now_pence": now_cost,
+        "cost_if_started_now_breakdown": now_breakdown,
+        "cost_if_started_now_operating_breakdown": now_operating_breakdown,
+        "potential_saving_pence": round(max(0.0, now_cost - cheapest["total_cost_pence"]), 4) if now_cost is not None else None,
+        "overnight_comparison": summarize_window_candidate(best_overnight, now_cost),
+        "daytime_comparison": summarize_window_candidate(best_daytime, now_cost),
+        "greenest_comparison": summarize_window_candidate(greenest, now_cost),
+        "decision_policy": summarize_selection_policy(
+            selected=cheapest,
+            candidates=candidates,
+            comparison_candidates=comparison_candidates,
+            program_diagnostics=program_diagnostics,
+            schedule_strategy=schedule_strategy,
+            window_preference=window_preference,
+            equivalent_cost_tolerance_pence=equivalent_cost_tolerance_pence,
+            now_cost=now_cost,
+            best_overnight=best_overnight,
+            best_daytime=best_daytime,
+            greenest=greenest,
+            best_negative=best_negative,
+            latest_allowed_finish=latest_allowed_finish,
+        ),
+        "green_window_candidate_count": len([
+            candidate for candidate in comparison_candidates
+            if candidate.get("green_window_overlap_seconds", 0) > 0
+        ]),
+        "green_window_count": len(green_windows or []),
+        "blocked_window_count": len(blocked_windows or []),
+        "blocked_window_candidate_count": rejected_blocked,
+        "remote_start_blocked_programs": sorted(excluded),
+        "now_recommendation": summarize_decision(
+            intent="now",
+            candidate=immediate_candidate,
+            reference_utc=reference_utc,
+            now_cost=now_cost,
+            ready_to_start=True,
+            reason="start_immediately",
+            program_options=now_program_options,
+            display_program_options=now_display_program_options,
+        ),
+        "soon_recommendation": summarize_decision(
+            intent="soon",
+            candidate=best_soon,
+            reference_utc=reference_utc,
+            now_cost=now_cost,
+            ready_to_start=False,
+            reason="best_within_2_hours",
+            program_options=soon_program_options,
+            display_program_options=soon_display_program_options,
+        ),
+        "overnight_recommendation": summarize_decision(
+            intent="overnight",
+            candidate=best_overnight,
+            reference_utc=reference_utc,
+            now_cost=now_cost,
+            ready_to_start=False,
+            reason="best_overnight",
+            program_options=overnight_program_options,
+            display_program_options=overnight_display_program_options,
+        ),
+        "negative_price_recommendation": summarize_decision(
+            intent="negative_price",
+            candidate=best_negative,
+            reference_utc=reference_utc,
+            now_cost=now_cost,
+            ready_to_start=bool(best_negative and best_negative["start"] <= reference_utc),
+            reason=(
+                "best_negative_price_energy_intensity"
+                if best_negative else
+                ("maximum_runs_per_window_reached" if rejected_negative_run_limits else "no_negative_price_candidate")
+            ),
+            program_options=negative_price_program_options,
+        ),
+        "greenest_recommendation": summarize_decision(
+            intent="greenest",
+            candidate=greenest,
+            reference_utc=reference_utc,
+            now_cost=now_cost,
+            ready_to_start=bool(greenest and greenest["start"] <= reference_utc),
+            reason="best_green_window" if greenest else "no_green_window_candidate",
+            program_options=greenest_program_options,
+        ),
+        "negative_price_candidate_count": len(negative_candidates),
+        "cost_forecast": cost_forecast,
+        "forecast_diagnostics": forecast_diagnostics,
+        "forecast_hours": forecast_hours,
+        "forecast_interval_minutes": forecast_interval_minutes,
+        "candidate_count": len(candidates),
+        "comparison_candidate_count": len(comparison_candidates),
+        "rejected_constraints": rejected_constraints,
+        "rejected_cooldowns": rejected_cooldowns,
+        "rejected_blocked": rejected_blocked,
+        "program_diagnostics": program_diagnostics,
+        "earliest_allowed_start": earliest_allowed_start.isoformat() if earliest_allowed_start else None,
+        "latest_allowed_finish": latest_allowed_finish.isoformat() if latest_allowed_finish else None,
+        "schedule_strategy": schedule_strategy,
+        "equivalent_cost_tolerance_pence": equivalent_cost_tolerance_pence,
+        "window_preference": window_preference,
+        "overnight_start": overnight_start,
+        "overnight_end": overnight_end,
+        "operational_overnight_start": operational_overnight_start.isoformat(),
+        "operational_overnight_end": operational_overnight_end.isoformat(),
+        "schedule_timezone": schedule_timezone,
+    }

@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Load Optimizer",
+        "description": "Create an optimizer for a flexible electrical load.",
+        "data": {
+          "name": "Name",
+          "load_type": "Load type",
+          "tariff_entity": "Tariff entity",
+          "tariff_timezone": "Tariff timezone",
+          "tariff_price_unit": "Tariff price unit",
+          "battery_entity": "Battery percentage entity",
+          "battery_capacity_entity": "Battery capacity entity",
+          "target_percent_entity": "Target percentage entity",
+          "connection_status_entity": "Charging connection status entity",
+          "charge_power_kw": "Charge power",
+          "target_percent": "Fallback target percentage",
+          "charger_efficiency": "Charger efficiency",
+          "slot_minutes": "Slot length",
+          "ready_by": "Ready by"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {"name": "Status"},
+      "estimated_cost": {"name": "Estimated cost"},
+      "estimated_profit": {"name": "Estimated profit"},
+      "needed_energy": {"name": "Needed battery energy"},
+      "wall_energy": {"name": "Wall energy"},
+      "next_slot_start": {"name": "Next slot start"}
+    },
+    "binary_sensor": {
+      "charge_now": {"name": "Charge now"},
+      "ready_to_charge": {"name": "Ready to charge"}
+    }
+  }
+}

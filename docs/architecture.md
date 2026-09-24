@@ -9,6 +9,33 @@ Load Optimizer is split into four layers:
 3. Device adapters
 4. Home Assistant entity, automation, and dashboard surfaces
 
+## v1.0 Integration Migration
+
+Status: Active
+
+The project now contains two runtime surfaces during the migration:
+
+- `custom_components/load_optimizer`: the HACS custom integration line and the
+  public direction for v1.0 and later.
+- `load_optimizer/`: the existing Home Assistant add-on runtime, retained for
+  learned appliance-cycle behaviour while those features are ported.
+
+The integration must be able to run when HACS installs only
+`custom_components/load_optimizer`, so runtime modules needed by the integration
+live inside that directory. Shared algorithms can still be developed against the
+legacy add-on tests, but release code should be copied or moved into the
+integration package before it is advertised as supported.
+
+The v1.0 integration scope is deliberately advisory:
+
+- read normalized future tariffs from Home Assistant entities
+- read existing vehicle/load state entities
+- publish recommendation, cost, profit, and ready/active-window entities
+- leave physical device control to opt-in Home Assistant automations
+
+This preserves the existing design principle that Load Optimizer recommends and
+household-specific automation executes.
+
 The core must not depend on Bosch, Home Connect, Octopus Energy,
 washing-machine-specific logic, or any other single appliance or supplier.
 

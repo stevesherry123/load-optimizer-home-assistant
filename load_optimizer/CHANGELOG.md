@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.0
+
+- Add the first HACS-compatible custom integration under
+  `custom_components/load_optimizer`.
+- Add `hacs.json` and integration metadata for the public Load Optimizer
+  integration line.
+- Add a UI config flow for an EV charging optimizer load.
+- Reuse the existing Load Optimizer tariff parser inside the integration so
+  `ai_feed`, structured `rates`, `prices`, `forecast`, and `all_rates` tariff
+  entities remain supported.
+- Add EV charging advisory entities for status, estimated cost, estimated
+  profit, required battery energy, wall energy, next charging slot, charge-now,
+  and ready-to-charge state.
+- Add EV charging planning logic that chooses the cheapest required slots before
+  an optional ready-by deadline and naturally prioritises negative-price slots.
+- Keep physical charger control out of the integration v1.0 runtime; users can
+  opt into Home Assistant automations using the published advisory entities.
+- Retain the existing Home Assistant add-on in the repository as the legacy
+  learned-appliance runtime while that engine is migrated into the integration.
+
 ## Unreleased
 
 - Limit automatic normal dishwasher scheduling to one request per overnight

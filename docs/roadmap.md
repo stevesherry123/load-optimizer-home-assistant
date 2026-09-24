@@ -6,6 +6,11 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- migrate the learned appliance-cycle engine from the legacy add-on into the
+  HACS integration storage/entity model
+- add appliance-cycle load entries alongside the v1.0 EV charging load type
+- add options-flow editing for EV charging settings after initial setup
+- add integration diagnostics and repairs for missing tariff or vehicle entities
 - improve profile-weighted tariff cost estimation across half-hour slots
 - extend helper-driven deadline support for calendar and travel-aware scheduling
 - continue refining daytime and overnight scheduling windows
