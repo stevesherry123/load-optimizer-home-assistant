@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Limit automatic normal dishwasher scheduling to one request per overnight
+  window. Opening and closing the door after a completed overnight run no
+  longer permits a second unattended normal run in the same night.
+
 - Treat free and negative-price runs as explicit exceptions to normal program
   cooldowns. A qualifying high-power window may now select a recently used
   program without making it eligible for ordinary Now, Soon, Overnight, or
