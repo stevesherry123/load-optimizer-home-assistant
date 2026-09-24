@@ -120,6 +120,9 @@ class VersionTests(unittest.TestCase):
         self.assertIn("input_datetime.load_optimizer_1_must_finish_by", block)
         self.assertIn("input_datetime.load_optimizer_1_must_finish_by", package)
         self.assertIn('value_template: "{{ deadline_overrun }}"', package)
+        self.assertIn("auto_overnight_window_start", block)
+        self.assertIn("auto_overnight_window_unused", block)
+        self.assertIn("or (auto_cooldown_elapsed and auto_overnight_window_unused)", block)
 
     def test_due_automatic_request_bypasses_revalidation_until_stale_gate(self):
         root = Path(__file__).resolve().parents[1]

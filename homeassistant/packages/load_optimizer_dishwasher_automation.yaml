@@ -988,6 +988,13 @@ automation:
       confidence_threshold: "{{ state_attr('sensor.load_optimizer_1_schedule_status', 'confidence_threshold') | int(20) }}"
       auto_cooldown_minutes: 30
       last_auto_request: "{{ states('input_datetime.load_optimizer_1_last_auto_normal_request') }}"
+      auto_overnight_window_start: >-
+        {% set cutoff_hour = 16 %}
+        {% set today_cutoff = today_at('%02d:00' | format(cutoff_hour)) %}
+        {{ today_cutoff if now() >= today_cutoff else today_cutoff - timedelta(days=1) }}
+      auto_overnight_window_unused: >-
+        {{ last_auto_request in ['unknown', 'unavailable', 'none', None, '']
+           or as_timestamp(as_datetime(last_auto_request), 0) < as_timestamp(as_datetime(auto_overnight_window_start)) }}
       auto_cooldown_elapsed: >-
         {{ last_auto_request in ['unknown', 'unavailable', 'none', None, '']
            or as_timestamp(now()) >= as_timestamp(as_datetime(last_auto_request)) + (([(auto_cooldown_minutes | int(0)), 720] | max) * 60) }}
@@ -1015,7 +1022,7 @@ automation:
              and recommendation_confidence >= confidence_threshold
              and as_timestamp(as_datetime(recommendation_start)) > as_timestamp(now())
              and (is_state('input_select.load_optimizer_1_requested_mode', 'automatic')
-                  or auto_cooldown_elapsed) }}
+                  or (auto_cooldown_elapsed and auto_overnight_window_unused)) }}
     actions:
       - action: input_text.set_value
         target:
