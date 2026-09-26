@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0
+
+- Add a learned-appliance compatibility runtime inside the HACS integration.
+- Publish the existing legacy `sensor.load_optimizer_*` entity surface from the
+  integration so dashboards and automations can continue using the same entity
+  IDs during migration.
+- Add `learned_appliance` as a config-flow load type alongside `ev_charging`.
+- Add `load_optimizer.import_legacy_state` to import the old add-on
+  `/data/load_optimizer.json` database into Home Assistant integration storage.
+- Add `load_optimizer.mothball_legacy_addon` to publish guidance once the old
+  add-on can be stopped and disabled.
+- Document the add-on-to-integration migration path.
+- Prefetch Home Assistant calendar events for green/blocked windows before each
+  compatibility scan.
+
 ## 1.0.0
 
 - Add the first HACS-compatible custom integration under

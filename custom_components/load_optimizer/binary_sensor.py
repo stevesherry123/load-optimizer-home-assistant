@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE
 from .coordinator import LoadOptimizerCoordinator
 from .entity import LoadOptimizerEntity
 
@@ -32,6 +32,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up Load Optimizer binary sensors."""
     coordinator: LoadOptimizerCoordinator = hass.data[DOMAIN][entry.entry_id]
+    if entry.data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
+        return
     async_add_entities([LoadOptimizerBinarySensor(coordinator, description) for description in BINARY_SENSOR_DESCRIPTIONS])
 
 

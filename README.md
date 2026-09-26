@@ -10,11 +10,13 @@ adapters on top of one shared optimisation core.
 
 ## v1.0 Integration Preview
 
-The v1.0 line starts the move from the original Home Assistant add-on to a HACS
-custom integration.
+The integration line moves Load Optimizer from the original Home Assistant
+add-on to a HACS custom integration.
 
-The first integration load type is:
+The integration supports two setup paths:
 
+- **Learned appliance migration**: runs the existing add-on engine inside the
+  integration and publishes the same `sensor.load_optimizer_*` entities.
 - **EV charging**: reads an existing battery percentage entity, battery capacity
   entity, target percentage, charger power, and future tariff entity, then
   publishes the cheapest charging windows required to reach the target.
@@ -36,6 +38,15 @@ Assistant, then add **Load Optimizer** from Settings > Devices & services.
 
 For public/stable installs, use tagged releases. The HACS metadata hides the
 default branch so ordinary users are not nudged toward development builds.
+
+### Add-on Migration
+
+To migrate the existing add-on, create a Load Optimizer integration entry with
+load type `learned_appliance`, paste your existing add-on `instances_yaml` and
+tariff settings, then import the old `/data/load_optimizer.json` database with
+the `load_optimizer.import_legacy_state` service.
+
+See `docs/migration-addon-to-integration.md`.
 
 ### EV Entities
 
@@ -128,8 +139,9 @@ The integration v1.0 scope is:
 - Cost and profit estimates for selected charging windows.
 - Binary advisory state for "charge now".
 
-The legacy add-on remains the supported path for learned appliance-cycle
-tracking until that engine is migrated into the integration.
+The learned-appliance compatibility runtime is now the preferred path for
+migrating existing add-on installations. Keep the add-on stopped once the
+integration is publishing the expected entities.
 
 ## Roadmap
 

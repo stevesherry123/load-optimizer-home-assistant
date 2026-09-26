@@ -10,7 +10,7 @@ from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE
 from .coordinator import LoadOptimizerCoordinator
 from .entity import LoadOptimizerEntity
 
@@ -64,6 +64,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up Load Optimizer sensors."""
     coordinator: LoadOptimizerCoordinator = hass.data[DOMAIN][entry.entry_id]
+    if entry.data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
+        async_add_entities([LoadOptimizerRuntimeSensor(coordinator)])
+        return
     async_add_entities([LoadOptimizerSensor(coordinator, description) for description in SENSOR_DESCRIPTIONS])
 
 
@@ -90,4 +93,21 @@ class LoadOptimizerSensor(LoadOptimizerEntity, SensorEntity):
         """Expose compact planning detail on the status sensor."""
         if self.entity_description.key != "status":
             return None
+        return self.coordinator.data
+
+
+class LoadOptimizerRuntimeSensor(LoadOptimizerEntity, SensorEntity):
+    """Status sensor for the learned-appliance compatibility runtime."""
+
+    _attr_icon = "mdi:progress-wrench"
+
+    def __init__(self, coordinator: LoadOptimizerCoordinator) -> None:
+        super().__init__(coordinator, "runtime_status", "Runtime Status")
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get("status")
+
+    @property
+    def extra_state_attributes(self):
         return self.coordinator.data

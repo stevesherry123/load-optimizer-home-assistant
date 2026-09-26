@@ -36,6 +36,25 @@ The v1.0 integration scope is deliberately advisory:
 This preserves the existing design principle that Load Optimizer recommends and
 household-specific automation executes.
 
+## Legacy Compatibility Runtime
+
+Status: Active migration path
+
+The learned-appliance compatibility runtime embeds the existing add-on engine in
+the HACS integration and adapts its Home Assistant API calls to direct
+integration access:
+
+- add-on `source_state` calls read `hass.states`
+- add-on `publish_entity` calls publish the same state IDs with
+  `hass.states.async_set`
+- add-on JSON persistence moves to Home Assistant integration storage
+- add-on template calls are replaced with direct reads for the known helper
+  contracts
+
+This is intentionally a compatibility layer, not the final native entity model.
+It gives existing users a migration path with the same entity names before the
+engine is decomposed into config entries, entity platforms, and repairs.
+
 The core must not depend on Bosch, Home Connect, Octopus Energy,
 washing-machine-specific logic, or any other single appliance or supplier.
 

@@ -3,10 +3,16 @@
     "step": {
       "user": {
         "title": "Set up Load Optimizer",
-        "description": "Create an optimizer for a flexible electrical load.",
+        "description": "Create an optimizer for a flexible electrical load. Use learned_appliance to migrate the existing add-on runtime, or ev_charging for EV planning.",
         "data": {
           "name": "Name",
-          "load_type": "Load type",
+          "load_type": "Load type"
+        }
+      },
+      "ev": {
+        "title": "Set up EV charging",
+        "description": "This mode recommends charging windows only. Use the charge-now binary sensor in a Home Assistant automation if you want to control a charger switch.",
+        "data": {
           "tariff_entity": "Tariff entity",
           "tariff_timezone": "Tariff timezone",
           "tariff_price_unit": "Tariff price unit",
@@ -19,6 +25,28 @@
           "charger_efficiency": "Charger efficiency",
           "slot_minutes": "Slot length",
           "ready_by": "Ready by"
+        }
+      },
+      "learned_appliance": {
+        "title": "Migrate learned appliances",
+        "description": "Paste the same add-on options first. After setup, call load_optimizer.import_legacy_state with the contents of /data/load_optimizer.json from the old add-on.",
+        "data": {
+          "instances_yaml": "Instances YAML",
+          "scan_interval": "Scan interval",
+          "tariff_entity": "Tariff entity",
+          "tariff_entities": "Additional tariff entities",
+          "tariff_timezone": "Tariff timezone",
+          "tariff_price_unit": "Tariff price unit",
+          "green_window_entity": "Green window entity",
+          "blocked_window_entity": "Blocked window entity",
+          "cost_search_hours": "Cost search hours",
+          "cost_forecast_hours": "Cost forecast hours",
+          "cost_forecast_interval": "Cost forecast interval",
+          "cost_candidate_interval": "Cost candidate interval",
+          "schedule_preference_weight_pence": "Schedule preference weight",
+          "publish_diagnostics": "Publish diagnostics",
+          "publish_profile_data": "Publish profile data",
+          "publish_cost_forecast": "Publish cost forecast"
         }
       }
     }

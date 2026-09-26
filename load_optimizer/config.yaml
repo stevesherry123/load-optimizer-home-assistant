@@ -1,7 +1,7 @@
 name: Load Optimizer
 version: "0.8.92"
 slug: load_optimizer
-description: Learn appliance cycles and find the most economical time and mode to run them.
+description: Legacy add-on runtime. New installs should use the HACS Load Optimizer integration.
 url: https://github.com/stevesherry123/load-optimizer-home-assistant
 arch:
   - aarch64

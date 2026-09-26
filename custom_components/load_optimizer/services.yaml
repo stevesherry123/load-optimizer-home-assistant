@@ -1,0 +1,15 @@
+import_legacy_state:
+  name: Import legacy state
+  description: Import the existing add-on /data/load_optimizer.json database into integration storage.
+  fields:
+    legacy_state_json:
+      name: Legacy state JSON
+      description: Contents of the legacy add-on /data/load_optimizer.json file.
+      required: true
+      selector:
+        text:
+          multiline: true
+
+mothball_legacy_addon:
+  name: Mothball legacy add-on
+  description: Publish guidance that the legacy add-on can be stopped after validating integration parity.
