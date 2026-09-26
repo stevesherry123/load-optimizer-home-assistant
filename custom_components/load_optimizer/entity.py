@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER
+from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, MANUFACTURER
 from .coordinator import LoadOptimizerCoordinator
 
 
@@ -24,9 +24,14 @@ class LoadOptimizerEntity(CoordinatorEntity[LoadOptimizerCoordinator]):
     @property
     def device_info(self) -> DeviceInfo:
         entry = self.coordinator.config_entry
+        model = (
+            "Learned appliance optimizer"
+            if entry.data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE
+            else "EV charging optimizer"
+        )
         return DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             manufacturer=MANUFACTURER,
             name=entry.title,
-            model="EV charging optimizer",
+            model=model,
         )

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.1
+
+- Fix HACS integration migration setup when a full add-on options block, or an
+  indented instance list, is pasted into the `Instances YAML` field.
+- Reuse top-level add-on options found in that pasted block when the matching
+  integration fields were left blank.
+- Label migrated learned-appliance devices as learned-appliance optimizers
+  instead of EV charging optimizers.
+
 ## 1.1.0
 
 - Add a learned-appliance compatibility runtime inside the HACS integration.

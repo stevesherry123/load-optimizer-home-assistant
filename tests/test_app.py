@@ -24,6 +24,7 @@ from load_optimizer.app.main import (
     normalise_program,
     normalise_program_policy,
     parse_instances_yaml,
+    normalise_instances_yaml,
     public_program_summary,
     publish_cost_entities,
     publish_entity,
@@ -1581,6 +1582,41 @@ class ProgramPolicyTests(unittest.TestCase):
 
         self.assertEqual(parsed[0]["id"], "4")
         self.assertEqual(parsed[0]["name"], "EV 1")
+
+    def test_instances_yaml_accepts_indented_paste(self):
+        parsed = parse_instances_yaml("""
+          - id: 1
+            name: Dishwasher 1
+            power_sensor: sensor.dishwasher_power
+          - id: 2
+            name: Washing Machine 1
+            power_sensor: sensor.washer_power
+""")
+
+        self.assertEqual([item["id"] for item in parsed], [1, 2])
+        self.assertEqual(parsed[1]["power_sensor"], "sensor.washer_power")
+
+    def test_instances_yaml_extracts_full_addon_options_paste(self):
+        raw = """
+log_level: info
+log_history: 25
+scan_interval: 60
+instances_yaml: |
+  - id: "1"
+    name: Dishwasher 1
+    power_sensor: sensor.dishwasher_power
+  - id: "2"
+    name: Washing Machine 1
+    power_sensor: sensor.washer_power
+tariff_entities: >-
+  event.current_day_rates,event.next_day_rates
+"""
+
+        self.assertIn("sensor.washer_power", normalise_instances_yaml(raw))
+        parsed = parse_instances_yaml(raw)
+
+        self.assertEqual([item["id"] for item in parsed], ["1", "2"])
+        self.assertEqual(parsed[0]["name"], "Dishwasher 1")
 
 class ScheduleAdviceTests(unittest.TestCase):
     def test_ready_recommendation_is_good_to_start_inside_tolerance(self):

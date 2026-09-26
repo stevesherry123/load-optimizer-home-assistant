@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import signal
+import textwrap
 import threading
 import time
 import uuid
@@ -25,7 +26,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -1206,10 +1207,38 @@ def parse_key_value(text: str) -> tuple[str, object] | None:
     return key.strip(), parse_config_scalar(value)
 
 
+def normalise_instances_yaml(raw: object) -> str:
+    """Return just the appliance instance list from pasted add-on YAML."""
+    text = str(raw or "")
+    if not text.strip():
+        return ""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("instances_yaml:"):
+            continue
+        _, value = stripped.split(":", 1)
+        value = value.strip()
+        if value and value not in {"|", "|-", "|+", ">", ">-", ">+"}:
+            return value
+        base_indent = len(line) - len(line.lstrip(" "))
+        block = []
+        for block_line in lines[index + 1:]:
+            if not block_line.strip():
+                block.append("")
+                continue
+            indent = len(block_line) - len(block_line.lstrip(" "))
+            if indent <= base_indent:
+                break
+            block.append(block_line)
+        return textwrap.dedent("\n".join(block)).strip()
+    return textwrap.dedent(text).strip()
+
+
 def parse_instances_yaml(raw: object) -> list[dict]:
     if isinstance(raw, list):
         return [entry for entry in raw if isinstance(entry, dict)]
-    raw = str(raw or "").strip()
+    raw = normalise_instances_yaml(raw)
     if not raw:
         return []
     try:

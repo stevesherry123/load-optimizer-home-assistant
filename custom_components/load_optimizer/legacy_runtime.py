@@ -7,19 +7,59 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 import re
+import textwrap
 from typing import Any
 from urllib.parse import unquote, urlparse
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN
+from .const import (
+    CONF_BLOCKED_WINDOW_ENTITY,
+    CONF_COST_CANDIDATE_INTERVAL,
+    CONF_COST_FORECAST_HOURS,
+    CONF_COST_FORECAST_INTERVAL,
+    CONF_COST_SEARCH_HOURS,
+    CONF_GREEN_WINDOW_ENTITY,
+    CONF_INSTANCES_YAML,
+    CONF_PUBLISH_COST_FORECAST,
+    CONF_PUBLISH_DIAGNOSTICS,
+    CONF_PUBLISH_PROFILE_DATA,
+    CONF_SCAN_INTERVAL,
+    CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
+    CONF_TARIFF_ENTITIES,
+    CONF_TARIFF_ENTITY,
+    CONF_TARIFF_PRICE_UNIT,
+    CONF_TARIFF_TIMEZONE,
+    DOMAIN,
+)
 from .legacy import app_runtime
 
 LOGGER = logging.getLogger(__name__)
 LEGACY_STORE_VERSION = 1
 LEGACY_STORE_KEY = f"{DOMAIN}_legacy_state"
 TOKEN = "__hass_adapter__"
+WRAPPED_OPTION_KEYS = {
+    CONF_BLOCKED_WINDOW_ENTITY,
+    CONF_COST_CANDIDATE_INTERVAL,
+    CONF_COST_FORECAST_HOURS,
+    CONF_COST_FORECAST_INTERVAL,
+    CONF_COST_SEARCH_HOURS,
+    CONF_GREEN_WINDOW_ENTITY,
+    CONF_INSTANCES_YAML,
+    CONF_PUBLISH_COST_FORECAST,
+    CONF_PUBLISH_DIAGNOSTICS,
+    CONF_PUBLISH_PROFILE_DATA,
+    CONF_SCAN_INTERVAL,
+    CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
+    CONF_TARIFF_ENTITIES,
+    CONF_TARIFF_ENTITY,
+    CONF_TARIFF_PRICE_UNIT,
+    CONF_TARIFF_TIMEZONE,
+    "log_history",
+    "log_level",
+    "reset_instance_ids",
+}
 
 
 @dataclass
@@ -78,6 +118,7 @@ class LegacyRuntime:
         """Run one legacy compatibility scan."""
         await self.async_load()
         assert self.state is not None
+        options = self._normalise_options(options)
         now = datetime.now(timezone.utc)
         self.entity_count = 0
         app_runtime.refresh_publish_cache()
@@ -126,6 +167,54 @@ class LegacyRuntime:
             last_scan=now.isoformat(),
             message=None if configs else "Configure learned appliance instances to enable compatibility publishing.",
         )
+
+    def _normalise_options(self, options: dict[str, Any]) -> dict[str, Any]:
+        """Accept either split config-flow fields or a full pasted add-on options block."""
+        normalised = dict(options)
+        wrapped = self._parse_wrapped_options(normalised.get(CONF_INSTANCES_YAML, ""))
+        for key, value in wrapped.items():
+            if key == CONF_INSTANCES_YAML or self._option_is_blank(normalised.get(key)):
+                normalised[key] = value
+        normalised[CONF_INSTANCES_YAML] = app_runtime.normalise_instances_yaml(
+            normalised.get(CONF_INSTANCES_YAML, "")
+        )
+        return normalised
+
+    def _parse_wrapped_options(self, raw: object) -> dict[str, Any]:
+        text = str(raw or "")
+        if "instances_yaml:" not in text:
+            return {}
+        options: dict[str, Any] = {}
+        lines = textwrap.dedent(text).splitlines()
+        index = 0
+        while index < len(lines):
+            line = lines[index]
+            stripped = line.strip()
+            index += 1
+            if not stripped or stripped.startswith("#") or ":" not in stripped:
+                continue
+            key, value = stripped.split(":", 1)
+            key = key.strip()
+            value = value.strip()
+            if key not in WRAPPED_OPTION_KEYS:
+                continue
+            if value in {"|", "|-", "|+", ">", ">-", ">+"}:
+                block = []
+                while index < len(lines):
+                    block_line = lines[index]
+                    if block_line.strip() and not block_line.startswith((" ", "\t")):
+                        break
+                    block.append(block_line)
+                    index += 1
+                parsed_block = textwrap.dedent("\n".join(block)).strip()
+                options[key] = " ".join(parsed_block.split()) if value.startswith(">") else parsed_block
+                continue
+            options[key] = app_runtime.parse_config_scalar(value)
+        return options
+
+    @staticmethod
+    def _option_is_blank(value: object) -> bool:
+        return value in (None, "") or str(value).strip() in {"", "unknown", "unavailable", "none", "None"}
 
     def _patch_legacy_runtime(self) -> None:
         app_runtime.source_state = self._source_state
