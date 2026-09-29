@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0-beta.3
+
+- Allow fresh installations with complete Bosch options to activate native
+  orchestration without requiring a legacy migration snapshot.
+- Replace an unavailable migrated special-price label with a useful default.
+
 ## 1.4.0-beta.2
 
 - Preserve the package controller's fault-tolerant Home Connect fallback

@@ -168,6 +168,7 @@ class VersionTests(unittest.TestCase):
         self.assertIn("door_not_opened_since_last_cycle", source)
         self.assertIn("confidence_threshold", source)
         self.assertIn("maximum_runs_per_window_reached", source)
+        self.assertIn("and existing_automations", source)
 
     def test_native_orchestration_replaces_package_controls(self):
         root = Path(__file__).resolve().parents[1]

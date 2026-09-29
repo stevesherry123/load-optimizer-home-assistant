@@ -162,9 +162,19 @@ class NativeOrchestrator:
                     )
                     or 0
                 ),
-                "special_price_window_label": helper_state(
-                    "input_text.load_optimizer_special_price_window_label",
-                    "Octopus special price",
+                "special_price_window_label": (
+                    "Octopus special price"
+                    if str(
+                        helper_state(
+                            "input_text.load_optimizer_special_price_window_label",
+                            "Octopus special price",
+                        )
+                    ).lower()
+                    in UNKNOWN_STATES
+                    else helper_state(
+                        "input_text.load_optimizer_special_price_window_label",
+                        "Octopus special price",
+                    )
                 ),
                 "last_auto_negative_price_request": helper_state(
                     "input_datetime.load_optimizer_1_last_auto_negative_price_request"
@@ -322,9 +332,6 @@ class NativeOrchestrator:
 
     async def async_activate(self) -> None:
         """Disable package automations and enable native command ownership."""
-        migration_status = self.migration.status
-        if migration_status.get("status") != "prepared":
-            raise HomeAssistantError("Prepare orchestration migration before activation")
         missing_config = [key for key in LEGACY_CONFIG_HELPERS if not self.config.get(key)]
         if missing_config:
             raise HomeAssistantError(
@@ -335,6 +342,13 @@ class NativeOrchestrator:
             for entity_id in LEGACY_AUTOMATION_IDS
             if self.hass.states.get(entity_id) is not None
         ]
+        if (
+            self.migration.status.get("status") != "prepared"
+            and existing_automations
+        ):
+            raise HomeAssistantError(
+                "Prepare orchestration migration before replacing package automations"
+            )
         if existing_automations:
             await self.hass.services.async_call(
                 "automation",
