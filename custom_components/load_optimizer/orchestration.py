@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_ON
@@ -484,18 +485,21 @@ class NativeOrchestrator:
                 "switch",
                 "turn_on",
                 {"entity_id": self.config["bosch_power_switch"]},
+                ignore_error=True,
             )
             await asyncio.sleep(15)
             await self._async_call(
                 "select",
                 "select_option",
                 {"entity_id": select_entity, "option": program_key},
+                ignore_error=True,
             )
             await asyncio.sleep(5)
             await self._async_call(
                 "button",
                 "press",
                 {"entity_id": self.config["bosch_start_button"]},
+                ignore_error=True,
             )
             await asyncio.sleep(20)
             if not self._is_running():
@@ -687,7 +691,7 @@ class NativeOrchestrator:
 
     def _overnight_window_unused(self, now: datetime) -> bool:
         previous = self._parse_datetime(self.state.get("last_auto_normal_request"))
-        local_now = datetime.now().astimezone()
+        local_now = now.astimezone(ZoneInfo(self.hass.config.time_zone))
         cutoff = local_now.replace(hour=16, minute=0, second=0, microsecond=0)
         if local_now < cutoff:
             cutoff -= timedelta(days=1)

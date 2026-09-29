@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0-beta.2
+
+- Preserve the package controller's fault-tolerant Home Connect fallback
+  sequence when an earlier appliance control entity rejects a command.
+- Evaluate the automatic overnight request window in Home Assistant's configured
+  timezone.
+
 ## 1.4.0-beta.1
 
 - Replace the dishwasher package controls, readiness templates, request queue,
