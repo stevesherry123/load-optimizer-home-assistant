@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0-beta.2
+
+- Keep integration-wide learned-appliance sensors on the optimizer hub device
+  instead of treating their name suffixes as appliance IDs.
+
 ## 1.3.0-beta.1
 
 - Register learned-appliance outputs as native Home Assistant sensor entities
