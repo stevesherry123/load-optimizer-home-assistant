@@ -150,7 +150,13 @@ class LoadOptimizerLegacySensor(CoordinatorEntity[LoadOptimizerCoordinator], Sen
         super().__init__(coordinator)
         self.entity_id = entity_id
         self._legacy_entity_id = entity_id
-        self._instance_id = self._instance_id_from_entity_id(entity_id)
+        candidate_instance_id = self._instance_id_from_entity_id(entity_id)
+        legacy_instances = coordinator.data.get("legacy_instances", {})
+        self._instance_id = (
+            candidate_instance_id
+            if candidate_instance_id in legacy_instances
+            else None
+        )
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}_legacy_"
             f"{entity_id.replace('.', '_')}"

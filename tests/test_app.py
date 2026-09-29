@@ -120,6 +120,11 @@ class VersionTests(unittest.TestCase):
         self.assertIn("sensor.load_optimizer_1_total_runs", dashboard_text)
         self.assertNotIn("custom:", dashboard_text)
 
+    def test_global_legacy_sensors_stay_on_hub_device(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "custom_components/load_optimizer/sensor.py").read_text()
+        self.assertIn("if candidate_instance_id in legacy_instances", source)
+
     def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
         root = Path(__file__).resolve().parents[1]
         package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
