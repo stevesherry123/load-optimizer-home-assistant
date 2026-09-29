@@ -51,6 +51,30 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Dishwasher orchestration",
+        "description": "Select the Home Connect entities used to start and verify the dishwasher.",
+        "data": {
+          "bosch_device_id": "Home Connect device ID",
+          "bosch_power_switch": "Power switch",
+          "bosch_program_select": "Program selector",
+          "bosch_start_button": "Start button",
+          "bosch_selected_program_sensor": "Selected program sensor",
+          "bosch_power_state_sensor": "Power state sensor",
+          "bosch_connected_sensor": "Connected sensor",
+          "bosch_door_sensor": "Door sensor",
+          "bosch_remote_control_sensor": "Remote control sensor",
+          "bosch_remote_start_sensor": "Remote start sensor",
+          "bosch_operation_state_sensor": "Operation state sensor"
+        }
+      }
+    },
+    "abort": {
+      "not_supported": "This optimizer type has no editable orchestration options."
+    }
+  },
   "entity": {
     "sensor": {
       "status": {"name": "Status"},

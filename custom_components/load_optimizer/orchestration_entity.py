@@ -1,0 +1,46 @@
+"""Shared native orchestration entity."""
+
+from __future__ import annotations
+
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .const import DOMAIN, MANUFACTURER
+from .coordinator import LoadOptimizerCoordinator
+
+
+class OrchestrationEntity(CoordinatorEntity[LoadOptimizerCoordinator]):
+    """Base entity attached to the first learned appliance."""
+
+    _attr_has_entity_name = False
+
+    def __init__(
+        self,
+        coordinator: LoadOptimizerCoordinator,
+        domain: str,
+        key: str,
+        name: str,
+        *,
+        object_id: str | None = None,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entity_id = f"{domain}.{object_id or f'load_optimizer_1_{key}'}"
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}_orchestration_{key}"
+        )
+        self._attr_name = name
+
+    @property
+    def orchestrator(self):
+        return self.coordinator.orchestrator
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        entry = self.coordinator.config_entry
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.entry_id}_instance_1")},
+            manufacturer=MANUFACTURER,
+            name="Dishwasher 1",
+            model="Learned appliance optimizer",
+            via_device=(DOMAIN, entry.entry_id),
+        )

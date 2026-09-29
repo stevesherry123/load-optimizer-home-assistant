@@ -8,7 +8,7 @@ import json
 import logging
 import re
 import textwrap
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
 from homeassistant.core import HomeAssistant
@@ -87,6 +87,7 @@ class LegacyRuntime:
         self.published_entities: dict[str, dict[str, Any]] = {}
         self.calendar_events: dict[str, list[dict[str, Any]]] = {}
         self.started = False
+        self.external_state_provider: Callable[[str], dict[str, Any] | None] | None = None
         self._patch_legacy_runtime()
 
     async def async_load(self) -> None:
@@ -251,6 +252,17 @@ class LegacyRuntime:
                 "last_changed": now,
                 "last_updated": now,
             }
+        if self.external_state_provider:
+            external = self.external_state_provider(entity_id)
+            if external is not None:
+                now = datetime.now(timezone.utc).isoformat()
+                return {
+                    "entity_id": entity_id,
+                    "state": external.get("state"),
+                    "attributes": dict(external.get("attributes", {})),
+                    "last_changed": now,
+                    "last_updated": now,
+                }
         state = self.hass.states.get(entity_id)
         if state is None:
             return None

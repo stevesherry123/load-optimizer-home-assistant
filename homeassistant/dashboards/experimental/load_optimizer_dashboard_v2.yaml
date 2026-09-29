@@ -43,7 +43,7 @@ views:
               # ⚪ No run is currently committed
               **Tonight's recommendation:** {{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'program') or 'not available' }}  
               **Suggested start:** {% set rec_start = state_attr('sensor.load_optimizer_1_overnight_recommendation', 'start') %}{{ (rec_start | as_datetime | as_local).strftime('%a %d %b at %H:%M') if rec_start else 'not scheduled' }}  
-              **Automatic overnight:** {{ states('input_boolean.load_optimizer_1_auto_mode_enabled') }}
+              **Automatic overnight:** {{ states('switch.load_optimizer_1_auto_mode_enabled') }}
               {% endif %}
 
               {% if message not in empty %}**Scheduler says:** {{ message }}{% endif %}
@@ -74,9 +74,9 @@ views:
             title: Household controls
             show_header_toggle: false
             entities:
-              - entity: input_boolean.load_optimizer_1_auto_mode_enabled
+              - entity: switch.load_optimizer_1_auto_mode_enabled
                 name: Automatic Overnight
-              - entity: input_boolean.load_optimizer_1_auto_negative_price_enabled
+              - entity: switch.load_optimizer_1_auto_negative_price_enabled
                 name: Auto Free / Negative Price
               - entity: input_boolean.load_optimizer_1_door_opened_since_last_cycle
                 name: Reloaded Since Last Cycle
@@ -86,41 +86,41 @@ views:
           - type: horizontal-stack
             cards:
               - type: button
-                entity: input_button.load_optimizer_1_request_now
+                entity: button.load_optimizer_1_request_now
                 name: Start Now
                 icon: mdi:play-circle
                 tap_action:
                   action: perform-action
                   perform_action: input_button.press
                   target:
-                    entity_id: input_button.load_optimizer_1_request_now
+                    entity_id: button.load_optimizer_1_request_now
               - type: button
-                entity: input_button.load_optimizer_1_request_soon
+                entity: button.load_optimizer_1_request_soon
                 name: Soon
                 icon: mdi:clock-fast
                 tap_action:
                   action: perform-action
                   perform_action: input_button.press
                   target:
-                    entity_id: input_button.load_optimizer_1_request_soon
+                    entity_id: button.load_optimizer_1_request_soon
               - type: button
-                entity: input_button.load_optimizer_1_request_overnight
+                entity: button.load_optimizer_1_request_overnight
                 name: Overnight
                 icon: mdi:weather-night
                 tap_action:
                   action: perform-action
                   perform_action: input_button.press
                   target:
-                    entity_id: input_button.load_optimizer_1_request_overnight
+                    entity_id: button.load_optimizer_1_request_overnight
               - type: button
-                entity: input_button.load_optimizer_1_cancel_schedule
+                entity: button.load_optimizer_1_cancel_schedule
                 name: Cancel
                 icon: mdi:cancel
                 tap_action:
                   action: perform-action
                   perform_action: input_button.press
                   target:
-                    entity_id: input_button.load_optimizer_1_cancel_schedule
+                    entity_id: button.load_optimizer_1_cancel_schedule
 
           - type: markdown
             title: Automatic run readiness
@@ -183,7 +183,7 @@ views:
             entities:
               - entity: sensor.load_optimizer_status
                 name: App
-              - entity: sensor.load_optimizer_1_automation_package_status
+              - entity: sensor.load_optimizer_1_orchestration_status
                 name: Automation Package
               - entity: sensor.load_optimizer_diagnostics
                 name: Diagnostics
@@ -364,15 +364,15 @@ views:
             title: Manual special-price window
             show_header_toggle: false
             entities:
-              - entity: input_boolean.load_optimizer_special_price_window_enabled
+              - entity: switch.load_optimizer_special_price_window_enabled
                 name: Use Window
-              - entity: input_datetime.load_optimizer_special_price_window_start
+              - entity: datetime.load_optimizer_special_price_window_start
                 name: Start
-              - entity: input_datetime.load_optimizer_special_price_window_end
+              - entity: datetime.load_optimizer_special_price_window_end
                 name: End
-              - entity: input_number.load_optimizer_special_price_window_price
+              - entity: number.load_optimizer_special_price_window_price
                 name: Price
-              - entity: input_text.load_optimizer_special_price_window_label
+              - entity: text.load_optimizer_special_price_window_label
                 name: Label
               - entity: sensor.load_optimizer_special_price_window
                 name: App Validation
@@ -390,7 +390,7 @@ views:
                 name: Free / Negative Window Active
               - entity: sensor.load_optimizer_1_greenest_recommendation
                 name: Greenest Recommendation
-              - entity: input_button.load_optimizer_1_recalculate_now
+              - entity: button.load_optimizer_1_recalculate_now
                 name: Recalculate Now
 
   - title: Learning
@@ -574,7 +574,7 @@ views:
               | Bosch operation | {{ state_attr(execution, 'bosch_operation_state') or states(operation) }} |
               | Remote activation check | {{ states('sensor.load_optimizer_1_remote_activation_check') }} |
               | Data freshness | {{ states('sensor.load_optimizer_1_data_freshness') }} |
-              | Package alignment | {{ states('sensor.load_optimizer_1_automation_package_status') }} |
+              | Package alignment | {{ states('sensor.load_optimizer_1_orchestration_status') }} |
 
           - type: markdown
             title: Cycle-completion evidence
@@ -645,19 +645,19 @@ views:
           - type: entities
             title: Manual program override tests
             entities:
-              - entity: input_select.load_optimizer_1_override_program
+              - entity: select.load_optimizer_1_override_program
                 name: Override Program
-              - entity: input_button.load_optimizer_1_request_now_override
+              - entity: button.load_optimizer_1_request_now_override
                 name: Start Now With Override
-              - entity: input_button.load_optimizer_1_request_soon_override
+              - entity: button.load_optimizer_1_request_soon_override
                 name: Start Soon With Override
-              - entity: input_button.load_optimizer_1_request_overnight_override
+              - entity: button.load_optimizer_1_request_overnight_override
                 name: Overnight With Override
 
           - type: markdown
             title: Version alignment
             content: |-
-              {% set package = 'sensor.load_optimizer_1_automation_package_status' %}
+              {% set package = 'sensor.load_optimizer_1_orchestration_status' %}
               {% set package_helper = states('input_text.load_optimizer_1_automation_package_version') %}
               | Component | Version / state |
               |---|---|
@@ -803,7 +803,7 @@ views:
               - sensor.load_optimizer_1_remote_activation_check
               - sensor.load_optimizer_1_data_freshness
               - sensor.load_optimizer_1_automatic_plan_resilience
-              - sensor.load_optimizer_1_automation_package_status
+              - sensor.load_optimizer_1_orchestration_status
               - sensor.load_optimizer_1_execution_status
               - sensor.load_optimizer_1_execution_lifecycle
               - sensor.load_optimizer_1_last_start_attempt

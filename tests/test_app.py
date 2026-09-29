@@ -118,6 +118,9 @@ class VersionTests(unittest.TestCase):
         dashboard_text = dashboard.read_text()
         self.assertIn("sensor.load_optimizer_runtime_status", dashboard_text)
         self.assertIn("sensor.load_optimizer_1_total_runs", dashboard_text)
+        self.assertIn("switch.load_optimizer_1_auto_mode_enabled", dashboard_text)
+        self.assertIn("button.load_optimizer_1_request_now", dashboard_text)
+        self.assertIn("sensor.load_optimizer_1_orchestration_status", dashboard_text)
         self.assertNotIn("custom:", dashboard_text)
 
     def test_global_legacy_sensors_stay_on_hub_device(self):
@@ -141,6 +144,58 @@ class VersionTests(unittest.TestCase):
         self.assertNotIn("automation.turn_off", source)
         self.assertNotIn("homeassistant.restart", source)
         self.assertIn("prepare_orchestration_migration", integration)
+
+    def test_native_orchestration_platforms_are_complete(self):
+        root = Path(__file__).resolve().parents[1]
+        constants = (root / "custom_components/load_optimizer/const.py").read_text()
+
+        platforms = re.search(r"PLATFORMS = \[(.*?)\]", constants, re.DOTALL)
+        self.assertIsNotNone(platforms)
+        for platform in re.findall(r'"([a-z_]+)"', platforms.group(1)):
+            self.assertTrue(
+                (root / f"custom_components/load_optimizer/{platform}.py").exists(),
+                platform,
+            )
+
+    def test_native_orchestration_keeps_package_as_reversible_handover(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "custom_components/load_optimizer/orchestration.py").read_text()
+
+        self.assertIn('"automation",\n                "turn_off"', source)
+        self.assertIn('"automation",\n                "turn_on"', source)
+        self.assertNotIn("os.remove", source)
+        self.assertNotIn("Path.unlink", source)
+        self.assertIn("door_not_opened_since_last_cycle", source)
+        self.assertIn("confidence_threshold", source)
+        self.assertIn("maximum_runs_per_window_reached", source)
+
+    def test_native_orchestration_replaces_package_controls(self):
+        root = Path(__file__).resolve().parents[1]
+        expected_platforms = {
+            "button": ("request_now", "cancel_schedule", "recalculate_now"),
+            "switch": ("auto_mode_enabled", "auto_negative_price_enabled"),
+            "select": ("override_program",),
+            "datetime": ("special_price_window_start", "special_price_window_end"),
+            "number": ("special_price_window_price",),
+            "text": ("special_price_window_label",),
+        }
+        for platform, controls in expected_platforms.items():
+            source = (
+                root / f"custom_components/load_optimizer/{platform}.py"
+            ).read_text()
+            for control in controls:
+                self.assertIn(control, source, f"{platform}: {control}")
+
+        sensors = (root / "custom_components/load_optimizer/sensor.py").read_text()
+        for status in (
+            "orchestration_status",
+            "overnight_readiness",
+            "remote_activation",
+            "data_freshness",
+            "automatic_plan_resilience",
+            "negative_price_readiness",
+        ):
+            self.assertIn(status, sensors)
 
     def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
         root = Path(__file__).resolve().parents[1]

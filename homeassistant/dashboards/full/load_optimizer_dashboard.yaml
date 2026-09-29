@@ -584,10 +584,10 @@ views:
           - type: entities
             title: Scheduler Controls
             entities:
-              - entity: input_button.load_optimizer_1_cancel_schedule
+              - entity: button.load_optimizer_1_cancel_schedule
                 name: Cancel Schedule
-              - entity: input_datetime.load_optimizer_1_requested_start
-                name: Requested Start
+              - entity: sensor.load_optimizer_1_orchestration_status
+                name: Native Schedule
               - entity: input_datetime.load_optimizer_1_must_finish_by
                 name: Must Finish By
               - entity: input_button.load_optimizer_1_clear_deadline
@@ -596,19 +596,19 @@ views:
             title: Manual Free / Special Price Window
             show_header_toggle: false
             entities:
-              - entity: input_boolean.load_optimizer_special_price_window_enabled
+              - entity: switch.load_optimizer_special_price_window_enabled
                 name: Use This Window
-              - entity: input_datetime.load_optimizer_special_price_window_start
+              - entity: datetime.load_optimizer_special_price_window_start
                 name: Starts
-              - entity: input_datetime.load_optimizer_special_price_window_end
+              - entity: datetime.load_optimizer_special_price_window_end
                 name: Ends
-              - entity: input_number.load_optimizer_special_price_window_price
+              - entity: number.load_optimizer_special_price_window_price
                 name: Price
-              - entity: input_text.load_optimizer_special_price_window_label
+              - entity: text.load_optimizer_special_price_window_label
                 name: Label
               - entity: sensor.load_optimizer_special_price_window
                 name: App Status
-              - entity: input_boolean.load_optimizer_1_auto_negative_price_enabled
+              - entity: switch.load_optimizer_1_auto_negative_price_enabled
                 name: Auto-run Free / Negative Price
           - type: markdown
             title: Automatic Engine Traffic Lights
@@ -643,26 +643,19 @@ views:
           - type: markdown
             title: Scheduler / Queued Request
             content: >
-              {% set result =
-              states('sensor.load_optimizer_1_last_start_result') %} {% set
-              execution = states('sensor.load_optimizer_1_execution_status') %}
-              {% set message =
-              states('input_text.load_optimizer_1_scheduler_message') %} {% set
-              empty = ['unknown', 'unavailable', 'none', '', '—'] %}
+              {% set orchestration = 'sensor.load_optimizer_1_orchestration_status' %}
+              {% set request = state_attr(orchestration, 'request') or {} %}
+              {% set message = state_attr(orchestration, 'last_message') or '' %}
 
-              **Queued mode:** {{ states('input_select.load_optimizer_1_requested_mode') }}
+              **Queued mode:** {{ request.get('mode', 'none') }}
 
-              **Queued program:** {{ states('input_text.load_optimizer_1_requested_program') or 'none' }}
+              **Queued program:** {{ request.get('program', 'none') }}
 
-              **Queued start:** {{ states('input_datetime.load_optimizer_1_requested_start') or 'none' }}
+              **Queued start:** {{ request.get('start', 'none') }}
 
               **Current overnight recommendation:** {{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'program') or 'none' }}
 
-              {% if result == 'success' or message.startswith('Dishwasher
-              started successfully') %} **Status:** OK {% elif message not in
-              empty %} **Status:** {{ message }} {% elif execution not in empty
-              %} **Status:** {{ execution }} {% else %} **Status:** Ready {%
-              endif %}
+              **Status:** {{ message or states(orchestration) }}
       - type: grid
         cards:
           - type: entities
@@ -843,7 +836,7 @@ views:
                       action: call-service
                       service: input_button.press
                       target:
-                        entity_id: input_button.load_optimizer_1_request_now
+                        entity_id: button.load_optimizer_1_request_now
               - type: markdown
                 title: Start Now Options
                 content: >
@@ -891,9 +884,9 @@ views:
                 show_header_toggle: false
                 entities:
                   - type: divider
-                  - entity: input_select.load_optimizer_1_override_program
+                  - entity: select.load_optimizer_1_override_program
                     name: Manual Override Program
-                  - entity: input_button.load_optimizer_1_request_now_override
+                  - entity: button.load_optimizer_1_request_now_override
                     name: Start Selected Program Now
           - type: vertical-stack
             cards:
@@ -929,7 +922,7 @@ views:
                       action: call-service
                       service: input_button.press
                       target:
-                        entity_id: input_button.load_optimizer_1_request_soon
+                        entity_id: button.load_optimizer_1_request_soon
               - type: markdown
                 title: Start Soon Options
                 content: >
@@ -977,9 +970,9 @@ views:
                 show_header_toggle: false
                 entities:
                   - type: divider
-                  - entity: input_select.load_optimizer_1_override_program
+                  - entity: select.load_optimizer_1_override_program
                     name: Manual Override Program
-                  - entity: input_button.load_optimizer_1_request_soon_override
+                  - entity: button.load_optimizer_1_request_soon_override
                     name: Schedule Selected Program Soon
           - type: vertical-stack
             cards:
@@ -1016,7 +1009,7 @@ views:
                       action: call-service
                       service: input_button.press
                       target:
-                        entity_id: input_button.load_optimizer_1_request_overnight
+                        entity_id: button.load_optimizer_1_request_overnight
               - type: markdown
                 title: Overnight Options
                 content: >
@@ -1064,9 +1057,9 @@ views:
                 show_header_toggle: false
                 entities:
                   - type: divider
-                  - entity: input_select.load_optimizer_1_override_program
+                  - entity: select.load_optimizer_1_override_program
                     name: Manual Override Program
-                  - entity: input_button.load_optimizer_1_request_overnight_override
+                  - entity: button.load_optimizer_1_request_overnight_override
                     name: Schedule Selected Program Overnight
           - type: markdown
             title: Greenest Options
@@ -1188,7 +1181,7 @@ views:
           - type: entities
             title: Automation Reliability
             entities:
-              - entity: input_button.load_optimizer_1_recalculate_now
+              - entity: button.load_optimizer_1_recalculate_now
                 name: Recalculate Recommendations
               - entity: sensor.load_optimizer_1_overnight_window_active
                 name: Overnight Window Active
@@ -1196,7 +1189,7 @@ views:
                 name: Free / Negative Price Window Active
               - entity: sensor.load_optimizer_restart_safety
                 name: Restart Safety
-              - entity: sensor.load_optimizer_1_automation_package_status
+              - entity: sensor.load_optimizer_1_orchestration_status
                 name: Automation Package Status
               - entity: sensor.load_optimizer_1_execution_status
                 name: Execution Status
@@ -1216,16 +1209,8 @@ views:
                 name: Decision Snapshot
               - entity: sensor.load_optimizer_1_last_start_attempt
                 name: Last Start Attempt
-              - entity: input_text.load_optimizer_1_last_start_audit
-                name: Start Audit
-              - entity: input_text.load_optimizer_1_last_queue_cancellation
-                name: Queue Cancellation
-              - entity: input_text.load_optimizer_1_last_start_command_diagnostics
-                name: Start Command Diagnostics
-              - entity: input_text.load_optimizer_1_last_execution_event
-                name: Last Execution Event
-              - entity: input_text.load_optimizer_1_run_history
-                name: Recent Run History
+              - entity: sensor.load_optimizer_1_orchestration_status
+                name: Native Orchestration Audit
               - entity: sensor.load_optimizer_1_program_capabilities
                 name: Auto-startable Programs
           - type: markdown
@@ -1235,7 +1220,7 @@ views:
               {% set blocked =
               state_attr('sensor.load_optimizer_1_remote_start_blocked_programs',
               'blocked_programs') or [] %} {% set package =
-              'sensor.load_optimizer_1_automation_package_status' %}
+              'sensor.load_optimizer_1_orchestration_status' %}
 
               | Check | Value |
 

@@ -19,6 +19,8 @@ SERVICE_IMPORT_LEGACY_STATE = "import_legacy_state"
 SERVICE_MOTHBALL_LEGACY_ADDON = "mothball_legacy_addon"
 SERVICE_RECOVER = "recover"
 SERVICE_PREPARE_ORCHESTRATION_MIGRATION = "prepare_orchestration_migration"
+SERVICE_ACTIVATE_NATIVE_ORCHESTRATION = "activate_native_orchestration"
+SERVICE_DEACTIVATE_NATIVE_ORCHESTRATION = "deactivate_native_orchestration"
 CONF_LEGACY_STATE_JSON = "legacy_state_json"
 
 
@@ -130,6 +132,23 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             blocking=False,
         )
 
+    async def async_set_native_orchestration(active: bool) -> None:
+        for coordinator in hass.data.get(DOMAIN, {}).values():
+            orchestrator = getattr(coordinator, "orchestrator", None)
+            if orchestrator is None:
+                continue
+            if active:
+                await orchestrator.async_activate()
+            else:
+                await orchestrator.async_deactivate()
+            await coordinator.async_request_refresh()
+
+    async def async_activate_native_orchestration(call) -> None:
+        await async_set_native_orchestration(True)
+
+    async def async_deactivate_native_orchestration(call) -> None:
+        await async_set_native_orchestration(False)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_IMPORT_LEGACY_STATE,
@@ -147,20 +166,45 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         SERVICE_PREPARE_ORCHESTRATION_MIGRATION,
         async_prepare_orchestration_migration,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_ACTIVATE_NATIVE_ORCHESTRATION,
+        async_activate_native_orchestration,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DEACTIVATE_NATIVE_ORCHESTRATION,
+        async_deactivate_native_orchestration,
+    )
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Load Optimizer from a config entry."""
     coordinator = LoadOptimizerCoordinator(hass, entry)
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    if coordinator.orchestrator:
+        coordinator.orchestrator.set_update_callback(
+            coordinator.async_update_orchestration_data
+        )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if coordinator.orchestrator:
+        await coordinator.orchestrator.async_start()
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload an entry after options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a Load Optimizer config entry."""
+    coordinator = hass.data[DOMAIN].get(entry.entry_id)
+    if coordinator and coordinator.orchestrator:
+        await coordinator.orchestrator.async_stop()
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id)

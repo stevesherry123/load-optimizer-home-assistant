@@ -36,6 +36,17 @@ CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE = "schedule_preference_weight_pence"
 CONF_PUBLISH_DIAGNOSTICS = "publish_diagnostics"
 CONF_PUBLISH_PROFILE_DATA = "publish_profile_data"
 CONF_PUBLISH_COST_FORECAST = "publish_cost_forecast"
+CONF_BOSCH_DEVICE_ID = "bosch_device_id"
+CONF_BOSCH_POWER_SWITCH = "bosch_power_switch"
+CONF_BOSCH_PROGRAM_SELECT = "bosch_program_select"
+CONF_BOSCH_START_BUTTON = "bosch_start_button"
+CONF_BOSCH_SELECTED_PROGRAM_SENSOR = "bosch_selected_program_sensor"
+CONF_BOSCH_POWER_STATE_SENSOR = "bosch_power_state_sensor"
+CONF_BOSCH_CONNECTED_SENSOR = "bosch_connected_sensor"
+CONF_BOSCH_DOOR_SENSOR = "bosch_door_sensor"
+CONF_BOSCH_REMOTE_CONTROL_SENSOR = "bosch_remote_control_sensor"
+CONF_BOSCH_REMOTE_START_SENSOR = "bosch_remote_start_sensor"
+CONF_BOSCH_OPERATION_STATE_SENSOR = "bosch_operation_state_sensor"
 
 LOAD_TYPE_EV = "ev_charging"
 LOAD_TYPE_LEARNED_APPLIANCE = "learned_appliance"
@@ -52,4 +63,13 @@ DEFAULT_CHARGER_EFFICIENCY = 0.9
 DEFAULT_SLOT_MINUTES = 30
 DEFAULT_LEGACY_SCAN_INTERVAL_SECONDS = 60
 
-PLATFORMS = ["sensor", "binary_sensor"]
+PLATFORMS = [
+    "sensor",
+    "binary_sensor",
+    "button",
+    "switch",
+    "select",
+    "datetime",
+    "number",
+    "text",
+]

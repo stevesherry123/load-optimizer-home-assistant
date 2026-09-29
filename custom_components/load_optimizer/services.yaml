@@ -21,3 +21,11 @@ recover:
 prepare_orchestration_migration:
   name: Prepare orchestration migration
   description: Capture legacy dishwasher helper and automation state without changing or disabling the live package.
+
+activate_native_orchestration:
+  name: Activate native orchestration
+  description: Disable the captured package automations and give appliance command ownership to the integration.
+
+deactivate_native_orchestration:
+  name: Deactivate native orchestration
+  description: Stop native command ownership and re-enable the captured package automations.

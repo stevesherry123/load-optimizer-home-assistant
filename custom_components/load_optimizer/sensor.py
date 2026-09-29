@@ -22,6 +22,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, MANUFACTURER
 from .coordinator import LoadOptimizerCoordinator
 from .entity import LoadOptimizerEntity
+from .orchestration_entity import OrchestrationEntity
 
 PENCE = "p"
 LEGACY_INSTANCE_ENTITY = re.compile(r"^sensor\.load_optimizer_([^_]+)_")
@@ -85,7 +86,26 @@ async def async_setup_entry(
         entities = [
             LoadOptimizerRuntimeSensor(coordinator),
             LoadOptimizerOrchestrationMigrationSensor(coordinator),
+            LoadOptimizerOrchestrationStatusSensor(coordinator),
         ]
+        entities.extend(
+            LoadOptimizerNativeStatusSensor(coordinator, key, name, icon)
+            for key, name, icon in (
+                ("overnight_readiness", "Overnight Readiness", "mdi:traffic-light"),
+                ("remote_activation", "Remote Activation Check", "mdi:remote"),
+                ("data_freshness", "Data Freshness", "mdi:database-clock"),
+                (
+                    "automatic_plan_resilience",
+                    "Automatic Plan Resilience",
+                    "mdi:shield-sync-outline",
+                ),
+                (
+                    "negative_price_readiness",
+                    "Free or Negative Price Readiness",
+                    "mdi:traffic-light",
+                ),
+            )
+        )
         entities.extend(
             LoadOptimizerLegacySensor(coordinator, entity_id)
             for entity_id in sorted(coordinator.data.get("legacy_entities", {}))
@@ -164,7 +184,66 @@ class LoadOptimizerOrchestrationMigrationSensor(LoadOptimizerEntity, SensorEntit
 
     @property
     def extra_state_attributes(self):
-        return self.coordinator.data.get("orchestration_migration", {})
+        attributes = dict(self.coordinator.data.get("orchestration_migration", {}))
+        orchestration = self.coordinator.data.get("orchestration", {})
+        active = orchestration.get("active") is True
+        legacy_enabled = orchestration.get("legacy_automations_enabled", [])
+        attributes["safe_to_remove_package"] = active and not legacy_enabled
+        if attributes["safe_to_remove_package"]:
+            attributes["message"] = (
+                "Native orchestration owns execution and all package automations "
+                "are disabled. The package can be retained only as a rollback copy."
+            )
+        return attributes
+
+
+class LoadOptimizerOrchestrationStatusSensor(OrchestrationEntity, SensorEntity):
+    """Expose native orchestration ownership and queue state."""
+
+    _attr_icon = "mdi:state-machine"
+
+    def __init__(self, coordinator: LoadOptimizerCoordinator) -> None:
+        OrchestrationEntity.__init__(
+            self,
+            coordinator,
+            "sensor",
+            "orchestration_status",
+            "Orchestration Status",
+        )
+
+    @property
+    def native_value(self):
+        data = self.coordinator.data.get("orchestration", {})
+        return data.get("execution_status", "inactive") if data.get("active") else "shadow"
+
+    @property
+    def extra_state_attributes(self):
+        return self.coordinator.data.get("orchestration", {})
+
+
+class LoadOptimizerNativeStatusSensor(OrchestrationEntity, SensorEntity):
+    """Native replacement for a package template sensor."""
+
+    def __init__(self, coordinator, key: str, name: str, icon: str) -> None:
+        OrchestrationEntity.__init__(self, coordinator, "sensor", key, name)
+        self._key = key
+        self._attr_icon = icon
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get("orchestration", {}).get(self._key, {}).get(
+            "state", "unknown"
+        )
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            key: value
+            for key, value in self.coordinator.data.get("orchestration", {})
+            .get(self._key, {})
+            .items()
+            if key != "state"
+        }
 
 
 class LoadOptimizerLegacySensor(CoordinatorEntity[LoadOptimizerCoordinator], SensorEntity):

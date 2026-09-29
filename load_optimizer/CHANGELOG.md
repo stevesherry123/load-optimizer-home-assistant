@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.0-beta.1
+
+- Replace the dishwasher package controls, readiness templates, request queue,
+  safety gates, and Bosch start sequence with native integration entities and
+  persisted orchestration.
+- Preserve captured helper values and provide a reversible handover that
+  disables or re-enables the legacy package automations without deleting them.
+- Add Bosch entity configuration to the integration options flow.
+- Update bundled dashboards to use native buttons, switches, selectors, and
+  special-price controls.
+
 ## 1.4.0-alpha.1
 
 - Add a non-destructive dishwasher orchestration migration snapshot.

@@ -31,6 +31,7 @@ from .const import (
     LOAD_TYPE_LEARNED_APPLIANCE,
 )
 from .legacy_runtime import LegacyRuntime
+from .orchestration import NativeOrchestrator
 from .orchestration_migration import OrchestrationMigration
 from .optimizer.ev_charging import connection_is_available, deadline_from_ready_by, plan_ev_charge, state_float
 from .optimizer.tariffs import tariff_periods_from_entity
@@ -61,13 +62,22 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE
             else None
         )
+        self.orchestrator = (
+            NativeOrchestrator(hass, entry, self.orchestration_migration)
+            if self.orchestration_migration is not None
+            else None
+        )
+        if self.legacy_runtime and self.orchestrator:
+            self.legacy_runtime.external_state_provider = self._orchestration_legacy_state
 
     async def _async_update_data(self) -> dict[str, Any]:
         data = {**self.config_entry.data, **self.config_entry.options}
         if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
             assert self.legacy_runtime is not None
             assert self.orchestration_migration is not None
+            assert self.orchestrator is not None
             await self.orchestration_migration.async_load()
+            await self.orchestrator.async_load()
             result = await self.legacy_runtime.async_scan(data)
             return {
                 "mode": LOAD_TYPE_LEARNED_APPLIANCE,
@@ -79,6 +89,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "last_scan": result.last_scan,
                 "message": result.message,
                 "orchestration_migration": self.orchestration_migration.status,
+                "orchestration": self.orchestrator.status,
             }
 
         now = datetime.now(timezone.utc)
@@ -149,3 +160,15 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "attributes": dict(state.attributes),
             "entity_id": entity_id,
         }
+
+    def _orchestration_legacy_state(self, entity_id: str) -> dict[str, Any] | None:
+        if not self.orchestrator or not self.orchestrator.state.get("active"):
+            return None
+        return self.orchestrator.legacy_state(entity_id)
+
+    def async_update_orchestration_data(self, status: dict[str, Any]) -> None:
+        """Publish orchestration changes between optimizer scans."""
+        if self.data is None:
+            return
+        self.data["orchestration"] = status
+        self.async_update_listeners()

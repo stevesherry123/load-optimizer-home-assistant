@@ -42,6 +42,30 @@ views:
           - sensor.load_optimizer_1_estimated_scheduled_cost
           - sensor.load_optimizer_1_good_to_start
       - type: entities
+        title: Dishwasher scheduling
+        show_header_toggle: false
+        entities:
+          - sensor.load_optimizer_1_orchestration_status
+          - sensor.load_optimizer_1_overnight_readiness
+          - sensor.load_optimizer_1_negative_price_readiness
+          - switch.load_optimizer_1_auto_mode_enabled
+          - switch.load_optimizer_1_auto_negative_price_enabled
+          - select.load_optimizer_1_override_program
+          - button.load_optimizer_1_request_now
+          - button.load_optimizer_1_request_soon
+          - button.load_optimizer_1_request_overnight
+          - button.load_optimizer_1_cancel_schedule
+          - button.load_optimizer_1_recalculate_now
+      - type: entities
+        title: Special price window
+        show_header_toggle: false
+        entities:
+          - switch.load_optimizer_special_price_window_enabled
+          - datetime.load_optimizer_special_price_window_start
+          - datetime.load_optimizer_special_price_window_end
+          - number.load_optimizer_special_price_window_price
+          - text.load_optimizer_special_price_window_label
+      - type: entities
         title: Appliance 2
         show_header_toggle: false
         entities:
