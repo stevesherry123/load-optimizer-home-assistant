@@ -1,0 +1,109 @@
+title: Load Optimizer
+views:
+  - title: Overview
+    path: overview
+    icon: mdi:home-lightning-bolt-outline
+    cards:
+      - type: entities
+        title: Integration health
+        show_header_toggle: false
+        entities:
+          - sensor.load_optimizer_runtime_status
+          - sensor.load_optimizer_status
+          - sensor.load_optimizer_restart_safety
+          - sensor.load_optimizer_diagnostics
+      - type: glance
+        title: Appliance plans
+        columns: 3
+        entities:
+          - entity: sensor.load_optimizer_1_schedule_status
+            name: Appliance 1
+          - entity: sensor.load_optimizer_2_schedule_status
+            name: Appliance 2
+          - entity: sensor.load_optimizer_3_schedule_status
+            name: Appliance 3
+
+  - title: Appliances
+    path: appliances
+    icon: mdi:dishwasher
+    cards:
+      - type: entities
+        title: Appliance 1
+        show_header_toggle: false
+        entities:
+          - sensor.load_optimizer_1_status
+          - sensor.load_optimizer_1_cycle_state
+          - sensor.load_optimizer_1_program
+          - sensor.load_optimizer_1_power
+          - sensor.load_optimizer_1_total_runs
+          - sensor.load_optimizer_1_learned_programs
+          - sensor.load_optimizer_1_cost_status
+          - sensor.load_optimizer_1_recommended_start
+          - sensor.load_optimizer_1_estimated_scheduled_cost
+          - sensor.load_optimizer_1_good_to_start
+      - type: entities
+        title: Appliance 2
+        show_header_toggle: false
+        entities:
+          - sensor.load_optimizer_2_status
+          - sensor.load_optimizer_2_cycle_state
+          - sensor.load_optimizer_2_power
+          - sensor.load_optimizer_2_total_runs
+          - sensor.load_optimizer_2_learned_programs
+          - sensor.load_optimizer_2_cost_status
+          - sensor.load_optimizer_2_recommended_start
+          - sensor.load_optimizer_2_estimated_scheduled_cost
+          - sensor.load_optimizer_2_good_to_start
+      - type: entities
+        title: Appliance 3
+        show_header_toggle: false
+        entities:
+          - sensor.load_optimizer_3_status
+          - sensor.load_optimizer_3_cycle_state
+          - sensor.load_optimizer_3_power
+          - sensor.load_optimizer_3_total_runs
+          - sensor.load_optimizer_3_learned_programs
+          - sensor.load_optimizer_3_cost_status
+          - sensor.load_optimizer_3_recommended_start
+          - sensor.load_optimizer_3_estimated_scheduled_cost
+          - sensor.load_optimizer_3_good_to_start
+
+  - title: EV charging
+    path: ev-charging
+    icon: mdi:ev-station
+    cards:
+      - type: entities
+        title: EV charging plan
+        show_header_toggle: false
+        entities:
+          - sensor.volvo_xc60_optimizer
+          - sensor.volvo_xc60_optimizer_2
+          - sensor.volvo_xc60_optimizer_3
+          - sensor.volvo_xc60_optimizer_4
+          - sensor.volvo_xc60_optimizer_5
+          - sensor.volvo_xc60_optimizer_6
+          - binary_sensor.volvo_xc60_optimizer
+          - binary_sensor.volvo_xc60_optimizer_2
+
+  - title: Learning
+    path: learning
+    icon: mdi:chart-bell-curve-cumulative
+    cards:
+      - type: entities
+        title: Appliance 1 learning
+        show_header_toggle: false
+        entities:
+          - sensor.load_optimizer_1_last_program
+          - sensor.load_optimizer_1_last_runtime
+          - sensor.load_optimizer_1_last_energy
+          - sensor.load_optimizer_1_last_finish
+          - sensor.load_optimizer_1_program_model
+          - sensor.load_optimizer_1_program_catalogue
+          - sensor.load_optimizer_1_last_discarded_cycle
+      - type: history-graph
+        title: Appliance power
+        hours_to_show: 24
+        entities:
+          - sensor.load_optimizer_1_power
+          - sensor.load_optimizer_2_power
+          - sensor.load_optimizer_3_power

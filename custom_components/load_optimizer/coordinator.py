@@ -66,6 +66,8 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "status": result.status,
                 "instance_count": result.instance_count,
                 "published_entity_count": result.entity_count,
+                "legacy_entities": result.entities,
+                "legacy_instances": result.instances,
                 "last_scan": result.last_scan,
                 "message": result.message,
             }

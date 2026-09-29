@@ -1,8 +1,8 @@
-# Load Optimizer recovery watchdog.
+# Load Optimizer integration recovery watchdog.
 #
-# This package is intentionally opt-in. It restarts the Load Optimizer add-on
-# when Home Assistant can no longer see a healthy status update, while limiting
-# restart attempts so a configuration issue cannot cause a restart loop.
+# This package is intentionally opt-in. It reloads the learned-appliance config
+# entry when Home Assistant can no longer see a healthy status update, while
+# limiting attempts so a configuration issue cannot cause a reload loop.
 #
 # It uses the add-on status entity's last update time today and will prefer a
 # future last_heartbeat attribute if the add-on publishes one.
@@ -31,10 +31,6 @@ input_number:
     mode: box
 
 input_text:
-  load_optimizer_recovery_addon_slug:
-    name: Load Optimizer Add-on Slug
-    icon: mdi:identifier
-    max: 100
   load_optimizer_recovery_status:
     name: Load Optimizer Recovery Status
     icon: mdi:heart-pulse
@@ -52,13 +48,13 @@ input_datetime:
 
 input_button:
   load_optimizer_recovery_restart_now:
-    name: Restart Load Optimizer Now
+    name: Reload Load Optimizer Now
     icon: mdi:restart-alert
 
 automation:
   - id: load_optimizer_recovery_watchdog
     alias: Load Optimizer - Recovery Watchdog
-    description: Restart Load Optimizer after a stopped or stale status signal.
+    description: Reload Load Optimizer after a stopped or stale status signal.
     mode: single
     triggers:
       - trigger: time_pattern
@@ -68,10 +64,6 @@ automation:
         entity_id: input_button.load_optimizer_recovery_restart_now
         id: manual
     variables:
-      addon_slug: >-
-        {% set configured = states('input_text.load_optimizer_recovery_addon_slug') | trim %}
-        {{ 'f5537f93_load_optimizer'
-           if configured in ['', 'unknown', 'unavailable'] else configured }}
       optimizer_status: "{{ states('sensor.load_optimizer_status') }}"
       heartbeat: "{{ state_attr('sensor.load_optimizer_status', 'last_heartbeat') }}"
       last_seen: >-
@@ -96,8 +88,6 @@ automation:
            and (as_timestamp(now()) - as_timestamp(last_restart, 0)) <= cooldown_seconds }}
     conditions:
       - condition: template
-        value_template: "{{ addon_slug not in ['', 'unknown', 'unavailable'] }}"
-      - condition: template
         value_template: >-
           {{ trigger.id == 'manual'
              or is_state('input_boolean.load_optimizer_recovery_enabled', 'on') }}
@@ -115,20 +105,18 @@ automation:
         target:
           entity_id: input_text.load_optimizer_recovery_status
         data:
-          value: restarting
+          value: reloading
       - action: input_text.set_value
         target:
           entity_id: input_text.load_optimizer_recovery_message
         data:
           value: >-
-            Restart requested because {% if trigger.id == 'manual' %}the manual recovery button was pressed.{% elif optimizer_status != 'running' %}the status sensor is {{ optimizer_status }}.{% else %}the status signal is older than the configured threshold.{% endif %}
-      - action: hassio.addon_restart
-        data:
-          addon: "{{ addon_slug }}"
+            Reload requested because {% if trigger.id == 'manual' %}the manual recovery button was pressed.{% elif optimizer_status != 'running' %}the status sensor is {{ optimizer_status }}.{% else %}the status signal is older than the configured threshold.{% endif %}
+      - action: load_optimizer.recover
       - delay: "00:01:00"
       - action: input_text.set_value
         target:
           entity_id: input_text.load_optimizer_recovery_status
         data:
           value: >-
-            {% if states('sensor.load_optimizer_status') == 'running' %}recovered{% else %}restart_requested{% endif %}
+            {% if states('sensor.load_optimizer_status') == 'running' %}recovered{% else %}reload_requested{% endif %}

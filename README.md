@@ -76,6 +76,12 @@ captured another complete cycle.
 The compatibility engine and explicit import service remain in the integration
 for users migrating older installations.
 
+## Optional Dashboard
+
+The HACS installation includes a standard Home Assistant dashboard covering
+integration health, appliance plans, EV charging, and learned-cycle data. See
+[`docs/dashboard.md`](docs/dashboard.md) for the short installation step.
+
 ## Goals
 
 - Schedule flexible electrical loads from normalized tariff data.

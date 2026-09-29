@@ -13,3 +13,7 @@ import_legacy_state:
 mothball_legacy_addon:
   name: Mothball legacy add-on
   description: Publish guidance that the legacy add-on can be stopped after validating integration parity.
+
+recover:
+  name: Recover learned-appliance runtime
+  description: Reloads learned-appliance Load Optimizer entries without depending on the retired add-on.

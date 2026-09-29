@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0-beta.1
+
+- Register learned-appliance outputs as native Home Assistant sensor entities
+  while preserving their existing entity IDs.
+- Create one integration device per configured learned appliance.
+- Replace add-on restart recovery with config-entry reload recovery.
+- Bundle an optional standard-card Home Assistant dashboard.
+- Add a HACS brand icon and publication-readiness checks.
+
 ## 1.2.0
 
 - Retire the legacy Home Assistant add-on distribution after successful config

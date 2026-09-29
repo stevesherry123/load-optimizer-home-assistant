@@ -70,6 +70,8 @@ class LegacyScanResult:
     instance_count: int
     entity_count: int
     last_scan: str
+    entities: dict[str, dict[str, Any]]
+    instances: dict[str, dict[str, str]]
     message: str | None = None
 
 
@@ -82,6 +84,7 @@ class LegacyRuntime:
         self.state: dict[str, Any] | None = None
         self.last_signature: str | None = None
         self.entity_count = 0
+        self.published_entities: dict[str, dict[str, Any]] = {}
         self.calendar_events: dict[str, list[dict[str, Any]]] = {}
         self.started = False
         self._patch_legacy_runtime()
@@ -120,7 +123,9 @@ class LegacyRuntime:
         assert self.state is not None
         options = self._normalise_options(options)
         now = datetime.now(timezone.utc)
-        self.entity_count = 0
+        if not self.started:
+            app_runtime.PUBLISHED_ENTITY_CACHE.clear()
+            app_runtime.LAST_FULL_REPUBLISH_AT = None
         app_runtime.refresh_publish_cache()
         configs = app_runtime.instance_configs(options)
         await self._async_prefetch_calendar_events(configs, now)
@@ -163,8 +168,16 @@ class LegacyRuntime:
         return LegacyScanResult(
             status="ready" if configs else "configuration_required",
             instance_count=len(configs),
-            entity_count=self.entity_count,
+            entity_count=len(self.published_entities),
             last_scan=now.isoformat(),
+            entities=dict(self.published_entities),
+            instances={
+                str(config.get("instance_id")): {
+                    "instance_id": str(config.get("instance_id")),
+                    "name": str(config.get("name") or f"Load {config.get('instance_id')}"),
+                }
+                for config in configs
+            },
             message=None if configs else "Configure learned appliance instances to enable compatibility publishing.",
         )
 
@@ -228,6 +241,16 @@ class LegacyRuntime:
     def _source_state(self, token: str, entity_id: str) -> dict[str, Any] | None:
         if not entity_id:
             return None
+        published = self.published_entities.get(entity_id)
+        if published is not None:
+            now = datetime.now(timezone.utc).isoformat()
+            return {
+                "entity_id": entity_id,
+                "state": published["state"],
+                "attributes": dict(published["attributes"]),
+                "last_changed": now,
+                "last_updated": now,
+            }
         state = self.hass.states.get(entity_id)
         if state is None:
             return None
@@ -240,8 +263,10 @@ class LegacyRuntime:
         }
 
     def _publish_entity(self, token: str, entity_id: str, state: object, attributes: dict) -> None:
-        self.entity_count += 1
-        self.hass.states.async_set(entity_id, str(state), attributes)
+        self.published_entities[entity_id] = {
+            "state": state,
+            "attributes": dict(attributes),
+        }
 
     def _api_request(self, token: str, path: str, payload: dict | None = None) -> object | None:
         if path == "/services/persistent_notification/create" and payload:

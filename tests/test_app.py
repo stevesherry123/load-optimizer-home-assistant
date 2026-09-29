@@ -1,5 +1,6 @@
 import json
 import re
+import struct
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -80,6 +81,44 @@ class VersionTests(unittest.TestCase):
             root / "load_optimizer/run.sh",
         ):
             self.assertFalse(path.exists(), f"Legacy add-on artifact still present: {path}")
+
+    def test_native_legacy_entity_handover_preserves_entity_ids(self):
+        root = Path(__file__).resolve().parents[1]
+        sensor_source = (root / "custom_components/load_optimizer/sensor.py").read_text()
+        runtime_source = (root / "custom_components/load_optimizer/legacy_runtime.py").read_text()
+
+        self.assertIn("self.entity_id = entity_id", sensor_source)
+        self.assertIn('entity_id.replace(\'.\', \'_\')', sensor_source)
+        self.assertIn('"legacy_entities": result.entities', (
+            root / "custom_components/load_optimizer/coordinator.py"
+        ).read_text())
+        publish_method = runtime_source.split("def _publish_entity", 1)[1].split("def _api_request", 1)[0]
+        self.assertIn("self.published_entities[entity_id]", publish_method)
+        self.assertNotIn("states.async_set", publish_method)
+
+    def test_recovery_no_longer_depends_on_supervisor_addon(self):
+        root = Path(__file__).resolve().parents[1]
+        package = (root / "homeassistant/packages/load_optimizer_recovery_watchdog.yaml").read_text()
+        services = (root / "custom_components/load_optimizer/services.yaml").read_text()
+
+        self.assertIn("load_optimizer.recover", package)
+        self.assertNotIn("hassio.addon_restart", package)
+        self.assertNotIn("recovery_addon_slug", package)
+        self.assertIn("recover:", services)
+
+    def test_hacs_brand_and_optional_dashboard_are_packaged(self):
+        root = Path(__file__).resolve().parents[1]
+        icon = root / "custom_components/load_optimizer/brand/icon.png"
+        dashboard = root / "custom_components/load_optimizer/dashboard.yaml"
+
+        self.assertTrue(icon.exists())
+        with icon.open("rb") as file_handle:
+            self.assertEqual(file_handle.read(8), b"\x89PNG\r\n\x1a\n")
+            self.assertEqual(struct.unpack(">II", file_handle.read(16)[8:16]), (256, 256))
+        dashboard_text = dashboard.read_text()
+        self.assertIn("sensor.load_optimizer_runtime_status", dashboard_text)
+        self.assertIn("sensor.load_optimizer_1_total_runs", dashboard_text)
+        self.assertNotIn("custom:", dashboard_text)
 
     def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
         root = Path(__file__).resolve().parents[1]

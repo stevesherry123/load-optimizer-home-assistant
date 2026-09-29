@@ -19,11 +19,21 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         key: ("REDACTED" if key in TO_REDACT else value)
         for key, value in entry.data.items()
     }
+    coordinator_data = dict(coordinator.data) if coordinator else None
+    if coordinator_data and "legacy_entities" in coordinator_data:
+        entities = coordinator_data.pop("legacy_entities")
+        coordinator_data["legacy_entity_summary"] = {
+            entity_id: {
+                "state": payload.get("state"),
+                "attribute_keys": sorted(payload.get("attributes", {})),
+            }
+            for entity_id, payload in entities.items()
+        }
     return {
         "entry": {
             "title": entry.title,
             "data": redacted_data,
             "options": dict(entry.options),
         },
-        "coordinator_data": coordinator.data if coordinator else None,
+        "coordinator_data": coordinator_data,
     }

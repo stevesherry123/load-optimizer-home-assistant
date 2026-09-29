@@ -9,12 +9,13 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, PLATFORMS
+from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, PLATFORMS
 from .coordinator import LoadOptimizerCoordinator
 
 LOGGER = logging.getLogger(__name__)
 SERVICE_IMPORT_LEGACY_STATE = "import_legacy_state"
 SERVICE_MOTHBALL_LEGACY_ADDON = "mothball_legacy_addon"
+SERVICE_RECOVER = "recover"
 CONF_LEGACY_STATE_JSON = "legacy_state_json"
 
 
@@ -79,6 +80,29 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             blocking=False,
         )
 
+    async def async_recover(call) -> None:
+        entries = [
+            entry
+            for entry in hass.config_entries.async_entries(DOMAIN)
+            if entry.data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE
+        ]
+        hass.states.async_set(
+            "sensor.load_optimizer_recovery_status",
+            "reload_requested" if entries else "no_runtime",
+            {
+                "friendly_name": "Load Optimizer Recovery Status",
+                "icon": "mdi:reload-alert",
+                "entry_count": len(entries),
+                "message": (
+                    "Learned-appliance integration reload requested."
+                    if entries
+                    else "No learned-appliance Load Optimizer entry is configured."
+                ),
+            },
+        )
+        for entry in entries:
+            hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_IMPORT_LEGACY_STATE,
@@ -90,6 +114,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         SERVICE_MOTHBALL_LEGACY_ADDON,
         async_mothball_legacy_addon,
     )
+    hass.services.async_register(DOMAIN, SERVICE_RECOVER, async_recover)
     return True
 
 
