@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.3
+
+- Accept Home Assistant immutable mapping rows within Octopus Energy structured rate sequences.
+- Add regression coverage for the exact tuple-of-read-only-mappings tariff shape used at runtime.
+
 ## 1.1.2
 
 - Fix tariff parsing when Home Assistant exposes Octopus structured rate

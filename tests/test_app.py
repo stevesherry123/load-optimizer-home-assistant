@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import MappingProxyType
 from unittest.mock import patch
 
 from load_optimizer.app.main import (
@@ -913,6 +914,29 @@ class ConfigurationTests(unittest.TestCase):
 
         self.assertEqual(len(periods), 1)
         self.assertEqual(periods[0]["price_p_per_kwh"], 24.1)
+
+    def test_tariff_periods_accept_tuple_of_read_only_mapping_attributes(self):
+        periods = tariff_periods_from_entity(
+            {
+                "entity_id": "event.rates",
+                "state": "2026-09-29T00:00:00+00:00",
+                "attributes": {
+                    "rates": (
+                        MappingProxyType({
+                            "start": "2026-09-29T00:00:00+01:00",
+                            "end": "2026-09-29T00:30:00+01:00",
+                            "value_inc_vat": 0.30744,
+                        }),
+                    )
+                },
+            },
+            reference_utc=datetime(2026, 9, 28, 23, 0, tzinfo=timezone.utc),
+            timezone_name="Europe/London",
+            price_unit="gbp_per_kwh",
+        )
+
+        self.assertEqual(len(periods), 1)
+        self.assertEqual(periods[0]["price_p_per_kwh"], 30.744)
 
     def test_tariff_entity_diagnostic_reports_keys_and_counts(self):
         diagnostic = tariff_entity_diagnostic({

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -124,7 +124,7 @@ def _cooldown_until_utc(model: dict, policy: dict) -> datetime | None:
     return last_seen + timedelta(hours=hours)
 
 
-def parse_structured_rates(rates: Sequence[dict], *, price_unit: str) -> list[dict]:
+def parse_structured_rates(rates: Sequence[Mapping], *, price_unit: str) -> list[dict]:
     """Normalize common structured Home Assistant rate attributes."""
     periods = []
     for rate in rates:
@@ -147,7 +147,7 @@ def parse_structured_rates(rates: Sequence[dict], *, price_unit: str) -> list[di
 
 def _rate_sequence(value: object) -> list[dict] | None:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        rates = [item for item in value if isinstance(item, dict)]
+        rates = [dict(item) for item in value if isinstance(item, Mapping)]
         if rates:
             return rates
     return None
