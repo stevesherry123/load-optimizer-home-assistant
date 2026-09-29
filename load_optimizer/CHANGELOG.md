@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0
+
+- Register learned-appliance outputs as native Home Assistant entities while
+  preserving existing entity IDs, automations, history, and dashboards.
+- Group learned entities under the optimizer hub and one device per appliance.
+- Replace legacy add-on recovery with integration reload recovery.
+- Bundle a public HACS dashboard, brand icon, and compact diagnostics.
+- Allow safe removal of empty integration devices left by configuration changes.
+
 ## 1.3.0-beta.2
 
 - Keep integration-wide learned-appliance sensors on the optimizer hub device

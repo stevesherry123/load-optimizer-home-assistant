@@ -125,6 +125,12 @@ class VersionTests(unittest.TestCase):
         source = (root / "custom_components/load_optimizer/sensor.py").read_text()
         self.assertIn("if candidate_instance_id in legacy_instances", source)
 
+    def test_only_empty_integration_devices_can_be_removed(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "custom_components/load_optimizer/__init__.py").read_text()
+        self.assertIn("async_remove_config_entry_device", source)
+        self.assertIn("include_disabled_entities=True", source)
+
     def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
         root = Path(__file__).resolve().parents[1]
         package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
