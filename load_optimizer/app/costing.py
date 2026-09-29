@@ -90,9 +90,12 @@ def parse_ai_feed(
 
 
 def _parse_timestamp(value: object) -> datetime:
-    if not isinstance(value, str):
-        raise ValueError("Tariff timestamp must be a string")
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    else:
+        raise ValueError("Tariff timestamp must be an ISO string or datetime")
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("Tariff timestamp must include a UTC offset")
     return parsed.astimezone(timezone.utc)

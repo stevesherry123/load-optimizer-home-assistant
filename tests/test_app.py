@@ -938,6 +938,29 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(len(periods), 1)
         self.assertEqual(periods[0]["price_p_per_kwh"], 30.744)
 
+    def test_tariff_periods_accept_home_assistant_datetime_attributes(self):
+        periods = tariff_periods_from_entity(
+            {
+                "entity_id": "event.rates",
+                "attributes": {
+                    "rates": (
+                        MappingProxyType({
+                            "start": datetime(2026, 9, 29, 0, 0, tzinfo=timezone(timedelta(hours=1))),
+                            "end": datetime(2026, 9, 29, 0, 30, tzinfo=timezone(timedelta(hours=1))),
+                            "value_inc_vat": 0.30744,
+                        }),
+                    )
+                },
+            },
+            reference_utc=datetime(2026, 9, 28, 23, 0, tzinfo=timezone.utc),
+            timezone_name="Europe/London",
+            price_unit="gbp_per_kwh",
+        )
+
+        self.assertEqual(periods[0]["start"], datetime(2026, 9, 28, 23, 0, tzinfo=timezone.utc))
+        self.assertEqual(periods[0]["end"], datetime(2026, 9, 28, 23, 30, tzinfo=timezone.utc))
+        self.assertEqual(periods[0]["price_p_per_kwh"], 30.744)
+
     def test_tariff_entity_diagnostic_reports_keys_and_counts(self):
         diagnostic = tariff_entity_diagnostic({
             "entity_id": "event.rates",

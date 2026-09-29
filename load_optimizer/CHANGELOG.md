@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.4
+
+- Parse timezone-aware datetime objects used by Octopus Energy rate attributes inside Home Assistant.
+- Preserve ISO timestamp support for REST and add regression coverage for the live in-process tariff shape.
+
 ## 1.1.3
 
 - Accept Home Assistant immutable mapping rows within Octopus Energy structured rate sequences.
