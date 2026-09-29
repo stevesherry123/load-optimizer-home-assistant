@@ -8,10 +8,10 @@ It is designed to be device-agnostic. Dishwashers, washing machines, EVs, home
 batteries, immersion heaters, and future load types should be handled as
 adapters on top of one shared optimisation core.
 
-## v1.0 Integration Preview
+## HACS Integration
 
-The integration line moves Load Optimizer from the original Home Assistant
-add-on to a HACS custom integration.
+Load Optimizer moved from the original Home Assistant add-on to a HACS custom
+integration. The integration is now the sole supported installation path.
 
 The integration supports two setup paths:
 
@@ -61,20 +61,20 @@ The tariff entity can be any Home Assistant entity exposing future rates in one
 of the formats already supported by the original Load Optimizer tariff parser,
 including `ai_feed`, `rates`, `prices`, `forecast`, or `all_rates`.
 
-## Legacy Add-on
+## Retired Legacy Add-on
 
-The existing Home Assistant add-on remains in this repository during the
-migration. It continues to contain the learned appliance-cycle engine,
-dishwasher automation examples, dashboards, and historical documentation.
+The Home Assistant add-on distribution was retired in v1.2 after configuration,
+learning history, tariff processing, and persisted-storage migration were
+validated against the HACS integration.
 
-Add-on installation still uses the Home Assistant add-on store URL:
+Do not add this repository to the Home Assistant add-on store. Existing add-on
+users should take a backup, import `/data/load_optimizer.json`, confirm the
+learned run counts after an integration reload, and then uninstall the stopped
+add-on. The add-on-only backup should be retained until the integration has
+captured another complete cycle.
 
-```text
-https://github.com/stevesherry123/load-optimizer-home-assistant
-```
-
-The add-on path is retained for existing users while the integration grows to
-cover the same learned appliance functionality.
+The compatibility engine and explicit import service remain in the integration
+for users migrating older installations.
 
 ## Goals
 
@@ -152,16 +152,12 @@ Planned work and backlog ideas are tracked in `docs/roadmap.md`.
 ```text
 .
 ├── README.md
-├── repository.yaml
 ├── hacs.json
 ├── custom_components/
 │   └── load_optimizer/
 ├── load_optimizer/
-│   ├── app/
-│   ├── config.yaml
-│   ├── Dockerfile
-│   ├── DOCS.md
-│   └── run.sh
+│   ├── app/                  # legacy engine reference/test mirror
+│   └── CHANGELOG.md
 ├── homeassistant/
 │   ├── dashboards/
 │   └── packages/
@@ -188,9 +184,8 @@ The shared state model should focus on:
 
 ## Project Status
 
-The project is entering the v1.0 integration migration. The HACS integration is
-the public direction for new development; the Home Assistant add-on remains in
-place for existing learned-appliance functionality.
+The HACS integration is the supported product and development line. The legacy
+add-on packaging has been removed after successful migration validation.
 
 Optional Home Assistant packages and dashboard snippets are stored in
 `homeassistant/`.

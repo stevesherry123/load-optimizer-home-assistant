@@ -53,13 +53,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def async_mothball_legacy_addon(call) -> None:
         hass.states.async_set(
             "sensor.load_optimizer_legacy_addon_status",
-            "ready_to_disable",
+            "ready_to_uninstall",
             {
                 "friendly_name": "Load Optimizer Legacy Add-on Status",
                 "icon": "mdi:archive-arrow-down",
                 "message": (
-                    "The integration compatibility runtime is active. After validating published "
-                    "entities and automations, stop and disable the legacy Home Assistant add-on."
+                    "The integration compatibility runtime is active. After validating imported "
+                    "memory and taking a post-migration backup, uninstall the stopped legacy add-on."
                 ),
             },
         )
@@ -70,9 +70,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 "notification_id": "load_optimizer_mothball_legacy_addon",
                 "title": "Load Optimizer legacy add-on can be mothballed",
                 "message": (
-                    "Validate that the HACS integration is publishing the expected "
-                    "sensor.load_optimizer_* entities, then stop and disable the old add-on. "
-                    "Keep an add-on backup until the integration has captured at least one full cycle."
+                    "Validate that the HACS integration retained the expected learned run counts "
+                    "after a reload and take a post-migration backup. You can then uninstall the "
+                    "stopped add-on. Keep its add-on-only backup until the integration has captured "
+                    "at least one full cycle."
                 ),
             },
             blocking=False,

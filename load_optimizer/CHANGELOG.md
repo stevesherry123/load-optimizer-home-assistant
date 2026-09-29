@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- Retire the legacy Home Assistant add-on distribution after successful config
+  and learning-database migration into the HACS integration.
+- Remove add-on-store metadata and container packaging while retaining the
+  compatibility engine, migration service, tests, dashboards, and history.
+- Document the integration as the sole supported installation path.
+
 ## 1.1.4
 
 - Parse timezone-aware datetime objects used by Octopus Energy rate attributes inside Home Assistant.

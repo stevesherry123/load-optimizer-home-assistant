@@ -54,8 +54,11 @@ Replace the example object with the full contents of the old add-on database.
     program data and recommendations.
 12. Stop the old add-on.
 13. Disable "Start on boot" for the old add-on.
-14. Keep an add-on backup until the integration has captured at least one new
-    complete cycle.
+14. Reload the integration entry and confirm the learned run and program counts
+    are unchanged, proving the imported database is persisted.
+15. Take a full post-migration Home Assistant backup.
+16. Uninstall the stopped add-on. Keep its add-on-only backup until the
+    integration has captured at least one new complete cycle.
 
 You can then call:
 
@@ -64,7 +67,7 @@ service: load_optimizer.mothball_legacy_addon
 ```
 
 This publishes a reminder sensor and notification confirming the old add-on can
-remain disabled after validation.
+be uninstalled after validation and backup.
 
 ## Notes
 

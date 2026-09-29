@@ -8,7 +8,6 @@ from types import MappingProxyType
 from unittest.mock import patch
 
 from load_optimizer.app.main import (
-    APP_VERSION,
     DISHWASHER_AUTOMATION_PACKAGE_VERSION,
     PUBLISHED_ENTITY_CACHE,
     bootstrap_program_models,
@@ -60,12 +59,27 @@ from load_optimizer.app.main import (
 
 
 class VersionTests(unittest.TestCase):
-    def test_runtime_version_matches_addon_config_version(self):
-        config_path = Path(__file__).resolve().parents[1] / "load_optimizer" / "config.yaml"
-        match = re.search(r'^version:\s*"([^"]+)"', config_path.read_text(), re.MULTILINE)
+    def test_integration_runtime_version_matches_manifest(self):
+        root = Path(__file__).resolve().parents[1]
+        manifest = json.loads(
+            (root / "custom_components/load_optimizer/manifest.json").read_text()
+        )
+        runtime = (root / "custom_components/load_optimizer/legacy/app_runtime.py").read_text()
+        match = re.search(r'^APP_VERSION\s*=\s*"([^"]+)"', runtime, re.MULTILINE)
 
         self.assertIsNotNone(match)
-        self.assertEqual(APP_VERSION, match.group(1))
+        self.assertEqual(manifest["version"], match.group(1))
+
+    def test_legacy_addon_packaging_is_retired(self):
+        root = Path(__file__).resolve().parents[1]
+
+        for path in (
+            root / "repository.yaml",
+            root / "load_optimizer/config.yaml",
+            root / "load_optimizer/Dockerfile",
+            root / "load_optimizer/run.sh",
+        ):
+            self.assertFalse(path.exists(), f"Legacy add-on artifact still present: {path}")
 
     def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
         root = Path(__file__).resolve().parents[1]
