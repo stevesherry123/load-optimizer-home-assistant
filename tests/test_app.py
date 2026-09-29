@@ -131,6 +131,17 @@ class VersionTests(unittest.TestCase):
         self.assertIn("async_remove_config_entry_device", source)
         self.assertIn("include_disabled_entities=True", source)
 
+    def test_orchestration_migration_is_non_destructive(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (
+            root / "custom_components/load_optimizer/orchestration_migration.py"
+        ).read_text()
+        integration = (root / "custom_components/load_optimizer/__init__.py").read_text()
+        self.assertIn('"safe_to_remove_package": False', source)
+        self.assertNotIn("automation.turn_off", source)
+        self.assertNotIn("homeassistant.restart", source)
+        self.assertIn("prepare_orchestration_migration", integration)
+
     def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
         root = Path(__file__).resolve().parents[1]
         package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()

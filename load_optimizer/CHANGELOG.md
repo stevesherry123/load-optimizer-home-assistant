@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0-alpha.1
+
+- Add a non-destructive dishwasher orchestration migration snapshot.
+- Inventory package-owned helpers and automations plus external travel-deadline
+  dependants before native controls take ownership.
+- Publish migration readiness while explicitly preventing premature package
+  removal or automation shutdown.
+
 ## 1.3.0
 
 - Register learned-appliance outputs as native Home Assistant entities while

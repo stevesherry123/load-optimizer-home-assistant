@@ -82,7 +82,10 @@ async def async_setup_entry(
     """Set up Load Optimizer sensors."""
     coordinator: LoadOptimizerCoordinator = hass.data[DOMAIN][entry.entry_id]
     if entry.data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
-        entities = [LoadOptimizerRuntimeSensor(coordinator)]
+        entities = [
+            LoadOptimizerRuntimeSensor(coordinator),
+            LoadOptimizerOrchestrationMigrationSensor(coordinator),
+        ]
         entities.extend(
             LoadOptimizerLegacySensor(coordinator, entity_id)
             for entity_id in sorted(coordinator.data.get("legacy_entities", {}))
@@ -138,6 +141,30 @@ class LoadOptimizerRuntimeSensor(LoadOptimizerEntity, SensorEntity):
             for key, value in self.coordinator.data.items()
             if key not in {"legacy_entities", "legacy_instances"}
         }
+
+
+class LoadOptimizerOrchestrationMigrationSensor(LoadOptimizerEntity, SensorEntity):
+    """Report readiness for retiring the legacy dishwasher package."""
+
+    _attr_icon = "mdi:swap-horizontal-bold"
+
+    def __init__(self, coordinator: LoadOptimizerCoordinator) -> None:
+        super().__init__(
+            coordinator,
+            "orchestration_migration",
+            "Orchestration Migration",
+        )
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get("orchestration_migration", {}).get(
+            "status",
+            "not_prepared",
+        )
+
+    @property
+    def extra_state_attributes(self):
+        return self.coordinator.data.get("orchestration_migration", {})
 
 
 class LoadOptimizerLegacySensor(CoordinatorEntity[LoadOptimizerCoordinator], SensorEntity):

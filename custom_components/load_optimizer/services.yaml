@@ -17,3 +17,7 @@ mothball_legacy_addon:
 recover:
   name: Recover learned-appliance runtime
   description: Reloads learned-appliance Load Optimizer entries without depending on the retired add-on.
+
+prepare_orchestration_migration:
+  name: Prepare orchestration migration
+  description: Capture legacy dishwasher helper and automation state without changing or disabling the live package.

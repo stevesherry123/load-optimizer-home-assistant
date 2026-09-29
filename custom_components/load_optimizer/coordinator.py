@@ -31,6 +31,7 @@ from .const import (
     LOAD_TYPE_LEARNED_APPLIANCE,
 )
 from .legacy_runtime import LegacyRuntime
+from .orchestration_migration import OrchestrationMigration
 from .optimizer.ev_charging import connection_is_available, deadline_from_ready_by, plan_ev_charge, state_float
 from .optimizer.tariffs import tariff_periods_from_entity
 
@@ -55,11 +56,18 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.config_entry = entry
         self.legacy_runtime = LegacyRuntime(hass) if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE else None
+        self.orchestration_migration = (
+            OrchestrationMigration(hass, entry)
+            if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE
+            else None
+        )
 
     async def _async_update_data(self) -> dict[str, Any]:
         data = {**self.config_entry.data, **self.config_entry.options}
         if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
             assert self.legacy_runtime is not None
+            assert self.orchestration_migration is not None
+            await self.orchestration_migration.async_load()
             result = await self.legacy_runtime.async_scan(data)
             return {
                 "mode": LOAD_TYPE_LEARNED_APPLIANCE,
@@ -70,6 +78,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "legacy_instances": result.instances,
                 "last_scan": result.last_scan,
                 "message": result.message,
+                "orchestration_migration": self.orchestration_migration.status,
             }
 
         now = datetime.now(timezone.utc)

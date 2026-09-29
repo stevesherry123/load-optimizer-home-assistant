@@ -18,6 +18,7 @@ LOGGER = logging.getLogger(__name__)
 SERVICE_IMPORT_LEGACY_STATE = "import_legacy_state"
 SERVICE_MOTHBALL_LEGACY_ADDON = "mothball_legacy_addon"
 SERVICE_RECOVER = "recover"
+SERVICE_PREPARE_ORCHESTRATION_MIGRATION = "prepare_orchestration_migration"
 CONF_LEGACY_STATE_JSON = "legacy_state_json"
 
 
@@ -105,6 +106,30 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         for entry in entries:
             hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
 
+    async def async_prepare_orchestration_migration(call) -> None:
+        prepared = 0
+        for coordinator in hass.data.get(DOMAIN, {}).values():
+            migration = getattr(coordinator, "orchestration_migration", None)
+            if migration is None:
+                continue
+            await migration.async_prepare()
+            await coordinator.async_request_refresh()
+            prepared += 1
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "notification_id": "load_optimizer_orchestration_migration",
+                "title": "Load Optimizer orchestration migration prepared",
+                "message": (
+                    f"Captured package state for {prepared} learned-appliance entry. "
+                    "Keep the YAML package installed until the migration sensor says "
+                    "safe_to_remove_package: true."
+                ),
+            },
+            blocking=False,
+        )
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_IMPORT_LEGACY_STATE,
@@ -117,6 +142,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         async_mothball_legacy_addon,
     )
     hass.services.async_register(DOMAIN, SERVICE_RECOVER, async_recover)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_PREPARE_ORCHESTRATION_MIGRATION,
+        async_prepare_orchestration_migration,
+    )
     return True
 
 
