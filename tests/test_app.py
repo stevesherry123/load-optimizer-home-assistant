@@ -51,6 +51,7 @@ from load_optimizer.app.main import (
     schedule_advice,
     blocked_windows_from_entity,
     tariff_entity_diagnostic,
+    tariff_periods_from_entity,
     tariff_state_from_entity,
     update_instance,
     update_program_model,
@@ -875,6 +876,43 @@ class ConfigurationTests(unittest.TestCase):
 
         self.assertEqual(state["attributes"]["rates"][0]["value_inc_vat"], 0.241)
         render_template.assert_not_called()
+
+    @patch("load_optimizer.app.main.render_template")
+    @patch("load_optimizer.app.main.source_state")
+    def test_tariff_state_keeps_direct_tuple_rate_attributes(self, source_state, render_template):
+        source_state.return_value = {
+            "entity_id": "event.rates",
+            "state": "2026-07-06T00:00:00+00:00",
+            "attributes": {"rates": ({"value_inc_vat": 0.241},)},
+        }
+
+        state = tariff_state_from_entity("token", "event.rates")
+
+        self.assertEqual(state["attributes"]["rates"][0]["value_inc_vat"], 0.241)
+        render_template.assert_not_called()
+
+    def test_tariff_periods_accept_tuple_rate_attributes(self):
+        periods = tariff_periods_from_entity(
+            {
+                "entity_id": "event.rates",
+                "state": "2026-07-06T00:00:00+00:00",
+                "attributes": {
+                    "rates": (
+                        {
+                            "start": "2026-07-06T00:00:00+01:00",
+                            "end": "2026-07-06T00:30:00+01:00",
+                            "value_inc_vat": 0.241,
+                        },
+                    )
+                },
+            },
+            reference_utc=datetime(2026, 7, 5, 23, 0, tzinfo=timezone.utc),
+            timezone_name="Europe/London",
+            price_unit="gbp_per_kwh",
+        )
+
+        self.assertEqual(len(periods), 1)
+        self.assertEqual(periods[0]["price_p_per_kwh"], 24.1)
 
     def test_tariff_entity_diagnostic_reports_keys_and_counts(self):
         diagnostic = tariff_entity_diagnostic({

@@ -11,6 +11,7 @@ import textwrap
 import threading
 import time
 import uuid
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -516,12 +517,21 @@ def tariff_state_from_entity(token: str, entity_id: str) -> dict | None:
     if state is None:
         return None
     attributes = state.setdefault("attributes", {})
-    if any(isinstance(attributes.get(key), list) and attributes.get(key) for key in ("rates", "prices", "forecast", "all_rates")):
+    if any(
+        isinstance(attributes.get(key), Sequence)
+        and not isinstance(attributes.get(key), (str, bytes, bytearray))
+        and attributes.get(key)
+        for key in ("rates", "prices", "forecast", "all_rates")
+    ):
         return state
     for attribute in ("rates", "prices", "forecast", "all_rates"):
         template = "{{ state_attr('" + entity_id.replace("'", "\\'") + "', '" + attribute + "') | to_json }}"
         value = render_template(token, template)
-        if isinstance(value, list) and value:
+        if (
+            isinstance(value, Sequence)
+            and not isinstance(value, (str, bytes, bytearray))
+            and value
+        ):
             attributes[attribute] = value
             attributes["tariff_rates_source"] = f"template_state_attr:{attribute}"
             break

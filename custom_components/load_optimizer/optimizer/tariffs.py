@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -123,7 +124,7 @@ def _cooldown_until_utc(model: dict, policy: dict) -> datetime | None:
     return last_seen + timedelta(hours=hours)
 
 
-def parse_structured_rates(rates: list[dict], *, price_unit: str) -> list[dict]:
+def parse_structured_rates(rates: Sequence[dict], *, price_unit: str) -> list[dict]:
     """Normalize common structured Home Assistant rate attributes."""
     periods = []
     for rate in rates:
@@ -144,14 +145,22 @@ def parse_structured_rates(rates: list[dict], *, price_unit: str) -> list[dict]:
     return periods
 
 
+def _rate_sequence(value: object) -> list[dict] | None:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        rates = [item for item in value if isinstance(item, dict)]
+        if rates:
+            return rates
+    return None
+
+
 def _find_structured_rates(value: object, *, depth: int = 0) -> list[dict] | None:
-    """Find rate lists on direct attributes or nested Home Assistant event payloads."""
+    """Find rate sequences on direct attributes or nested Home Assistant event payloads."""
     if depth > 4:
         return None
     if isinstance(value, dict):
         for key in STRUCTURED_RATE_KEYS:
-            rates = value.get(key)
-            if isinstance(rates, list) and rates:
+            rates = _rate_sequence(value.get(key))
+            if rates:
                 return rates
         for nested_value in value.values():
             rates = _find_structured_rates(nested_value, depth=depth + 1)

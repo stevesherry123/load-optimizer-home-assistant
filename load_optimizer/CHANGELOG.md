@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.2
+
+- Fix tariff parsing when Home Assistant exposes Octopus structured rate
+  attributes as tuple-like sequences inside the in-process state machine.
+- Keep the HACS compatibility runtime aligned with Octopus event entities whose
+  `rates` attribute is readable through REST but not a literal Python list
+  inside Home Assistant.
+
 ## 1.1.1
 
 - Fix HACS integration migration setup when a full add-on options block, or an
