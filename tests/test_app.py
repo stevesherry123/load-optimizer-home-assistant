@@ -128,6 +128,17 @@ class VersionTests(unittest.TestCase):
         source = (root / "custom_components/load_optimizer/sensor.py").read_text()
         self.assertIn("if candidate_instance_id in legacy_instances", source)
 
+    def test_child_devices_use_registered_hub_device_id(self):
+        root = Path(__file__).resolve().parents[1]
+        sensor = (root / "custom_components/load_optimizer/sensor.py").read_text()
+        orchestration = (
+            root / "custom_components/load_optimizer/orchestration_entity.py"
+        ).read_text()
+
+        for source in (sensor, orchestration):
+            self.assertIn('"via_device_id": hub.id', source)
+            self.assertNotIn("via_device=(DOMAIN", source)
+
     def test_only_empty_integration_devices_can_be_removed(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "custom_components/load_optimizer/__init__.py").read_text()

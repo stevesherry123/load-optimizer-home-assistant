@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -37,10 +38,13 @@ class OrchestrationEntity(CoordinatorEntity[LoadOptimizerCoordinator]):
     @property
     def device_info(self) -> DeviceInfo:
         entry = self.coordinator.config_entry
+        hub = dr.async_get(self.coordinator.hass).async_get_device(
+            identifiers={(DOMAIN, entry.entry_id)},
+        )
         return DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_instance_1")},
             manufacturer=MANUFACTURER,
             name="Dishwasher 1",
             model="Learned appliance optimizer",
-            via_device=(DOMAIN, entry.entry_id),
+            **({"via_device_id": hub.id} if hub else {}),
         )

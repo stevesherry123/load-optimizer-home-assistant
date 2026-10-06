@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0-beta.5
+
+- Replace the deprecated identifier-based `via_device` relationship with the
+  registered hub device ID used by Home Assistant 2026.10 and later.
+
 ## 1.4.0-beta.4
 
 - Permit the established 20% model-confidence floor only when cooldown rotation

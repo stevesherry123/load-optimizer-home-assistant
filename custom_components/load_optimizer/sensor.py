@@ -15,6 +15,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -331,10 +332,13 @@ class LoadOptimizerLegacySensor(CoordinatorEntity[LoadOptimizerCoordinator], Sen
                 model="Learned appliance optimizer",
             )
         metadata = self.coordinator.data.get("legacy_instances", {}).get(self._instance_id, {})
+        hub = dr.async_get(self.coordinator.hass).async_get_device(
+            identifiers={(DOMAIN, entry.entry_id)},
+        )
         return DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_instance_{self._instance_id}")},
             manufacturer=MANUFACTURER,
             name=metadata.get("name") or f"Load Optimizer {self._instance_id}",
             model="Learned appliance optimizer",
-            via_device=(DOMAIN, entry.entry_id),
+            **({"via_device_id": hub.id} if hub else {}),
         )
