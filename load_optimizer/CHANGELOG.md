@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0-beta.9
+
+- remove the dormant template state alongside its entity-registry entry so the
+  native sensor can claim the original entity ID during the same startup
+
 ## 1.4.0-beta.8
 
 - treat Home Assistant-restored unavailable template entities as dormant during

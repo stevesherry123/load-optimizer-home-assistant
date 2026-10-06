@@ -63,6 +63,7 @@ def _async_migrate_native_status_entities(
             and (current_state is None or current_state.state == "unavailable")
         ):
             entity_registry.async_remove(entity_id)
+            hass.states.async_remove(entity_id)
             existing = None
         if (
             existing is not None
