@@ -48,6 +48,7 @@ def _async_migrate_native_status_entities(
     for key, object_id in NATIVE_STATUS_OBJECT_IDS.items():
         entity_id = f"sensor.{object_id}"
         unique_id = f"{entry.entry_id}_orchestration_{key}"
+        current_state = hass.states.get(entity_id)
         native_entry = next(
             (candidate for candidate in entries if candidate.unique_id == unique_id),
             None,
@@ -59,7 +60,7 @@ def _async_migrate_native_status_entities(
             existing is not None
             and existing.platform == "template"
             and existing.config_entry_id is None
-            and hass.states.get(entity_id) is None
+            and (current_state is None or current_state.state == "unavailable")
         ):
             entity_registry.async_remove(entity_id)
             existing = None

@@ -213,7 +213,7 @@ class VersionTests(unittest.TestCase):
         self.assertIn("_async_migrate_native_status_entities", integration)
         self.assertIn("new_unique_id=unique_id", integration)
         self.assertIn('existing.platform == "template"', integration)
-        self.assertIn("hass.states.get(entity_id) is None", integration)
+        self.assertIn('current_state.state == "unavailable"', integration)
         self.assertIn("entity_id not in NATIVE_STATUS_ENTITY_IDS", sensors)
 
     def test_native_orchestration_confirms_cycle_end_and_relaxes_only_for_cooldown(

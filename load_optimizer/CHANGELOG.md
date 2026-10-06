@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0-beta.8
+
+- treat Home Assistant-restored unavailable template entities as dormant during
+  the post-retirement native entity ID handover
+
 ## 1.4.0-beta.7
 
 - reclaim dormant package template entity IDs after the YAML package is retired
