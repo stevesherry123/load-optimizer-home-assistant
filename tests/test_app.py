@@ -137,6 +137,7 @@ class VersionTests(unittest.TestCase):
 
         for source in (sensor, orchestration):
             self.assertIn('"via_device_id": hub.id', source)
+            self.assertIn("async_get_device_by_identifier", source)
             self.assertNotIn("via_device=(DOMAIN", source)
 
     def test_only_empty_integration_devices_can_be_removed(self):
