@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0
+
+- Promote the validated native orchestration, entity handover, dashboard,
+  cooldown-confidence, cycle-completion, and Octopus calendar migration.
+
 ## 1.4.0-beta.10
 
 - rename the registered native status sensors to the freed package-era entity
