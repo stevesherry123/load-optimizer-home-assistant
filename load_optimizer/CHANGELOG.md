@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0-beta.10
+
+- rename the registered native status sensors to the freed package-era entity
+  IDs after platform setup, completing dashboard and automation continuity
+
 ## 1.4.0-beta.9
 
 - remove the dormant template state alongside its entity-registry entry so the

@@ -215,6 +215,8 @@ class VersionTests(unittest.TestCase):
         self.assertIn('existing.platform == "template"', integration)
         self.assertIn('current_state.state == "unavailable"', integration)
         self.assertIn("hass.states.async_remove(entity_id)", integration)
+        self.assertIn("_async_claim_native_status_entity_ids", integration)
+        self.assertIn("new_entity_id=target_entity_id", integration)
         self.assertIn("entity_id not in NATIVE_STATUS_ENTITY_IDS", sensors)
 
     def test_native_orchestration_confirms_cycle_end_and_relaxes_only_for_cooldown(

@@ -73,6 +73,32 @@ def _async_migrate_native_status_entities(
             entity_registry.async_update_entity(entity_id, new_unique_id=unique_id)
 
 
+def _async_claim_native_status_entity_ids(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
+    """Rename native status entities to package-era IDs once those IDs are free."""
+    entity_registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    for key, object_id in NATIVE_STATUS_OBJECT_IDS.items():
+        target_entity_id = f"sensor.{object_id}"
+        unique_id = f"{entry.entry_id}_orchestration_{key}"
+        native_entry = next(
+            (candidate for candidate in entries if candidate.unique_id == unique_id),
+            None,
+        )
+        if (
+            native_entry is not None
+            and native_entry.entity_id != target_entity_id
+            and entity_registry.async_get(target_entity_id) is None
+            and hass.states.get(target_entity_id) is None
+        ):
+            entity_registry.async_update_entity(
+                native_entry.entity_id,
+                new_entity_id=target_entity_id,
+            )
+
+
 def _async_remove_obsolete_control_entities(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -255,6 +281,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             coordinator.async_update_orchestration_data
         )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _async_claim_native_status_entity_ids(hass, entry)
     if coordinator.orchestrator:
         await coordinator.orchestrator.async_start()
     return True
