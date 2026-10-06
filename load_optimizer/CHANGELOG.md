@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0-beta.7
+
+- reclaim dormant package template entity IDs after the YAML package is retired
+  while preserving safe package and integration coexistence before retirement
+
 ## 1.4.0-beta.6
 
 - transfer package-era readiness entity IDs to their native registered entities

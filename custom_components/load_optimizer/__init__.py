@@ -57,6 +57,14 @@ def _async_migrate_native_status_entities(
         existing = entity_registry.async_get(entity_id)
         if (
             existing is not None
+            and existing.platform == "template"
+            and existing.config_entry_id is None
+            and hass.states.get(entity_id) is None
+        ):
+            entity_registry.async_remove(entity_id)
+            existing = None
+        if (
+            existing is not None
             and existing.config_entry_id == entry.entry_id
             and existing.unique_id != unique_id
         ):
