@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0-beta.6
+
+- transfer package-era readiness entity IDs to their native registered entities
+- normalize retired Octopus calendar entities inside per-appliance YAML as well as global options
+
 ## 1.4.0-beta.5
 
 - Replace the deprecated identifier-based `via_device` relationship with the

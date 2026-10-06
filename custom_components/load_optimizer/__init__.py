@@ -29,6 +29,38 @@ OBSOLETE_CONTROL_ENTITY = re.compile(
     r"last_start_reason_code|last_start_reason_detail|last_start_decision_snapshot|"
     r"remote_start_blocked_programs)$"
 )
+NATIVE_STATUS_OBJECT_IDS = {
+    "overnight_readiness": "load_optimizer_1_overnight_readiness",
+    "remote_activation": "load_optimizer_1_remote_activation_check",
+    "data_freshness": "load_optimizer_1_data_freshness",
+    "automatic_plan_resilience": "load_optimizer_1_automatic_plan_resilience",
+    "negative_price_readiness": "load_optimizer_1_negative_price_readiness",
+}
+
+
+def _async_migrate_native_status_entities(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
+    """Transfer stable package-era entity IDs to native status sensors."""
+    entity_registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    for key, object_id in NATIVE_STATUS_OBJECT_IDS.items():
+        entity_id = f"sensor.{object_id}"
+        unique_id = f"{entry.entry_id}_orchestration_{key}"
+        native_entry = next(
+            (candidate for candidate in entries if candidate.unique_id == unique_id),
+            None,
+        )
+        if native_entry is not None and native_entry.entity_id != entity_id:
+            entity_registry.async_remove(native_entry.entity_id)
+        existing = entity_registry.async_get(entity_id)
+        if (
+            existing is not None
+            and existing.config_entry_id == entry.entry_id
+            and existing.unique_id != unique_id
+        ):
+            entity_registry.async_update_entity(entity_id, new_unique_id=unique_id)
 
 
 def _async_remove_obsolete_control_entities(
@@ -202,6 +234,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Load Optimizer from a config entry."""
+    _async_migrate_native_status_entities(hass, entry)
     _async_remove_obsolete_control_entities(hass, entry)
     coordinator = LoadOptimizerCoordinator(hass, entry)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))

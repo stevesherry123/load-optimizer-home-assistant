@@ -132,6 +132,8 @@ class LegacyRuntime:
             app_runtime.LAST_FULL_REPUBLISH_AT = None
         app_runtime.refresh_publish_cache()
         configs = app_runtime.instance_configs(options)
+        for config in configs:
+            self._normalise_calendar_entities(config)
         await self._async_prefetch_calendar_events(configs, now)
         if not self.started:
             app_runtime.RUNTIME_STARTED_AT = now
@@ -195,17 +197,21 @@ class LegacyRuntime:
         normalised[CONF_INSTANCES_YAML] = app_runtime.normalise_instances_yaml(
             normalised.get(CONF_INSTANCES_YAML, "")
         )
-        green_window = str(normalised.get(CONF_GREEN_WINDOW_ENTITY, "") or "").strip()
+        self._normalise_calendar_entities(normalised)
+        return normalised
+
+    def _normalise_calendar_entities(self, config: dict[str, Any]) -> None:
+        """Remove retired calendars and prefer the current Octoplus entity."""
+        green_window = str(config.get(CONF_GREEN_WINDOW_ENTITY, "") or "").strip()
         if green_window.endswith(RETIRED_GREEN_WINDOW_SUFFIX):
-            normalised[CONF_GREEN_WINDOW_ENTITY] = ""
-        blocked_window = str(normalised.get(CONF_BLOCKED_WINDOW_ENTITY, "") or "").strip()
+            config[CONF_GREEN_WINDOW_ENTITY] = ""
+        blocked_window = str(config.get(CONF_BLOCKED_WINDOW_ENTITY, "") or "").strip()
         if blocked_window.endswith(LEGACY_SAVING_SESSIONS_SUFFIX):
             power_down = blocked_window.removesuffix(
                 LEGACY_SAVING_SESSIONS_SUFFIX
             ) + POWER_DOWN_SUFFIX
             if self.hass.states.get(power_down) is not None:
-                normalised[CONF_BLOCKED_WINDOW_ENTITY] = power_down
-        return normalised
+                config[CONF_BLOCKED_WINDOW_ENTITY] = power_down
 
     def _parse_wrapped_options(self, raw: object) -> dict[str, Any]:
         text = str(raw or "")

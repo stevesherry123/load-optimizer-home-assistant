@@ -209,6 +209,11 @@ class VersionTests(unittest.TestCase):
         ):
             self.assertIn(status, sensors)
 
+        integration = (root / "custom_components/load_optimizer/__init__.py").read_text()
+        self.assertIn("_async_migrate_native_status_entities", integration)
+        self.assertIn("new_unique_id=unique_id", integration)
+        self.assertIn("entity_id not in NATIVE_STATUS_ENTITY_IDS", sensors)
+
     def test_native_orchestration_confirms_cycle_end_and_relaxes_only_for_cooldown(
         self,
     ):
@@ -242,9 +247,11 @@ class VersionTests(unittest.TestCase):
         ).read_text()
 
         self.assertIn('RETIRED_GREEN_WINDOW_SUFFIX = "_greener_nights"', source)
-        self.assertIn('normalised[CONF_GREEN_WINDOW_ENTITY] = ""', source)
+        self.assertIn('config[CONF_GREEN_WINDOW_ENTITY] = ""', source)
         self.assertIn('POWER_DOWN_SUFFIX = "_octoplus_power_down"', source)
         self.assertIn("self.hass.states.get(power_down)", source)
+        self.assertIn("for config in configs:", source)
+        self.assertIn("self._normalise_calendar_entities(config)", source)
 
     def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
         root = Path(__file__).resolve().parents[1]

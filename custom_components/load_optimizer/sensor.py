@@ -75,6 +75,42 @@ SENSOR_DESCRIPTIONS = (
     ),
 )
 
+NATIVE_STATUS_SENSORS = (
+    (
+        "overnight_readiness",
+        "load_optimizer_1_overnight_readiness",
+        "Overnight Readiness",
+        "mdi:traffic-light",
+    ),
+    (
+        "remote_activation",
+        "load_optimizer_1_remote_activation_check",
+        "Remote Activation Check",
+        "mdi:remote",
+    ),
+    (
+        "data_freshness",
+        "load_optimizer_1_data_freshness",
+        "Data Freshness",
+        "mdi:database-clock",
+    ),
+    (
+        "automatic_plan_resilience",
+        "load_optimizer_1_automatic_plan_resilience",
+        "Automatic Plan Resilience",
+        "mdi:shield-sync-outline",
+    ),
+    (
+        "negative_price_readiness",
+        "load_optimizer_1_negative_price_readiness",
+        "Free or Negative Price Readiness",
+        "mdi:traffic-light",
+    ),
+)
+NATIVE_STATUS_ENTITY_IDS = {
+    f"sensor.{object_id}" for _, object_id, _, _ in NATIVE_STATUS_SENSORS
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -90,27 +126,14 @@ async def async_setup_entry(
             LoadOptimizerOrchestrationStatusSensor(coordinator),
         ]
         entities.extend(
-            LoadOptimizerNativeStatusSensor(coordinator, key, name, icon)
-            for key, name, icon in (
-                ("overnight_readiness", "Overnight Readiness", "mdi:traffic-light"),
-                ("remote_activation", "Remote Activation Check", "mdi:remote"),
-                ("data_freshness", "Data Freshness", "mdi:database-clock"),
-                (
-                    "automatic_plan_resilience",
-                    "Automatic Plan Resilience",
-                    "mdi:shield-sync-outline",
-                ),
-                (
-                    "negative_price_readiness",
-                    "Free or Negative Price Readiness",
-                    "mdi:traffic-light",
-                ),
-            )
+            LoadOptimizerNativeStatusSensor(coordinator, key, object_id, name, icon)
+            for key, object_id, name, icon in NATIVE_STATUS_SENSORS
         )
         entities.extend(
             LoadOptimizerLegacySensor(coordinator, entity_id)
             for entity_id in sorted(coordinator.data.get("legacy_entities", {}))
             if entity_id.startswith("sensor.")
+            and entity_id not in NATIVE_STATUS_ENTITY_IDS
         )
         async_add_entities(entities)
         return
@@ -225,8 +248,15 @@ class LoadOptimizerOrchestrationStatusSensor(OrchestrationEntity, SensorEntity):
 class LoadOptimizerNativeStatusSensor(OrchestrationEntity, SensorEntity):
     """Native replacement for a package template sensor."""
 
-    def __init__(self, coordinator, key: str, name: str, icon: str) -> None:
-        OrchestrationEntity.__init__(self, coordinator, "sensor", key, name)
+    def __init__(self, coordinator, key: str, object_id: str, name: str, icon: str) -> None:
+        OrchestrationEntity.__init__(
+            self,
+            coordinator,
+            "sensor",
+            key,
+            name,
+            object_id=object_id,
+        )
         self._key = key
         self._attr_icon = icon
 
