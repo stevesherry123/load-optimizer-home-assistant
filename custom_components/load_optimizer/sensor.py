@@ -362,8 +362,8 @@ class LoadOptimizerLegacySensor(CoordinatorEntity[LoadOptimizerCoordinator], Sen
                 model="Learned appliance optimizer",
             )
         metadata = self.coordinator.data.get("legacy_instances", {}).get(self._instance_id, {})
-        hub = dr.async_get(self.coordinator.hass).async_get_device(
-            identifiers={(DOMAIN, entry.entry_id)},
+        hub = dr.async_get(self.coordinator.hass).async_get_device_by_identifier(
+            (DOMAIN, entry.entry_id)
         )
         return DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_instance_{self._instance_id}")},
