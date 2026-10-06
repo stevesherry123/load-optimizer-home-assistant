@@ -60,6 +60,9 @@ WRAPPED_OPTION_KEYS = {
     "log_level",
     "reset_instance_ids",
 }
+RETIRED_GREEN_WINDOW_SUFFIX = "_greener_nights"
+LEGACY_SAVING_SESSIONS_SUFFIX = "_octoplus_saving_sessions"
+POWER_DOWN_SUFFIX = "_octoplus_power_down"
 
 
 @dataclass
@@ -192,6 +195,16 @@ class LegacyRuntime:
         normalised[CONF_INSTANCES_YAML] = app_runtime.normalise_instances_yaml(
             normalised.get(CONF_INSTANCES_YAML, "")
         )
+        green_window = str(normalised.get(CONF_GREEN_WINDOW_ENTITY, "") or "").strip()
+        if green_window.endswith(RETIRED_GREEN_WINDOW_SUFFIX):
+            normalised[CONF_GREEN_WINDOW_ENTITY] = ""
+        blocked_window = str(normalised.get(CONF_BLOCKED_WINDOW_ENTITY, "") or "").strip()
+        if blocked_window.endswith(LEGACY_SAVING_SESSIONS_SUFFIX):
+            power_down = blocked_window.removesuffix(
+                LEGACY_SAVING_SESSIONS_SUFFIX
+            ) + POWER_DOWN_SUFFIX
+            if self.hass.states.get(power_down) is not None:
+                normalised[CONF_BLOCKED_WINDOW_ENTITY] = power_down
         return normalised
 
     def _parse_wrapped_options(self, raw: object) -> dict[str, Any]:

@@ -12,6 +12,10 @@ views:
           - sensor.load_optimizer_status
           - sensor.load_optimizer_restart_safety
           - sensor.load_optimizer_diagnostics
+      - type: tile
+        entity: sensor.load_optimizer_1_current_energy_price
+        name: Current import price
+        icon: mdi:cash-clock
       - type: glance
         title: Appliance plans
         columns: 3

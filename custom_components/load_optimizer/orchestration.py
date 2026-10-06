@@ -26,6 +26,7 @@ STORE_VERSION = 1
 PROGRAM_PREFIX = "Dishcare.Dishwasher.Program."
 RUNNING_OPERATION = "BSH.Common.EnumType.OperationState.Run"
 UNKNOWN_STATES = {"", "none", "unknown", "unavailable"}
+COOLDOWN_CONFIDENCE_FLOOR = 20
 
 CONTROL_DEFAULTS: dict[str, Any] = {
     "active": False,
@@ -608,8 +609,21 @@ class NativeOrchestrator:
 
     async def _async_record_cycle_end(self) -> None:
         operation = self._state(self.config.get("bosch_operation_state_sensor"))
-        outcome = "completed" if operation.endswith(".Finished") else "ended_unconfirmed"
-        self.state["last_message"] = f"Cycle {outcome}; operation={operation}."
+        now = datetime.now(timezone.utc)
+        self.state.update(
+            {
+                "request": None,
+                "execution_status": "idle",
+                "last_result": "completed",
+                "last_reason": "cycle_state_returned_to_idle",
+                "last_message": (
+                    "Cycle completion confirmed by the running-to-idle transition; "
+                    f"operation={operation}."
+                ),
+                "last_cycle_completed_at": now.isoformat(),
+                "last_cycle_operation_state": operation,
+            }
+        )
         await self._async_save()
         self._publish()
 
@@ -689,14 +703,23 @@ class NativeOrchestrator:
         return self.hass.states.get(f"sensor.load_optimizer_1_{mode}_recommendation")
 
     def _recommendation_confident(self, recommendation) -> bool:
+        threshold = self._confidence_threshold()
+        confidence = float(recommendation.attributes.get("confidence", 0) or 0)
+        if confidence >= float(threshold):
+            return True
+        decision_policy = recommendation.attributes.get("decision_policy") or {}
+        selection_factors = decision_policy.get("selection_factors") or []
+        return (
+            "cooldown_rotation_active" in selection_factors
+            and confidence >= min(float(threshold), COOLDOWN_CONFIDENCE_FLOOR)
+        )
+
+    def _confidence_threshold(self) -> float:
         threshold_state = self.hass.states.get("sensor.load_optimizer_1_schedule_status")
-        threshold = (
+        return float(
             threshold_state.attributes.get("confidence_threshold", 20)
             if threshold_state
             else 20
-        )
-        return float(recommendation.attributes.get("confidence", 0) or 0) >= float(
-            threshold
         )
 
     def _cooldown_elapsed(self, key: str, minutes: int, now: datetime) -> bool:
@@ -794,6 +817,11 @@ class NativeOrchestrator:
             blockers.append("recommendation_not_ready")
         elif not self._recommendation_confident(recommendation):
             blockers.append("confidence_below_threshold")
+        elif (
+            float(recommendation.attributes.get("confidence", 0) or 0)
+            < self._confidence_threshold()
+        ):
+            warnings.append("confidence_relaxed_for_cooldown_rotation")
         blockers.extend(self.remote_activation_status["blockers"])
         if mode == "overnight" and not self.state.get("door_opened_since_last_cycle"):
             blockers.append("door_not_opened_since_last_cycle")

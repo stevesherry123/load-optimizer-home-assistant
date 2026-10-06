@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.0-beta.4
+
+- Permit the established 20% model-confidence floor only when cooldown rotation
+  leaves the selected automatic recommendation below the normal threshold.
+- Confirm cycle completion from the reliable `running` to `idle` transition and
+  return native execution state to idle even when Home Connect already reports
+  `Ready` instead of retaining `Finished`.
+- Retire execution-only entities from passive appliance devices and remove their
+  stale entity-registry entries on upgrade.
+- Ignore the discontinued BottlecapDave Greener Nights calendar reference while
+  continuing to derive free and negative-price runs directly from tariff data.
+- Prefer BottlecapDave's replacement Power Down calendar when a configured
+  legacy Saving Sessions calendar has a corresponding replacement entity.
+- Display the current import price with a standard Home Assistant tile instead
+  of an ApexCharts hidden-series header that could show `N/A`.
+
 ## 1.4.0-beta.3
 
 - Allow fresh installations with complete Bosch options to activate native

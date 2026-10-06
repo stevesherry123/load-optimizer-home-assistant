@@ -27,7 +27,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.4.0-beta.3"
+APP_VERSION = "1.4.0-beta.4"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -2088,7 +2088,7 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
             "blocked" if status == "blocked" or result == "blocked" else
             "expired" if status == "expired" or result == "expired" else
             "failed" if status == "failed" or result == "failed" else
-            "completed" if result == "confirmed" and cycle_state != "running" else
+            "completed" if result in {"confirmed", "completed"} and cycle_state != "running" else
             "ready"
         ),
     }
@@ -2601,7 +2601,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
             active_cycle_start=instance.get("cycle_start"),
         ),
     )
-    publish_execution_entities(token, prefix, name, instance_id)
+    if instance_id == "1":
+        publish_execution_entities(token, prefix, name, instance_id)
     publish_program_capabilities(token, prefix, name, summaries, policies, blocked_remote_start_programs)
     if instance_id == "1":
         publish_automation_package_status(token, prefix, name, instance_id)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import voluptuous as vol
 
@@ -22,6 +23,26 @@ SERVICE_PREPARE_ORCHESTRATION_MIGRATION = "prepare_orchestration_migration"
 SERVICE_ACTIVATE_NATIVE_ORCHESTRATION = "activate_native_orchestration"
 SERVICE_DEACTIVATE_NATIVE_ORCHESTRATION = "deactivate_native_orchestration"
 CONF_LEGACY_STATE_JSON = "legacy_state_json"
+OBSOLETE_CONTROL_ENTITY = re.compile(
+    r"^sensor\.load_optimizer_(?!1_)[^_]+_(?:execution_status|execution_lifecycle|"
+    r"last_start_attempt|last_start_program|last_start_result|last_start_failure_reason|"
+    r"last_start_reason_code|last_start_reason_detail|last_start_decision_snapshot|"
+    r"remote_start_blocked_programs)$"
+)
+
+
+def _async_remove_obsolete_control_entities(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
+    """Remove control-only entities that were previously created for passive loads."""
+    entity_registry = er.async_get(hass)
+    for registry_entry in er.async_entries_for_config_entry(
+        entity_registry,
+        entry.entry_id,
+    ):
+        if OBSOLETE_CONTROL_ENTITY.match(registry_entry.entity_id):
+            entity_registry.async_remove(registry_entry.entity_id)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -181,6 +202,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Load Optimizer from a config entry."""
+    _async_remove_obsolete_control_entities(hass, entry)
     coordinator = LoadOptimizerCoordinator(hass, entry)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     await coordinator.async_config_entry_first_refresh()

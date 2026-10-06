@@ -20,6 +20,10 @@ to act on Load Optimizer recommendations.
   end, price (normally `0 p/kWh`) and optional label, then enable the window.
   The existing opt-in `Auto Free / Negative Price` switch controls whether a
   qualifying recommendation may create an unattended dishwasher request.
+  This is now a migration and rollback asset for installations created before
+  native orchestration. Fresh integration installations do not need it, and a
+  migrated installation can retire it when the orchestration migration sensor
+  reports `safe_to_remove_package: true`.
 - `packages/load_optimizer_travel_deadline_example.yaml` adds an editable
   Dishwasher 1 must-finish-by helper and a TripIt-style calendar automation
   example that seeds the helper to 90 minutes before travel.

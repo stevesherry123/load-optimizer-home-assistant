@@ -9,6 +9,10 @@ views:
       - type: grid
         column_span: 3
         cards:
+          - type: tile
+            entity: sensor.load_optimizer_1_current_energy_price
+            name: Current import price
+            icon: mdi:cash-clock
           - type: custom:apexcharts-card
             grid_options:
               columns: full
@@ -80,17 +84,6 @@ views:
               unit: p/kWh
               float_precision: 2
             series:
-              - entity: sensor.load_optimizer_1_current_energy_price
-                name: Current
-                type: line
-                unit: p/kWh
-                float_precision: 2
-                show:
-                  in_chart: false
-                  in_header: true
-                  legend_value: false
-                transform: |
-                  return Number(x);
               - entity: sensor.load_optimizer_status
                 name: Import price
                 show:
@@ -229,17 +222,6 @@ views:
               unit: p/kWh
               float_precision: 2
             series:
-              - entity: sensor.load_optimizer_1_current_energy_price
-                name: Current
-                type: line
-                unit: p/kWh
-                float_precision: 2
-                show:
-                  in_chart: false
-                  in_header: true
-                  legend_value: false
-                transform: |
-                  return Number(x);
               - entity: sensor.load_optimizer_status
                 name: Import price
                 show:

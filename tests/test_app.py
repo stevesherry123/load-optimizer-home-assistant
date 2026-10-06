@@ -198,6 +198,43 @@ class VersionTests(unittest.TestCase):
         ):
             self.assertIn(status, sensors)
 
+    def test_native_orchestration_confirms_cycle_end_and_relaxes_only_for_cooldown(
+        self,
+    ):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "custom_components/load_optimizer/orchestration.py").read_text()
+
+        self.assertIn('"last_result": "completed"', source)
+        self.assertIn('"last_reason": "cycle_state_returned_to_idle"', source)
+        self.assertNotIn("ended_unconfirmed", source)
+        self.assertIn('"cooldown_rotation_active" in selection_factors', source)
+        self.assertIn("COOLDOWN_CONFIDENCE_FLOOR = 20", source)
+        self.assertIn("confidence_relaxed_for_cooldown_rotation", source)
+
+    def test_passive_appliances_do_not_publish_execution_controls(self):
+        root = Path(__file__).resolve().parents[1]
+        runtime = (
+            root / "custom_components/load_optimizer/legacy/app_runtime.py"
+        ).read_text()
+        integration = (
+            root / "custom_components/load_optimizer/__init__.py"
+        ).read_text()
+
+        self.assertIn('if instance_id == "1":\n        publish_execution_entities', runtime)
+        self.assertIn("OBSOLETE_CONTROL_ENTITY", integration)
+        self.assertIn("entity_registry.async_remove", integration)
+
+    def test_retired_greener_nights_calendar_is_ignored(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (
+            root / "custom_components/load_optimizer/legacy_runtime.py"
+        ).read_text()
+
+        self.assertIn('RETIRED_GREEN_WINDOW_SUFFIX = "_greener_nights"', source)
+        self.assertIn('normalised[CONF_GREEN_WINDOW_ENTITY] = ""', source)
+        self.assertIn('POWER_DOWN_SUFFIX = "_octoplus_power_down"', source)
+        self.assertIn("self.hass.states.get(power_down)", source)
+
     def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
         root = Path(__file__).resolve().parents[1]
         package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
