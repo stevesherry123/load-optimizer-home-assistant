@@ -17,7 +17,7 @@ concurrency:
 jobs:
   tests:
     name: Python tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -28,7 +28,7 @@ jobs:
 
   hacs:
     name: HACS validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - name: Validate HACS repository
@@ -38,7 +38,7 @@ jobs:
 
   hassfest:
     name: Home Assistant hassfest
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - name: Run hassfest

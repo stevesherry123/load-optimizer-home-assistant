@@ -21,8 +21,10 @@ The integration supports two setup paths:
   entity, target percentage, charger power, and future tariff entity, then
   publishes the cheapest charging windows required to reach the target.
 
-The integration is advisory in v1.0. It publishes sensors and binary sensors
-for automations, but it does not directly switch a charger on or off.
+EV charging remains advisory: the integration publishes a charging plan for a
+household-owned automation or charger integration to follow. Learned appliances
+can optionally use Load Optimizer's native orchestration controls after their
+start service and safety checks are configured.
 
 ### HACS Installation
 
@@ -136,18 +138,19 @@ device model, such as:
 
 ## Current Scope
 
-The integration v1.0 scope is:
+The current integration scope is:
 
 - HACS-compatible custom integration structure.
 - UI configuration flow.
 - EV charging slot planning from existing Home Assistant entities.
 - Tariff parsing inherited from the original add-on core.
 - Cost and profit estimates for selected charging windows.
-- Binary advisory state for "charge now".
+- Binary advisory state for EV "charge now".
+- Opt-in native learned-appliance scheduling, safety checks, and start controls.
 
-The learned-appliance compatibility runtime is now the preferred path for
-migrating existing add-on installations. Keep the add-on stopped once the
-integration is publishing the expected entities.
+The learned-appliance runtime is the supported path for migrated add-on
+installations. Uninstall the stopped add-on after validating the imported
+learning counts and taking a backup.
 
 ## Roadmap
 

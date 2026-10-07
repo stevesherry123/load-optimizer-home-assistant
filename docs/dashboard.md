@@ -1,12 +1,15 @@
 # Optional dashboard
 
-The integration ships a standard Lovelace YAML dashboard at:
+The HACS package includes a standard Lovelace YAML dashboard at:
 
 ```text
 /config/custom_components/load_optimizer/dashboard.yaml
 ```
 
-Add it to the `lovelace` section of `configuration.yaml`:
+Home Assistant does not let a custom integration register a user dashboard
+without changing the user's Lovelace configuration. The integration therefore
+ships and updates the dashboard file, while the user opts in by adding it to the
+`lovelace` section of `configuration.yaml`:
 
 ```yaml
 lovelace:
