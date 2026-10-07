@@ -122,6 +122,7 @@ async def async_setup_entry(
     if entry.data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
         entities = [
             LoadOptimizerRuntimeSensor(coordinator),
+            LoadOptimizerPriceCapSensor(coordinator),
             LoadOptimizerOrchestrationMigrationSensor(coordinator),
             LoadOptimizerOrchestrationStatusSensor(coordinator),
         ]
@@ -137,7 +138,10 @@ async def async_setup_entry(
         )
         async_add_entities(entities)
         return
-    async_add_entities([LoadOptimizerSensor(coordinator, description) for description in SENSOR_DESCRIPTIONS])
+    async_add_entities(
+        [LoadOptimizerSensor(coordinator, description) for description in SENSOR_DESCRIPTIONS]
+        + [LoadOptimizerPriceCapSensor(coordinator)]
+    )
 
 
 class LoadOptimizerSensor(LoadOptimizerEntity, SensorEntity):
@@ -184,6 +188,35 @@ class LoadOptimizerRuntimeSensor(LoadOptimizerEntity, SensorEntity):
             key: value
             for key, value in self.coordinator.data.items()
             if key not in {"legacy_entities", "legacy_instances"}
+        }
+
+
+class LoadOptimizerPriceCapSensor(LoadOptimizerEntity, SensorEntity):
+    """Expose the effective Ofgem default-tariff electricity benchmark."""
+
+    _attr_icon = "mdi:chart-line-variant"
+    _attr_native_unit_of_measurement = "p/kWh"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: LoadOptimizerCoordinator) -> None:
+        super().__init__(coordinator, "ofgem_price_cap", "Ofgem Price Cap Benchmark")
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.data.get("price_cap", {}).get(
+            "status"
+        ) in {"ready", "stale"}
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get("price_cap", {}).get("unit_rate_p_per_kwh")
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            key: value
+            for key, value in self.coordinator.data.get("price_cap", {}).items()
+            if key != "unit_rate_p_per_kwh"
         }
 
 

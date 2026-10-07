@@ -16,6 +16,10 @@ views:
         entity: sensor.load_optimizer_1_current_energy_price
         name: Current import price
         icon: mdi:cash-clock
+      - type: tile
+        entity: sensor.load_optimizer_ofgem_price_cap
+        name: Ofgem default-tariff benchmark
+        icon: mdi:chart-line-variant
       - type: entities
         title: Tariff outlook
         show_header_toggle: false

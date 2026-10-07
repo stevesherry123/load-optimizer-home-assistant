@@ -13,6 +13,10 @@ views:
             entity: sensor.load_optimizer_1_current_energy_price
             name: Current import price
             icon: mdi:cash-clock
+          - type: tile
+            entity: sensor.load_optimizer_ofgem_price_cap
+            name: Ofgem benchmark
+            icon: mdi:chart-line-variant
           - type: custom:apexcharts-card
             grid_options:
               columns: full
@@ -170,6 +174,36 @@ views:
                     .sort((left, right) => left[0] - right[0]);
                   if (points.length > 0 && Number.isFinite(lastEnd)) {
                     points.push([lastEnd + 1, null]);
+                  }
+                  return points;
+              - entity: sensor.load_optimizer_ofgem_price_cap
+                name: Ofgem default-tariff benchmark
+                type: line
+                color: "#475569"
+                stroke_width: 2
+                opacity: 1
+                show:
+                  in_header: true
+                  legend_value: true
+                data_generator: |
+                  const references = entity.attributes.references || [];
+                  const horizonStart = Date.now();
+                  const horizonEnd = horizonStart + (24 * 60 * 60 * 1000);
+                  const points = [];
+                  for (const reference of references) {
+                    const start = Math.max(
+                      horizonStart,
+                      new Date(reference.effective_from_utc).getTime()
+                    );
+                    const end = Math.min(
+                      horizonEnd,
+                      new Date(reference.effective_to_utc).getTime()
+                    );
+                    const value = Number(reference.unit_rate_p_per_kwh);
+                    if (Number.isFinite(start) && Number.isFinite(end)
+                        && Number.isFinite(value) && end > start) {
+                      points.push([start, value], [end - 1, value]);
+                    }
                   }
                   return points;
       - type: grid

@@ -24,7 +24,9 @@
           "target_percent": "Fallback target percentage",
           "charger_efficiency": "Charger efficiency",
           "slot_minutes": "Slot length",
-          "ready_by": "Ready by"
+          "ready_by": "Ready by",
+          "price_cap_region": "Ofgem electricity region",
+          "price_cap_payment_method": "Price-cap payment method"
         }
       },
       "learned_appliance": {
@@ -46,7 +48,9 @@
           "schedule_preference_weight_pence": "Schedule preference weight",
           "publish_diagnostics": "Publish diagnostics",
           "publish_profile_data": "Publish profile data",
-          "publish_cost_forecast": "Publish cost forecast"
+          "publish_cost_forecast": "Publish cost forecast",
+          "price_cap_region": "Ofgem electricity region",
+          "price_cap_payment_method": "Price-cap payment method"
         }
       }
     }
@@ -67,7 +71,9 @@
           "bosch_door_sensor": "Door sensor",
           "bosch_remote_control_sensor": "Remote control sensor",
           "bosch_remote_start_sensor": "Remote start sensor",
-          "bosch_operation_state_sensor": "Operation state sensor"
+          "bosch_operation_state_sensor": "Operation state sensor",
+          "price_cap_region": "Ofgem electricity region",
+          "price_cap_payment_method": "Price-cap payment method"
         }
       }
     },
@@ -82,7 +88,8 @@
       "estimated_profit": {"name": "Estimated profit"},
       "needed_energy": {"name": "Needed battery energy"},
       "wall_energy": {"name": "Wall energy"},
-      "next_slot_start": {"name": "Next slot start"}
+      "next_slot_start": {"name": "Next slot start"},
+      "ofgem_price_cap": {"name": "Ofgem price cap benchmark"}
     },
     "binary_sensor": {
       "charge_now": {"name": "Charge now"},

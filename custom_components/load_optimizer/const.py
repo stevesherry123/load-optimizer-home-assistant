@@ -36,6 +36,8 @@ CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE = "schedule_preference_weight_pence"
 CONF_PUBLISH_DIAGNOSTICS = "publish_diagnostics"
 CONF_PUBLISH_PROFILE_DATA = "publish_profile_data"
 CONF_PUBLISH_COST_FORECAST = "publish_cost_forecast"
+CONF_PRICE_CAP_REGION = "price_cap_region"
+CONF_PRICE_CAP_PAYMENT_METHOD = "price_cap_payment_method"
 CONF_BOSCH_DEVICE_ID = "bosch_device_id"
 CONF_BOSCH_POWER_SWITCH = "bosch_power_switch"
 CONF_BOSCH_PROGRAM_SELECT = "bosch_program_select"
@@ -56,8 +58,35 @@ PRICE_UNIT_PENCE = "p_per_kwh"
 PRICE_UNIT_GBP = "gbp_per_kwh"
 PRICE_UNITS = [PRICE_UNIT_PENCE, PRICE_UNIT_GBP]
 
+PRICE_CAP_PAYMENT_DIRECT_DEBIT = "direct_debit"
+PRICE_CAP_PAYMENT_STANDARD_CREDIT = "standard_credit"
+PRICE_CAP_PAYMENT_PREPAYMENT = "prepayment"
+PRICE_CAP_PAYMENT_METHODS = [
+    PRICE_CAP_PAYMENT_DIRECT_DEBIT,
+    PRICE_CAP_PAYMENT_STANDARD_CREDIT,
+    PRICE_CAP_PAYMENT_PREPAYMENT,
+]
+OFGEM_REGIONS = [
+    "North Western England",
+    "North Eastern England",
+    "Yorkshire",
+    "Northern Scotland",
+    "Southern England",
+    "Southern Scotland",
+    "Merseyside and Northern Wales",
+    "London",
+    "South Eastern England",
+    "Eastern England",
+    "East Midlands",
+    "West Midlands",
+    "South Western England",
+    "Southern Wales",
+    "Great Britain average",
+]
+
 DEFAULT_TARIFF_TIMEZONE = "Europe/London"
 DEFAULT_TARIFF_PRICE_UNIT = PRICE_UNIT_PENCE
+DEFAULT_PRICE_CAP_PAYMENT_METHOD = PRICE_CAP_PAYMENT_DIRECT_DEBIT
 DEFAULT_TARGET_PERCENT = 100.0
 DEFAULT_CHARGER_EFFICIENCY = 0.9
 DEFAULT_SLOT_MINUTES = 30
