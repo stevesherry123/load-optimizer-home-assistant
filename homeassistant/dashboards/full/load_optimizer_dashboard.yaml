@@ -13,6 +13,10 @@ views:
             entity: sensor.load_optimizer_1_current_energy_price
             name: Current import price
             icon: mdi:cash-clock
+          - type: tile
+            entity: sensor.load_optimizer_ofgem_price_cap
+            name: Ofgem benchmark
+            icon: mdi:chart-line-variant
           - &octopus_price_chart
             type: custom:apexcharts-card
             grid_options:
@@ -175,6 +179,39 @@ views:
                     .sort((left, right) => left[0] - right[0]);
                   if (points.length > 0 && Number.isFinite(lastEnd)) {
                     points.push([lastEnd + 1, null]);
+                  }
+                  return points;
+              - entity: sensor.load_optimizer_ofgem_price_cap
+                name: Ofgem default-tariff benchmark
+                type: line
+                color: "#475569"
+                stroke_width: 2
+                opacity: 1
+                show:
+                  in_header: true
+                  legend_value: true
+                data_generator: |
+                  const references = entity.attributes.references || [];
+                  const horizonStart = Date.now();
+                  const horizonHours = hass.states['sensor.load_optimizer_1_tariff_horizon']?.state === '48h'
+                    ? 48
+                    : 24;
+                  const horizonEnd = horizonStart + (horizonHours * 60 * 60 * 1000);
+                  const points = [];
+                  for (const reference of references) {
+                    const start = Math.max(
+                      horizonStart,
+                      new Date(reference.effective_from_utc).getTime()
+                    );
+                    const end = Math.min(
+                      horizonEnd,
+                      new Date(reference.effective_to_utc).getTime()
+                    );
+                    const value = Number(reference.unit_rate_p_per_kwh);
+                    if (Number.isFinite(start) && Number.isFinite(end)
+                        && Number.isFinite(value) && end > start) {
+                      points.push([start, value], [end - 1, value]);
+                    }
                   }
                   return points;
           - <<: *octopus_price_chart
@@ -446,6 +483,28 @@ views:
                 | default('unknown') }} |
 
                 {%- endfor %}
+          - type: markdown
+            title: Automation Capabilities
+            grid_options:
+              columns: 24
+              rows: auto
+            content: |-
+              {% set programs = state_attr('sensor.load_optimizer_1_program_capabilities', 'programs') or [] %}
+              {% if programs %}
+              {% for item in programs %}
+              ### {{ item.program }}
+
+              **Learned:** {{ item.runs }} runs, {{ item.confidence }}% confidence, {{ item.classification }}
+
+              - **Normal recommendation:** {{ 'eligible' if item.can_recommend else 'not eligible' }}
+              - **Free / negative price:** {{ 'eligible' if item.can_negative_price else 'not eligible' }}
+              - **Automatic start:** {{ 'available' if item.can_auto_start else 'blocked' }}
+              - **Remote start:** {{ item.remote_start_status | replace('_', ' ') }}
+
+              {% endfor %}
+              {% else %}
+              No automation-capability data has been published yet.
+              {% endif %}
       - type: grid
         cards:
           - type: entities

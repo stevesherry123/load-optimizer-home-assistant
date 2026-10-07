@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0-beta.1
+
+- Add a daily cached Ofgem default-tariff electricity benchmark with validated
+  effective dates, regional selection, payment method, and stale-cache status.
+- Add an Ofgem comparison tile and price line to the compact 24/48-hour tariff
+  dashboard without changing the dynamic tariff's meaning.
+- Restore the Lab dashboard's Automation Capabilities presentation in both the
+  full owner dashboard and the standard public dashboard.
+- Keep price-cap settings separate from optional dishwasher controls.
+
 ## 1.4.4
 
 - Select a compact 24-hour tariff graph until tomorrow's rates are available, then automatically show the complete 48-hour horizon.

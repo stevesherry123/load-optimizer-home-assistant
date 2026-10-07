@@ -142,7 +142,8 @@ entity attributes.
 ### Stage 0 Repository and live baseline
 
 - Preserve v1.4.2 on `main` as the publication baseline.
-- Keep the restored `Load Optimizer Lab` dashboard as design reference.
+- Retire the restored `Load Optimizer Lab` dashboard after preserving its
+  `Automation Capabilities` card as a backlog item for the supported dashboard.
 - Record current learning counts, tariff horizon, entity IDs, diagnostics, and
   production dashboard behavior before installing a beta.
 - Treat the short post-restart tariff-source delay as `waiting`, not an error;

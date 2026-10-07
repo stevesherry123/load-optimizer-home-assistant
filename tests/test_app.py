@@ -137,6 +137,7 @@ class VersionTests(unittest.TestCase):
         self.assertIn("switch.load_optimizer_1_auto_mode_enabled", dashboard_text)
         self.assertIn("button.load_optimizer_1_request_now", dashboard_text)
         self.assertIn("sensor.load_optimizer_1_orchestration_status", dashboard_text)
+        self.assertIn("Automation Capabilities", dashboard_text)
         self.assertNotIn("custom:", dashboard_text)
 
     def test_full_dashboard_uses_tariff_time_not_browser_day(self):
@@ -156,6 +157,10 @@ class VersionTests(unittest.TestCase):
             self.assertIn("<<: *octopus_price_chart", dashboard)
             self.assertIn('state: "24h"', dashboard)
             self.assertIn('state: "48h"', dashboard)
+            self.assertIn("sensor.load_optimizer_ofgem_price_cap", dashboard)
+            self.assertIn("Ofgem default-tariff benchmark", dashboard)
+            self.assertIn("effective_from_utc", dashboard)
+            self.assertIn("title: Automation Capabilities", dashboard)
 
     def test_options_flow_uses_home_assistant_config_entry_property(self):
         root = Path(__file__).resolve().parents[1]
@@ -175,6 +180,7 @@ class VersionTests(unittest.TestCase):
             "appliances_tariff",
             "optimisation",
             "publishing",
+            "price_cap",
             "dishwasher_control",
         ):
             self.assertIn(f'async_step_{step}', source)
@@ -184,6 +190,15 @@ class VersionTests(unittest.TestCase):
             "Dishwasher control (optional)",
             translations["options"]["step"]["dishwasher_control"]["title"],
         )
+
+    def test_price_cap_region_is_configurable(self):
+        root = Path(__file__).resolve().parents[1]
+        constants = (root / "custom_components/load_optimizer/const.py").read_text()
+        config_flow = (root / "custom_components/load_optimizer/config_flow.py").read_text()
+
+        self.assertIn('CONF_PRICE_CAP_REGION = "price_cap_region"', constants)
+        self.assertIn('"North Western England"', constants)
+        self.assertIn("_price_cap_schema", config_flow)
 
     def test_global_legacy_sensors_stay_on_hub_device(self):
         root = Path(__file__).resolve().parents[1]
