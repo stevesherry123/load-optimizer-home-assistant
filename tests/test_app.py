@@ -1,6 +1,7 @@
 import json
 import re
 import struct
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -8,8 +9,10 @@ from pathlib import Path
 from types import MappingProxyType
 from unittest.mock import patch
 
-from load_optimizer.app.main import (
-    DISHWASHER_AUTOMATION_PACKAGE_VERSION,
+INTEGRATION_ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "load_optimizer"
+sys.path.insert(0, str(INTEGRATION_ROOT))
+
+from legacy.app_runtime import (
     PUBLISHED_ENTITY_CACHE,
     bootstrap_program_models,
     bool_option,
@@ -79,8 +82,18 @@ class VersionTests(unittest.TestCase):
             root / "load_optimizer/config.yaml",
             root / "load_optimizer/Dockerfile",
             root / "load_optimizer/run.sh",
+            root / "load_optimizer/app",
         ):
             self.assertFalse(path.exists(), f"Legacy add-on artifact still present: {path}")
+
+    def test_tests_import_the_packaged_integration_runtime(self):
+        runtime = Path(sys.modules["legacy.app_runtime"].__file__).resolve()
+        root = Path(__file__).resolve().parents[1]
+
+        self.assertEqual(
+            runtime,
+            root / "custom_components/load_optimizer/legacy/app_runtime.py",
+        )
 
     def test_native_legacy_entity_handover_preserves_entity_ids(self):
         root = Path(__file__).resolve().parents[1]
@@ -96,14 +109,16 @@ class VersionTests(unittest.TestCase):
         self.assertIn("self.published_entities[entity_id]", publish_method)
         self.assertNotIn("states.async_set", publish_method)
 
-    def test_recovery_no_longer_depends_on_supervisor_addon(self):
+    def test_recovery_is_native_and_legacy_watchdog_is_retired(self):
         root = Path(__file__).resolve().parents[1]
-        package = (root / "homeassistant/packages/load_optimizer_recovery_watchdog.yaml").read_text()
         services = (root / "custom_components/load_optimizer/services.yaml").read_text()
 
-        self.assertIn("load_optimizer.recover", package)
-        self.assertNotIn("hassio.addon_restart", package)
-        self.assertNotIn("recovery_addon_slug", package)
+        self.assertFalse(
+            (root / "homeassistant/packages/load_optimizer_recovery_watchdog.yaml").exists()
+        )
+        self.assertFalse(
+            (root / "homeassistant/packages/load_optimizer_recovery_watchdog.md").exists()
+        )
         self.assertIn("recover:", services)
 
     def test_hacs_brand_and_optional_dashboard_are_packaged(self):
@@ -118,10 +133,23 @@ class VersionTests(unittest.TestCase):
         dashboard_text = dashboard.read_text()
         self.assertIn("sensor.load_optimizer_runtime_status", dashboard_text)
         self.assertIn("sensor.load_optimizer_1_total_runs", dashboard_text)
+        self.assertIn("sensor.load_optimizer_1_tariff_horizon", dashboard_text)
         self.assertIn("switch.load_optimizer_1_auto_mode_enabled", dashboard_text)
         self.assertIn("button.load_optimizer_1_request_now", dashboard_text)
         self.assertIn("sensor.load_optimizer_1_orchestration_status", dashboard_text)
         self.assertNotIn("custom:", dashboard_text)
+
+    def test_full_dashboard_uses_tariff_time_not_browser_day(self):
+        root = Path(__file__).resolve().parents[1]
+        for relative_path in (
+            "homeassistant/dashboards/full/load_optimizer_dashboard.yaml",
+        ):
+            dashboard = (root / relative_path).read_text()
+            self.assertIn("tariff_timezone", dashboard)
+            self.assertIn("Intl.DateTimeFormat", dashboard)
+            self.assertNotIn("datetimeUTC: false", dashboard)
+            self.assertNotIn("binary_sensor.octopus_tomorrow_rates_available", dashboard)
+            self.assertNotIn("start: day", dashboard)
 
     def test_global_legacy_sensors_stay_on_hub_device(self):
         root = Path(__file__).resolve().parents[1]
@@ -221,6 +249,14 @@ class VersionTests(unittest.TestCase):
         self.assertIn("new_entity_id=target_entity_id", integration)
         self.assertIn("entity_id not in NATIVE_STATUS_ENTITY_IDS", sensors)
 
+    def test_retired_package_status_entity_is_removed(self):
+        root = Path(__file__).resolve().parents[1]
+        runtime = (root / "custom_components/load_optimizer/legacy/app_runtime.py").read_text()
+        integration = (root / "custom_components/load_optimizer/__init__.py").read_text()
+
+        self.assertNotIn("publish_automation_package_status", runtime)
+        self.assertIn("sensor.load_optimizer_1_automation_package_status", integration)
+
     def test_native_orchestration_confirms_cycle_end_and_relaxes_only_for_cooldown(
         self,
     ):
@@ -260,144 +296,23 @@ class VersionTests(unittest.TestCase):
         self.assertIn("for config in configs:", source)
         self.assertIn("self._normalise_calendar_entities(config)", source)
 
-    def test_dishwasher_package_registers_expected_version_and_readiness_entities(self):
+    def test_retired_orchestration_packages_are_not_distributed(self):
         root = Path(__file__).resolve().parents[1]
-        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
-        watchdog = (root / "homeassistant/packages/load_optimizer_recovery_watchdog.yaml").read_text()
-        dashboard = (root / "homeassistant/dashboards/full/load_optimizer_dashboard.yaml").read_text()
-
-        self.assertGreaterEqual(package.count(f'"{DISHWASHER_AUTOMATION_PACKAGE_VERSION}"'), 2)
-        for suffix in ("overnight_readiness", "negative_price_readiness"):
-            self.assertIn(f"load_optimizer_1_{suffix}", package)
-            self.assertIn(f"sensor.load_optimizer_1_{suffix}", dashboard)
-        self.assertIn('minutes: "/1"', package)
-        self.assertIn("- trigger: template", package)
-        input_booleans = package.split("input_boolean:", 1)[1].split("input_text:", 1)[0]
-        self.assertNotIn("initial: false", input_booleans)
-        self.assertEqual(package.count("initial:"), 1)
-        self.assertNotIn("initial:", watchdog)
-        self.assertIn("dishwasher_power_off_engine_will_attempt_power_on", package)
-        self.assertIn("sensor.load_optimizer_1_program_catalogue", dashboard)
-        self.assertIn("sensor.load_optimizer_1_overnight_window_active", dashboard)
-        self.assertIn("sensor.load_optimizer_1_negative_price_window_active", dashboard)
-        self.assertNotIn("binary_sensor.load_optimizer_1_overnight_window_active", dashboard)
-        self.assertNotIn("binary_sensor.load_optimizer_1_negative_price_window_active", dashboard)
-        self.assertIn("display_program_options", dashboard)
-        self.assertIn("**⚠ Manual only**", dashboard)
-        for helper in (
-            "last_start_reason_code",
-            "last_start_reason_detail",
-            "last_start_decision_snapshot",
-            "last_execution_event",
+        for name in (
+            "load_optimizer_dishwasher_automation.yaml",
+            "load_optimizer_1_bosch_helper_values.yaml",
         ):
-            self.assertIn(f"load_optimizer_1_{helper}", package)
-        self.assertIn("action: logbook.log", package)
-        self.assertIn("recommended_start_changed", package)
-        self.assertIn("queued_program_missing_from_latest_recommendation", package)
-        self.assertIn("load_optimizer_1_record_cycle_end", package)
-        self.assertIn("cycle_ended_without_terminal_operation_state", package)
-        self.assertIn("Evaluating queued dishwasher start", package)
-        self.assertNotIn("Dishwasher execution started for", package)
-        self.assertIn("sensor.load_optimizer_1_last_start_reason_code", dashboard)
-        self.assertIn("sensor.load_optimizer_1_last_start_reason_detail", dashboard)
-        self.assertIn("load_optimizer_1_requested_finish", package)
-        self.assertIn("deadline_overrun_no_fitting_replan", package)
-
-    def test_pending_automatic_request_refreshes_before_execution(self):
-        root = Path(__file__).resolve().parents[1]
-        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
-        block = package.split("  - id: load_optimizer_1_auto_normal_request\n", 1)[1].split(
-            "\n  - id:", 1
-        )[0]
-
-        self.assertIn("['none', 'automatic']", block)
-        self.assertIn("load_optimizer_1_requested_finish", block)
-        self.assertIn("recommendation_finish", block)
-        self.assertIn("input_datetime.load_optimizer_1_must_finish_by", block)
-        self.assertIn("input_datetime.load_optimizer_1_must_finish_by", package)
-        self.assertIn('value_template: "{{ deadline_overrun }}"', package)
-        self.assertIn("auto_overnight_window_start", block)
-        self.assertIn("auto_overnight_window_unused", block)
-        self.assertIn("or (auto_cooldown_elapsed and auto_overnight_window_unused)", block)
-
-    def test_due_automatic_request_bypasses_revalidation_until_stale_gate(self):
-        root = Path(__file__).resolve().parents[1]
-        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
-
-        invalid_expression = package.split("queued_plan_invalid: >-", 1)[1].split(
-            "selected_program_key: >-", 1
-        )[0]
-        self.assertIn("and not due_by_time", invalid_expression)
-
-        actions = package.split("actions:", 1)[1]
-        revalidation_gate = actions.index('value_template: "{{ queued_plan_invalid }}"')
-        stale_gate = actions.index('value_template: "{{ stale_request }}"', revalidation_gate)
-        self.assertLess(revalidation_gate, stale_gate)
-
-    def test_dishwasher_requests_publish_schedule_before_mode_commit(self):
-        root = Path(__file__).resolve().parents[1]
-        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
-
-        requests = {
-            "load_optimizer_1_capture_user_request": 'option: "{{ requested_mode }}"',
-            "load_optimizer_1_auto_negative_price_request": "option: negative_price",
-            "load_optimizer_1_auto_normal_request": "option: automatic",
-        }
-        for automation_id, mode_commit in requests.items():
-            block = package.split(f"  - id: {automation_id}\n", 1)[1].split("\n  - id:", 1)[0]
-            program_write = block.index("entity_id: input_text.load_optimizer_1_requested_program")
-            start_write = block.index("entity_id: input_datetime.load_optimizer_1_requested_start")
-            commit = block.index(mode_commit)
-
-            self.assertLess(program_write, commit, automation_id)
-            self.assertLess(start_write, commit, automation_id)
-            self.assertNotIn("entity_id: input_text.load_optimizer_1_requested_program", block[commit:])
-            self.assertNotIn("entity_id: input_datetime.load_optimizer_1_requested_start", block[commit:])
-
-    def test_dishwasher_automatic_requests_are_not_blocked_by_other_active_captures(self):
-        root = Path(__file__).resolve().parents[1]
-        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
-
-        for automation_id in (
-            "load_optimizer_1_auto_negative_price_request",
-            "load_optimizer_1_auto_normal_request",
-        ):
-            block = package.split(f"  - id: {automation_id}\n", 1)[1].split("\n  - id:", 1)[0]
-            self.assertNotIn("sensor.load_optimizer_restart_safety", block, automation_id)
-            self.assertIn("sensor.load_optimizer_1_cycle_state", block, automation_id)
-
-        readiness = package.split("      - name: Load Optimizer 1 Overnight Readiness\n", 1)[1].split(
-            "\n      - name: Load Optimizer 1 Remote Activation Check",
-            1,
-        )[0]
-        negative_readiness = package.split(
-            "      - name: Load Optimizer 1 Free / Negative Price Readiness\n",
-            1,
-        )[1].split("\nautomation:", 1)[0]
-        self.assertNotIn("sensor.load_optimizer_restart_safety", readiness)
-        self.assertNotIn("sensor.load_optimizer_restart_safety", negative_readiness)
-        self.assertIn("not negative_price_mode", package)
-
-    def test_explicit_start_now_bypasses_only_historical_door_gate(self):
-        root = Path(__file__).resolve().parents[1]
-        package = (root / "homeassistant/packages/load_optimizer_dishwasher_automation.yaml").read_text()
-
-        self.assertIn("load_optimizer_1_explicit_program_override:", package)
-        self.assertIn("and is_state('input_boolean.load_optimizer_1_explicit_program_override', 'on')", package)
-        self.assertIn("not explicit_program_now\n           and not door_opened_since_last_cycle", package)
-        self.assertIn("manual_now_override: >-\n        {{ explicit_program_now", package)
-        self.assertIn("and states(bosch_door_sensor) == 'off'", package)
-        self.assertIn("and states(bosch_remote_start_sensor) == 'on'", package)
+            self.assertFalse((root / "homeassistant/packages" / name).exists())
 
 
 class StatusHeartbeatTests(unittest.TestCase):
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.datetime")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.datetime")
     def test_heartbeat_refreshes_only_after_interval(self, datetime_mock, publish_mock):
         first = datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc)
         datetime_mock.now.side_effect = [first, first + timedelta(minutes=4), first + timedelta(minutes=5)]
 
-        with patch("load_optimizer.app.main.LAST_HEARTBEAT_AT", None):
+        with patch("legacy.app_runtime.LAST_HEARTBEAT_AT", None):
             publish_status("token", 1)
             publish_status("token", 1)
             publish_status("token", 1)
@@ -410,8 +325,8 @@ class RuntimeHealthTests(unittest.TestCase):
     def test_publish_cache_is_forced_to_refresh_periodically(self):
         cache = {"sensor.example": "payload"}
         with (
-            patch("load_optimizer.app.main.PUBLISHED_ENTITY_CACHE", cache),
-            patch("load_optimizer.app.main.LAST_FULL_REPUBLISH_AT", None),
+            patch("legacy.app_runtime.PUBLISHED_ENTITY_CACHE", cache),
+            patch("legacy.app_runtime.LAST_FULL_REPUBLISH_AT", None),
         ):
             self.assertTrue(refresh_publish_cache(100))
             cache["sensor.example"] = "new-payload"
@@ -423,10 +338,10 @@ class RuntimeHealthTests(unittest.TestCase):
     def test_runtime_health_fails_when_scan_completion_is_stale(self):
         now = datetime(2026, 8, 17, 12, 10, tzinfo=timezone.utc)
         with (
-            patch("load_optimizer.app.main.RUNTIME_STARTED_AT", now - timedelta(minutes=10)),
-            patch("load_optimizer.app.main.LAST_SCAN_STARTED_AT", now - timedelta(minutes=9)),
-            patch("load_optimizer.app.main.LAST_SCAN_COMPLETED_AT", now - timedelta(minutes=8)),
-            patch("load_optimizer.app.main.SCAN_HEALTH_TIMEOUT_SECONDS", 210),
+            patch("legacy.app_runtime.RUNTIME_STARTED_AT", now - timedelta(minutes=10)),
+            patch("legacy.app_runtime.LAST_SCAN_STARTED_AT", now - timedelta(minutes=9)),
+            patch("legacy.app_runtime.LAST_SCAN_COMPLETED_AT", now - timedelta(minutes=8)),
+            patch("legacy.app_runtime.SCAN_HEALTH_TIMEOUT_SECONDS", 210),
         ):
             healthy, payload = runtime_health(now)
 
@@ -437,10 +352,10 @@ class RuntimeHealthTests(unittest.TestCase):
     def test_runtime_health_allows_recent_scan_completion(self):
         now = datetime(2026, 8, 17, 12, 10, tzinfo=timezone.utc)
         with (
-            patch("load_optimizer.app.main.RUNTIME_STARTED_AT", now - timedelta(minutes=10)),
-            patch("load_optimizer.app.main.LAST_SCAN_STARTED_AT", now - timedelta(seconds=70)),
-            patch("load_optimizer.app.main.LAST_SCAN_COMPLETED_AT", now - timedelta(seconds=60)),
-            patch("load_optimizer.app.main.SCAN_HEALTH_TIMEOUT_SECONDS", 210),
+            patch("legacy.app_runtime.RUNTIME_STARTED_AT", now - timedelta(minutes=10)),
+            patch("legacy.app_runtime.LAST_SCAN_STARTED_AT", now - timedelta(seconds=70)),
+            patch("legacy.app_runtime.LAST_SCAN_COMPLETED_AT", now - timedelta(seconds=60)),
+            patch("legacy.app_runtime.SCAN_HEALTH_TIMEOUT_SECONDS", 210),
         ):
             healthy, payload = runtime_health(now)
 
@@ -504,7 +419,7 @@ class StateStorageTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), second)
             self.assertEqual(json.loads(path.with_suffix(".json.bak").read_text()), first)
 
-    @patch("load_optimizer.app.main.save_state")
+    @patch("legacy.app_runtime.save_state")
     def test_state_is_saved_only_when_signature_changes(self, save_state_mock):
         data = {"schema_version": 1, "instances": {"1": {"runs": 1}}}
 
@@ -535,8 +450,8 @@ class DateTimeParsingTests(unittest.TestCase):
 
 
 class SpecialPriceWindowTests(unittest.TestCase):
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
     def test_scheduled_window_uses_local_helper_times_and_publishes_provenance(self, source, publish):
         states = {
             "input_boolean.load_optimizer_special_price_window_enabled": {"state": "on"},
@@ -596,7 +511,7 @@ class PublishingTests(unittest.TestCase):
     def tearDown(self):
         PUBLISHED_ENTITY_CACHE.clear()
 
-    @patch("load_optimizer.app.main.api_request")
+    @patch("legacy.app_runtime.api_request")
     def test_publish_entity_skips_unchanged_payloads(self, api_request):
         api_request.return_value = {"state": "ready"}
 
@@ -606,7 +521,7 @@ class PublishingTests(unittest.TestCase):
 
         self.assertEqual(api_request.call_count, 2)
 
-    @patch("load_optimizer.app.main.api_request")
+    @patch("legacy.app_runtime.api_request")
     def test_cost_entities_publish_current_energy_price(self, api_request):
         api_request.return_value = {"state": "ready"}
 
@@ -637,7 +552,7 @@ class PublishingTests(unittest.TestCase):
         self.assertEqual(payload["attributes"]["current_price_start"], "2026-01-01T00:00:00+00:00")
         self.assertEqual(payload["attributes"]["current_price_end"], "2026-01-01T00:30:00+00:00")
 
-    @patch("load_optimizer.app.main.api_request")
+    @patch("legacy.app_runtime.api_request")
     def test_cost_entities_publish_green_window_context(self, api_request):
         api_request.return_value = {"state": "ready"}
 
@@ -679,7 +594,7 @@ class PublishingTests(unittest.TestCase):
         self.assertEqual(attributes["blocked_window_count"], 1)
         self.assertEqual(attributes["blocked_window_candidate_count"], 3)
 
-    @patch("load_optimizer.app.main.api_request")
+    @patch("legacy.app_runtime.api_request")
     def test_intent_recommendations_are_blocked_while_cycle_is_running(self, api_request):
         api_request.return_value = {"state": "ready"}
         start = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
@@ -776,8 +691,8 @@ class ConfigurationTests(unittest.TestCase):
 
         self.assertEqual(config["blocked_window_entity"], "calendar.appliance_block")
 
-    @patch("load_optimizer.app.main.api_request")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.api_request")
+    @patch("legacy.app_runtime.source_state")
     def test_blocked_window_entity_parses_octoplus_saving_session_events(self, source_state, api_request):
         api_request.return_value = None
         source_state.return_value = {
@@ -820,8 +735,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(diagnostics["event_list_counts"]["joined_events"], 2)
         self.assertEqual(diagnostics["windows"], 1)
 
-    @patch("load_optimizer.app.main.api_request")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.api_request")
+    @patch("legacy.app_runtime.source_state")
     def test_blocked_window_entity_parses_octoplus_power_down_events(self, source_state, api_request):
         source_state.return_value = {
             "entity_id": "event.octopus_energy_power_down_events",
@@ -848,8 +763,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(diagnostic["event_list_counts"], {"joined_events": 1})
         api_request.assert_not_called()
 
-    @patch("load_optimizer.app.main.api_request")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.api_request")
+    @patch("legacy.app_runtime.source_state")
     def test_green_window_entity_merges_multiple_window_entities(self, source_state, api_request):
         api_request.return_value = []
 
@@ -992,7 +907,7 @@ class ConfigurationTests(unittest.TestCase):
             "cycle_start": "2026-01-01T00:00:00+00:00",
         }])
 
-    @patch("load_optimizer.app.main.api_request")
+    @patch("legacy.app_runtime.api_request")
     def test_restart_warning_creates_persistent_notification(self, api_request):
         publish_restart_warning("token", [{
             "instance_id": "2",
@@ -1008,7 +923,7 @@ class ConfigurationTests(unittest.TestCase):
         )
         self.assertIn("Washing Machine 1", api_request.call_args.args[2]["message"])
 
-    @patch("load_optimizer.app.main.api_request")
+    @patch("legacy.app_runtime.api_request")
     def test_restart_safety_blocks_when_capture_is_active(self, api_request):
         publish_restart_safety("token", [{
             "instance_id": "2",
@@ -1022,7 +937,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertTrue(api_request.call_args.args[2]["attributes"]["restart_blocked"])
         self.assertEqual(api_request.call_args.args[2]["attributes"]["active_capture_count"], 1)
 
-    @patch("load_optimizer.app.main.api_request")
+    @patch("legacy.app_runtime.api_request")
     def test_restart_safety_reports_safe_when_no_capture_is_active(self, api_request):
         publish_restart_safety("token", [])
 
@@ -1036,8 +951,8 @@ class ConfigurationTests(unittest.TestCase):
             path.write_text(json.dumps({"instance_1_program_policies": [{"program": "Eco"}]}))
             self.assertEqual(load_options(path)["instance_1_program_policies"][0]["program"], "Eco")
 
-    @patch("load_optimizer.app.main.render_template")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.render_template")
+    @patch("legacy.app_runtime.source_state")
     def test_tariff_state_falls_back_to_template_attribute(self, source_state, render_template):
         source_state.return_value = {
             "entity_id": "event.rates",
@@ -1057,8 +972,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(state["attributes"]["rates"][0]["value_inc_vat"], 0.241)
         self.assertEqual(state["attributes"]["tariff_rates_source"], "template_state_attr:rates")
 
-    @patch("load_optimizer.app.main.render_template")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.render_template")
+    @patch("legacy.app_runtime.source_state")
     def test_tariff_state_keeps_direct_rate_attributes(self, source_state, render_template):
         source_state.return_value = {
             "entity_id": "event.rates",
@@ -1071,8 +986,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(state["attributes"]["rates"][0]["value_inc_vat"], 0.241)
         render_template.assert_not_called()
 
-    @patch("load_optimizer.app.main.render_template")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.render_template")
+    @patch("legacy.app_runtime.source_state")
     def test_tariff_state_keeps_direct_tuple_rate_attributes(self, source_state, render_template):
         source_state.return_value = {
             "entity_id": "event.rates",
@@ -1184,8 +1099,8 @@ class InstanceMonitoringTests(unittest.TestCase):
             "finish_delay": 2,
         }
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
     def test_active_power_starts_cycle(self, source, _publish):
         source.side_effect = lambda _token, entity_id: {
             "sensor.test_power": {"state": "1200"},
@@ -1201,8 +1116,8 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(instance["peak_power"], 1200)
         self.assertEqual(instance["samples"], 1)
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
     def test_second_instance_uses_own_state_and_entity_prefix(self, source, publish):
         source.side_effect = lambda _token, entity_id: {
             "sensor.washer_power": {"state": "500"},
@@ -1228,8 +1143,8 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertIn("sensor.load_optimizer_2_status", published_ids)
         self.assertIn("sensor.load_optimizer_2_power", published_ids)
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
     def test_empty_secondary_tariff_source_does_not_invalidate_costing(self, source, publish):
         source.side_effect = lambda _token, entity_id: {
             "sensor.test_power": {"state": "0"},
@@ -1310,8 +1225,8 @@ class InstanceMonitoringTests(unittest.TestCase):
 
         self.assertEqual(profile_energy_kwh(profile), 0.75)
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
     def test_sustained_low_power_finishes_cycle(self, source, _publish):
         self.config["finish_delay"] = 5
         readings = {"power": "0", "energy": "4.1", "program": "Eco"}
@@ -1347,8 +1262,8 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(instance["last_cycle"]["finish"], (start + timedelta(minutes=59)).isoformat())
         self.assertEqual(instance["program_models"]["Eco"]["runs"], 1)
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
     def test_bosch_ready_finishes_cycle_without_waiting_for_power_debounce(self, source, _publish):
         self.config.update(state_sensor="sensor.test_operation", finish_delay=5)
         source.side_effect = lambda _token, entity_id: {
@@ -1378,8 +1293,8 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(instance["last_cycle"]["finish"], finish.isoformat())
         self.assertEqual(instance["last_cycle"]["completion_signal"], "bosch_operation_ready")
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
     def test_profile_energy_survives_daily_counter_reset(self, source, _publish):
         self.config["finish_delay"] = 1
         readings = {"power": "0", "energy": "0.1", "program": "Eco"}
@@ -1409,8 +1324,8 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(last["energy_source"], "power_profile")
         self.assertEqual(last["energy_sensor_delta_kwh"], 0.0)
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
     def test_power_resuming_cancels_finish_candidate(self, source, _publish):
         readings = {"power": "0", "energy": "3.6", "program": "Eco"}
         source.side_effect = lambda _token, entity_id: {
@@ -1438,8 +1353,8 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(instance["profile"][-2]["power_w"], 0.0)
         self.assertEqual(instance["profile"][-1]["power_w"], 20.0)
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
     def test_interrupted_cycle_is_discarded_from_learning(self, source, _publish):
         self.config["finish_delay"] = 1
         readings = {"power": "0", "energy": "4.2", "program": "Eco"}
@@ -1470,8 +1385,8 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertTrue(instance["last_discarded_cycle"]["learning_excluded"])
         self.assertEqual(instance["last_discarded_cycle"]["exclusion_reason"], "app_restarted_during_cycle")
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.source_state")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
     def test_suspicious_completed_cycle_is_discarded_from_learning(self, source, _publish):
         self.config["finish_delay"] = 1
         readings = {"power": "0", "energy": "4.2", "program": "Eco"}
@@ -1971,7 +1886,7 @@ class ScheduleAdviceTests(unittest.TestCase):
         self.assertTrue(advice["blocked_by_active_capture"])
         self.assertEqual(advice["active_cycle_start"], "2026-01-01T11:30:00+00:00")
 
-    @patch("load_optimizer.app.main.publish_entity")
+    @patch("legacy.app_runtime.publish_entity")
     def test_schedule_publishes_recommended_finish_entity(self, publish_entity):
         publish_schedule_entities("token", "sensor.load_optimizer_1", "Dishwasher 1", {
             "status": "ready",
@@ -1993,8 +1908,8 @@ class ScheduleAdviceTests(unittest.TestCase):
             "timestamp",
         )
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.render_template")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.render_template")
     def test_execution_publishes_not_configured_when_helpers_are_absent(self, render_template, publish_entity):
         render_template.return_value = {
             "status": "unknown",
@@ -2011,8 +1926,8 @@ class ScheduleAdviceTests(unittest.TestCase):
         self.assertEqual(published["sensor.load_optimizer_1_execution_status"][2], "not_configured")
         self.assertEqual(published["sensor.load_optimizer_1_last_start_attempt"][2], "unknown")
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.render_template")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.render_template")
     def test_execution_publishes_start_attempt_helpers(self, render_template, publish_entity):
         render_template.return_value = {
             "status": "failed",
@@ -2047,8 +1962,8 @@ class ScheduleAdviceTests(unittest.TestCase):
             "queued=12:00 latest=12:00 delta_min=0",
         )
 
-    @patch("load_optimizer.app.main.publish_entity")
-    @patch("load_optimizer.app.main.render_template")
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.render_template")
     def test_cancelled_execution_is_published_as_aborted(self, render_template, publish_entity):
         render_template.return_value = {
             "status": "cancelled",

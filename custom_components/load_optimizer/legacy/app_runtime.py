@@ -1,4 +1,4 @@
-"""Runtime entry point for the Load Optimizer Home Assistant App."""
+"""Migrated learned-appliance engine for the Load Optimizer integration."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.4.2-beta.1"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -36,7 +36,6 @@ RUNTIME_STARTED_AT: datetime | None = None
 LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
-DISHWASHER_AUTOMATION_PACKAGE_VERSION = "0.8.92"
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
 API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
@@ -1610,6 +1609,7 @@ def publish_cost_entities(
         "tariff_periods": result.get("tariff_periods", 0),
         "tariff_start": result.get("tariff_start"),
         "tariff_end": result.get("tariff_end"),
+        "tariff_timezone": result.get("schedule_timezone"),
         "reason": result.get("reason"),
         "schedule_earliest_start_entity": result.get("schedule_earliest_start_entity"),
         "schedule_latest_finish_entity": result.get("schedule_latest_finish_entity"),
@@ -2209,41 +2209,6 @@ def publish_program_capabilities(
     })
 
 
-def publish_automation_package_status(token: str, prefix: str, name: str, instance_id: str) -> None:
-    """Expose whether the optional HA automation package is aligned with the app."""
-    helper = f"input_text.load_optimizer_{instance_id}_automation_package_version"
-    entity = source_state(token, helper)
-    raw_version = str((entity or {}).get("state") or "").strip()
-    if raw_version in {"", "unknown", "unavailable", "none", "None"}:
-        installed_version = None
-        status = "not_installed"
-        message = (
-            "Optional Home Assistant automation package is not installed or has not "
-            "been refreshed since package version tracking was added."
-        )
-    elif raw_version == DISHWASHER_AUTOMATION_PACKAGE_VERSION:
-        installed_version = raw_version
-        status = "current"
-        message = "Optional Home Assistant automation package is aligned with this app release."
-    else:
-        installed_version = raw_version
-        status = "update_required"
-        message = (
-            "Optional Home Assistant automation package version does not match the "
-            "installed app. Refresh both components from the same release."
-        )
-
-    publish_entity(token, f"{prefix}_automation_package_status", status, {
-        "friendly_name": f"{name} Automation Package Status",
-        "icon": "mdi:package-variant-closed-check",
-        "package_version_helper": helper,
-        "installed_package_version": installed_version,
-        "expected_package_version": DISHWASHER_AUTOMATION_PACKAGE_VERSION,
-        "app_version": APP_VERSION,
-        "message": message,
-    })
-
-
 def update_instance(token: str, database: dict, config: dict, now: datetime | None = None) -> None:
     now = now or datetime.now(timezone.utc)
     instance_id = str(config.get("instance_id", "1"))
@@ -2604,8 +2569,6 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     if instance_id == "1":
         publish_execution_entities(token, prefix, name, instance_id)
     publish_program_capabilities(token, prefix, name, summaries, policies, blocked_remote_start_programs)
-    if instance_id == "1":
-        publish_automation_package_status(token, prefix, name, instance_id)
     latest_program = normalise_program(last.get("program"))
     selected_program = latest_program if latest_program in models else (next(iter(sorted(models)), None))
     selected_summary = program_summary(selected_program, models[selected_program]) if selected_program else {}

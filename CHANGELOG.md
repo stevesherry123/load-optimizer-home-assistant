@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.2-beta.1
+
+- Remove the obsolete standalone app mirror and retired recovery/orchestration
+  packages so the HACS integration is the only distributed runtime.
+- Run the full unit suite against the exact learned-appliance engine packaged
+  inside the integration.
+- Make tariff and cost-forecast charts use the configured tariff timezone and
+  a rolling future window, avoiding browser-timezone clipping while travelling.
+- Remove the dashboard dependency on the retired tomorrow-rates helper.
+- Report leftover recovery helpers in downloaded integration diagnostics.
+
 ## 1.4.1
 
 - Fix Home Assistant 2026.10 device-registry lookup compatibility so native learned-appliance and orchestration entities register after restart.

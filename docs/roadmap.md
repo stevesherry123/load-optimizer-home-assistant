@@ -1,13 +1,13 @@
 # Roadmap
 
 This roadmap is the canonical place for planned work, backlog ideas, and future
-design notes. Keep released changes in `load_optimizer/CHANGELOG.md` and keep
+design notes. Keep released changes in `CHANGELOG.md` and keep
 implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- migrate the learned appliance-cycle engine from the legacy add-on into the
-  HACS integration storage/entity model
+- continue decomposing the embedded compatibility engine behind stable native
+  integration entities without changing migrated learning data
 - add appliance-cycle load entries alongside the v1.0 EV charging load type
 - add options-flow editing for EV charging settings after initial setup
 - add integration diagnostics and repairs for missing tariff or vehicle entities
@@ -191,7 +191,7 @@ maintenance limits, and any future additional operating-cost model.
 
 The retired local appliance packages, templates, helper definitions, dashboards,
 and Pyscript files have been removed from this repository. Future work should
-continue to keep the public project focused on the installable App runtime.
+continue to keep the public project focused on the installable integration.
 
 Energy-provider helper layers are a separate integration concern. They should be
 reviewed independently from the appliance cleanup so useful Octopus or tariff

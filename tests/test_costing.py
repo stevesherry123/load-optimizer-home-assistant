@@ -1,7 +1,12 @@
 import unittest
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from load_optimizer.app.costing import (
+INTEGRATION_ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "load_optimizer"
+sys.path.insert(0, str(INTEGRATION_ROOT))
+
+from legacy.costing import (
     _negative_power_window_fit,
     estimate_cycle_cost,
     operational_overnight_window,

@@ -9,22 +9,18 @@ Load Optimizer is split into four layers:
 3. Device adapters
 4. Home Assistant entity, automation, and dashboard surfaces
 
-## v1.0 Integration Migration
+## Integration Runtime
 
-Status: Active
+Status: Production
 
-The project now contains two runtime surfaces during the migration:
+The project has one supported runtime surface:
 
-- `custom_components/load_optimizer`: the HACS custom integration line and the
-  public direction for v1.0 and later.
-- `load_optimizer/`: the existing Home Assistant add-on runtime, retained for
-  learned appliance-cycle behaviour while those features are ported.
+- `custom_components/load_optimizer`: the HACS custom integration, including
+  the learned-appliance engine, native Home Assistant entities, orchestration,
+  EV planning, diagnostics, and dashboard assets.
 
-The integration must be able to run when HACS installs only
-`custom_components/load_optimizer`, so runtime modules needed by the integration
-live inside that directory. Shared algorithms can still be developed against the
-legacy add-on tests, but release code should be copied or moved into the
-integration package before it is advertised as supported.
+The retired add-on tree and its duplicate test runtime are not distributed.
+Tests import the exact engine packaged by HACS.
 
 The v1.0 integration scope is deliberately advisory:
 
@@ -36,9 +32,9 @@ The v1.0 integration scope is deliberately advisory:
 This preserves the existing design principle that Load Optimizer recommends and
 household-specific automation executes.
 
-## Legacy Compatibility Runtime
+## Migrated Learning Runtime
 
-Status: Active migration path
+Status: Integrated
 
 The learned-appliance compatibility runtime embeds the existing add-on engine in
 the HACS integration and adapts its Home Assistant API calls to direct
@@ -51,9 +47,10 @@ integration access:
 - add-on template calls are replaced with direct reads for the known helper
   contracts
 
-This is intentionally a compatibility layer, not the final native entity model.
-It gives existing users a migration path with the same entity names before the
-engine is decomposed into config entries, entity platforms, and repairs.
+The engine retains its compatibility-oriented internals so imported databases
+continue to behave identically, but persistence, entities, orchestration, and
+recovery are owned by the integration. Further decomposition must preserve the
+stable entity IDs and stored learning schema.
 
 The core must not depend on Bosch, Home Connect, Octopus Energy,
 washing-machine-specific logic, or any other single appliance or supplier.
@@ -117,40 +114,27 @@ Home Assistant should be used for:
 - tariff entities from any compatible supplier integration or custom source
 - optional calendar or sensor entities that describe greener, travel, or local
   energy context
-- published `sensor.load_optimizer_*` entities from the App
+- published `sensor.load_optimizer_*` entities from the integration
 - dashboards, notifications, and automations built on top of those sensors
 
-## Optional Automation Layer
+## Native Orchestration Layer
 
-Status: First dishwasher implementation
+Status: Production
 
-Load Optimizer should remain the recommendation engine, not the appliance
-launcher. Home Assistant automations should own household-specific execution:
-buttons, voice assistants, announcements, Bosch/Home Connect service calls, and
-manual cancellation.
+Load Optimizer owns its scheduling state, controls, safety gates, and configured
+Bosch/Home Connect start sequence as native integration entities. Physical
+control remains explicitly opt-in through the integration's automatic-mode
+switches.
 
-The first optional package is
-`homeassistant/packages/load_optimizer_dishwasher_automation.yaml`. It is scoped
-to Dishwasher 1 and uses the published recommendation sensors for `now`, `soon`,
-and `overnight` requests. The package stores the user's chosen intent in Home
-Assistant helpers, regularly re-checks the current Load Optimizer recommendation,
-and starts the Bosch dishwasher only when the matching recommendation is due.
-
-This package is intentionally separate from:
-
-- the learning engine
-- other appliance instances
-- negative-price automation, still opt-in per program and household
-
-That separation lets the app keep learning and recommending for many appliance
-types while household-specific automations decide if and how an appliance should
-be physically started.
+External household automations may still consume recommendations, announcements,
+and deadline helpers, but no bundled recovery or dishwasher-orchestration YAML
+package is required.
 
 ## Canonical Entities
 
 The first appliance instance should use the `load_optimizer_1_*` namespace.
 
-Published App sensors include:
+Published integration sensors include:
 
 - `sensor.load_optimizer_1_status`
 - `sensor.load_optimizer_1_power`
@@ -188,17 +172,18 @@ Published App sensors include:
 3. Core stores sampled power into the current profile.
 4. Core writes end-of-cycle summary data.
 5. Core updates the learned database.
-6. App sensors expose learned values, cost estimates, and recommendations.
+6. Integration entities expose learned values, cost estimates, recommendations,
+   and controls.
 
 ## Persistence Strategy
 
-The supported runtime stores internal data in the App's private `/data`
-directory and publishes Home Assistant sensors for visibility.
+The supported runtime stores internal data in Home Assistant integration storage
+and publishes registered entities for visibility and control.
 
 That gives:
 
 - a clean public installation path
-- app-owned persistence that does not require user-managed helpers
+- integration-owned persistence that does not require user-managed helpers
 - transparent read-only state for dashboards and automations
 
 ## Energy Measurement
@@ -453,5 +438,5 @@ shape and design principles of the system.
 
 The earlier local appliance packages, templates, helper definitions, dashboards,
 and Pyscript files are no longer part of the repository. Future contributions
-should target the supported App runtime and avoid reintroducing app-managed
+should target the supported integration runtime and avoid reintroducing
 `dishwasher_*` or `washing_machine_*` helper namespaces.

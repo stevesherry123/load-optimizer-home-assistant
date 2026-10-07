@@ -1,7 +1,12 @@
 import logging
+import sys
 import unittest
+from pathlib import Path
 
-from load_optimizer.app.observability import EventEngine
+INTEGRATION_ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "load_optimizer"
+sys.path.insert(0, str(INTEGRATION_ROOT))
+
+from legacy.observability import EventEngine
 
 
 class ObservabilityTests(unittest.TestCase):

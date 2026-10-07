@@ -24,3 +24,9 @@ The dashboard uses only standard Home Assistant cards and integration entities.
 Learned-appliance IDs remain stable. EV entity IDs are derived from the config
 entry title, so edit the EV view when the configured vehicle has a different
 name.
+
+The richer example dashboards under `homeassistant/dashboards/` use
+`apexcharts-card`. Their future-price axes are formatted in the tariff timezone
+published by Load Optimizer, not the viewing browser's timezone. This keeps the
+full available tariff horizon visible when the dashboard is opened while
+travelling.

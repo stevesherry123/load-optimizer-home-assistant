@@ -36,6 +36,9 @@ NATIVE_STATUS_OBJECT_IDS = {
     "automatic_plan_resilience": "load_optimizer_1_automatic_plan_resilience",
     "negative_price_readiness": "load_optimizer_1_negative_price_readiness",
 }
+RETIRED_INTEGRATION_ENTITY_IDS = {
+    "sensor.load_optimizer_1_automation_package_status",
+}
 
 
 def _async_migrate_native_status_entities(
@@ -109,7 +112,10 @@ def _async_remove_obsolete_control_entities(
         entity_registry,
         entry.entry_id,
     ):
-        if OBSOLETE_CONTROL_ENTITY.match(registry_entry.entity_id):
+        if (
+            OBSOLETE_CONTROL_ENTITY.match(registry_entry.entity_id)
+            or registry_entry.entity_id in RETIRED_INTEGRATION_ENTITY_IDS
+        ):
             entity_registry.async_remove(registry_entry.entity_id)
 
 

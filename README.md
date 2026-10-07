@@ -161,9 +161,7 @@ Planned work and backlog ideas are tracked in `docs/roadmap.md`.
 ├── hacs.json
 ├── custom_components/
 │   └── load_optimizer/
-├── load_optimizer/
-│   ├── app/                  # legacy engine reference/test mirror
-│   └── CHANGELOG.md
+├── CHANGELOG.md
 ├── homeassistant/
 │   ├── dashboards/
 │   └── packages/
@@ -193,5 +191,7 @@ The shared state model should focus on:
 The HACS integration is the supported product and development line. The legacy
 add-on packaging has been removed after successful migration validation.
 
-Optional Home Assistant packages and dashboard snippets are stored in
-`homeassistant/`.
+Optional dashboard and travel-deadline examples are stored in `homeassistant/`.
+The retired add-on and orchestration packages are no longer distributed; all
+supported learning, scheduling, recovery, and appliance controls live in the
+integration.
