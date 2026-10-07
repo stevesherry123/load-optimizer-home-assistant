@@ -9,6 +9,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntry
 
@@ -16,6 +17,7 @@ from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, PLATFORM
 from .coordinator import LoadOptimizerCoordinator
 
 LOGGER = logging.getLogger(__name__)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 SERVICE_IMPORT_LEGACY_STATE = "import_legacy_state"
 SERVICE_MOTHBALL_LEGACY_ADDON = "mothball_legacy_addon"
 SERVICE_RECOVER = "recover"
