@@ -150,6 +150,7 @@ class VersionTests(unittest.TestCase):
             self.assertNotIn("datetimeUTC: false", dashboard)
             self.assertNotIn("binary_sensor.octopus_tomorrow_rates_available", dashboard)
             self.assertNotIn("start: day", dashboard)
+            self.assertIn("graph_span: 24h", dashboard)
 
     def test_global_legacy_sensors_stay_on_hub_device(self):
         root = Path(__file__).resolve().parents[1]

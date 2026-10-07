@@ -31,5 +31,6 @@ name.
 The richer example dashboards under `homeassistant/dashboards/` use
 `apexcharts-card`. Their future-price axes are formatted in the tariff timezone
 published by Load Optimizer, not the viewing browser's timezone. This keeps the
-full available tariff horizon visible when the dashboard is opened while
-travelling.
+rolling next-24-hour view aligned with the tariff when the dashboard is opened
+while travelling. Prices beyond the currently published tariff horizon appear
+automatically when the source tariff entities update.

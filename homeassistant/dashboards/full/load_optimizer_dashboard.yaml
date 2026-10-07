@@ -21,7 +21,7 @@ views:
               title: Octopus Prices
               show_states: true
               colorize_states: true
-            graph_span: 48h
+            graph_span: 24h
             span:
               start: minute
             now:
