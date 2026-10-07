@@ -103,7 +103,7 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def async_get_options_flow(config_entry: config_entries.ConfigEntry):
         """Return the options flow."""
-        return LoadOptimizerOptionsFlow(config_entry)
+        return LoadOptimizerOptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Choose a Load Optimizer setup path."""
@@ -243,9 +243,6 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
     """Edit appliance orchestration entity references."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Route to the options supported by this load type."""
