@@ -82,6 +82,43 @@ Generic tariff analysis and load-specific optimization remain separate:
 The two may share normalized slots and history, but a generic two-hour window
 must not replace profile-weighted appliance costing.
 
+### Ofgem price-cap reference
+
+Add an effective-dated electricity price-cap reference provider. Its default
+automatic source should be Ofgem's regional unit-rate tables, refreshed at
+startup and no more than once per local day. Although the lookup runs daily, the
+underlying value normally changes quarterly.
+
+The configured reference must include:
+
+- electricity region
+- payment method
+- single-rate tariff type
+- effective start and end dates
+- unit rate in pence per kWh
+- source URL, retrieval time, and parser version
+
+The chart should label this as the `Ofgem default-tariff benchmark`, not as a
+limit on the configured dynamic tariff. The price cap applies to default
+tariffs, and Agile prices should not be described as capped at this line.
+
+The outlook dataset should carry an effective-dated step series. It will appear
+as a horizontal line on ordinary days but can change at the correct midnight if
+the displayed horizon crosses a cap-period boundary.
+
+Source precedence and failure handling:
+
+1. A user-selected Home Assistant price-cap entity, when configured.
+2. The validated official Ofgem table lookup.
+3. A manually configured effective-dated reference.
+4. The last known good value, marked stale with its retrieval time.
+
+Never publish zero or silently substitute a national average after a failed
+regional lookup. Validate the expected region, payment method, period dates,
+units, and a plausible numeric range before replacing cached data. Keep
+third-party APIs optional because they may require keys, change terms, or have
+incomplete historical coverage.
+
 ### Home Assistant surface
 
 Create a Tariff Intelligence device with a deliberately small entity set:
@@ -165,9 +202,15 @@ negative prices, incomplete days, DST, and 0/3/7/13/14-day warm-up states.
 - Preserve raw comparisons beside adjusted comparisons.
 - Keep standing charges out of half-hour analysis.
 - Make missing or out-of-range references visible rather than silently guessing.
+- Add a daily cached Ofgem lookup with entity and manual fallbacks.
+- Publish the current benchmark, effective period, source, freshness, and next
+  scheduled refresh as native entity state and attributes.
+- Add the benchmark step line to the outlook chart and tooltip.
 
 Gate: a +3 p/kWh reference change moves only the monetary baseline by +3 p/kWh
-and does not change shape similarity or raw history.
+and does not change shape similarity or raw history. Parser fixtures, stale-cache
+behavior, regional selection, quarter-boundary charts, and upstream layout
+changes are covered by tests.
 
 ### Stage 6 Native entities and events
 
@@ -227,9 +270,8 @@ or dashboards, and stale prose cannot masquerade as today's summary.
 1. Confirm the CSV file, exact columns, timezone convention, price unit, and
    redistribution terms. The existing Octopus Intelligence app uses Agile Buddy
    JSON, which should not become a silent production dependency.
-2. Choose the v1 price-cap reference source. The recommended starting point is a
-   user-maintained effective-date schedule with optional import, not automatic
-   provider scraping.
+2. Confirm the user's Ofgem electricity region and payment method. The public
+   config flow should require both and should not infer them from an address.
 3. Confirm whether one tariff source per Home Assistant installation is enough
    initially, or whether multiple regions/meters must be analysed independently.
 4. Confirm that Home Assistant AI Task is the preferred optional narrative path;
