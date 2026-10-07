@@ -152,6 +152,13 @@ class VersionTests(unittest.TestCase):
             self.assertNotIn("start: day", dashboard)
             self.assertIn("graph_span: 24h", dashboard)
 
+    def test_options_flow_uses_home_assistant_config_entry_property(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "custom_components/load_optimizer/config_flow.py").read_text()
+
+        self.assertIn("return LoadOptimizerOptionsFlow()", source)
+        self.assertNotIn("self.config_entry = config_entry", source)
+
     def test_global_legacy_sensors_stay_on_hub_device(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "custom_components/load_optimizer/sensor.py").read_text()
