@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.2-beta.1
+## 1.4.2
 
 - Remove the obsolete standalone app mirror and retired recovery/orchestration
   packages so the HACS integration is the only distributed runtime.
@@ -8,8 +8,12 @@
   inside the integration.
 - Make tariff and cost-forecast charts use the configured tariff timezone and
   a rolling future window, avoiding browser-timezone clipping while travelling.
+- Keep the main tariff chart focused on the next 24 hours so a current-day-only
+  tariff does not leave most of the chart empty before tomorrow's rates arrive.
 - Remove the dashboard dependency on the retired tomorrow-rates helper.
 - Report leftover recovery helpers in downloaded integration diagnostics.
+- Declare the integration as config-entry-only and refresh validation workflows
+  for current Home Assistant, HACS, and GitHub runner requirements.
 
 ## 1.4.1
 
