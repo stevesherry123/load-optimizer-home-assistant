@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1
+
+- Fix Home Assistant 2026.10 device-registry lookup compatibility so native learned-appliance and orchestration entities register after restart.
+
 ## 1.4.0
 
 - Promote the validated native orchestration, entity handover, dashboard,

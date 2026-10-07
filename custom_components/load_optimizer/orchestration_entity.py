@@ -39,7 +39,7 @@ class OrchestrationEntity(CoordinatorEntity[LoadOptimizerCoordinator]):
     def device_info(self) -> DeviceInfo:
         entry = self.coordinator.config_entry
         hub = dr.async_get(self.coordinator.hass).async_get_device_by_identifier(
-            (DOMAIN, entry.entry_id)
+            (DOMAIN, entry.entry_id), entry.entry_id
         )
         return DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_instance_1")},
