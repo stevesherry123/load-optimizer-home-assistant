@@ -6,6 +6,12 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- deliver the provider-neutral Tariff Intelligence plan in
+  `docs/tariff-intelligence-plan.md` through a prerelease branch before merging
+  it into the stable release line
+- preserve the restored `Load Optimizer Lab` dashboard as a design reference,
+  review it card by card, migrate accepted ideas into the supported dashboard,
+  and retire it only after explicit approval and replacement verification
 - continue decomposing the embedded compatibility engine behind stable native
   integration entities without changing migrated learning data
 - add appliance-cycle load entries alongside the v1.0 EV charging load type
