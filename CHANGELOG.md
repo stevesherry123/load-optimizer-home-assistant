@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.3
+
+- Restore the integration options dialog on current Home Assistant releases by
+  using the config entry supplied through the options-flow API instead of
+  assigning its now read-only property.
+
 ## 1.4.2
 
 - Remove the obsolete standalone app mirror and retired recovery/orchestration
