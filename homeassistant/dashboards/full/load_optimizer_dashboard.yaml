@@ -34,7 +34,7 @@ views:
             span:
               start: day
             now:
-              show: true
+              show: false
               label: Now
               color: "#0ea5e9"
             experimental:
@@ -49,9 +49,7 @@ views:
                 labels:
                   formatter: |
                     EVAL:function(value, timestamp) {
-                      const timezone = window.loadOptimizerTariffTimezone || 'Europe/London';
                       return new Intl.DateTimeFormat('en-GB', {
-                        timeZone: timezone,
                         weekday: 'short',
                         hour: '2-digit',
                         minute: '2-digit',
@@ -80,9 +78,7 @@ views:
                 x:
                   formatter: |
                     EVAL:function(value) {
-                      const timezone = window.loadOptimizerTariffTimezone || 'Europe/London';
                       return new Intl.DateTimeFormat('en-GB', {
-                        timeZone: timezone,
                         weekday: 'short',
                         day: '2-digit',
                         month: 'short',
@@ -134,6 +130,35 @@ views:
                   window.loadOptimizerTariffTimezone = sourceState?.attributes?.tariff_timezone
                     || hass.config.time_zone
                     || 'UTC';
+                  const useServerTimezone = hass.locale?.time_zone === 'server';
+                  const displayTimestamp = (timestamp) => {
+                    if (useServerTimezone) {
+                      return timestamp;
+                    }
+                    const date = new Date(timestamp);
+                    const parts = Object.fromEntries(
+                      new Intl.DateTimeFormat('en-GB', {
+                        timeZone: window.loadOptimizerTariffTimezone,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hourCycle: 'h23'
+                      }).formatToParts(date).map((part) => [part.type, part.value])
+                    );
+                    const tariffOffset = Date.UTC(
+                      Number(parts.year),
+                      Number(parts.month) - 1,
+                      Number(parts.day),
+                      Number(parts.hour),
+                      Number(parts.minute),
+                      Number(parts.second)
+                    ) - timestamp;
+                    const browserOffset = -date.getTimezoneOffset() * 60 * 1000;
+                    return timestamp + tariffOffset - browserOffset;
+                  };
                   const rawEntities = sourceState?.attributes?.tariff_entities
                     || sourceState?.attributes?.tariff_entity
                     || '';
@@ -167,10 +192,12 @@ views:
                         value = value * 100;
                       }
 
-                      pointsByStart.set(start, [start, value]);
+                      const displayStart = displayTimestamp(start);
+                      pointsByStart.set(displayStart, [displayStart, value]);
                       if (Number.isFinite(end)) {
-                        pointsByStart.set(end, [end, value]);
-                        lastEnd = Math.max(lastEnd || end, end);
+                        const displayEnd = displayTimestamp(end);
+                        pointsByStart.set(displayEnd, [displayEnd, value]);
+                        lastEnd = Math.max(lastEnd || displayEnd, displayEnd);
                       }
                     }
                   }
@@ -193,6 +220,38 @@ views:
                 data_generator: |
                   const references = entity.attributes.references || [];
                   const tariff = hass.states['sensor.load_optimizer_1_cost_status'];
+                  const tariffTimezone = tariff?.attributes?.tariff_timezone
+                    || hass.config.time_zone
+                    || 'UTC';
+                  const useServerTimezone = hass.locale?.time_zone === 'server';
+                  const displayTimestamp = (timestamp) => {
+                    if (useServerTimezone) {
+                      return timestamp;
+                    }
+                    const date = new Date(timestamp);
+                    const parts = Object.fromEntries(
+                      new Intl.DateTimeFormat('en-GB', {
+                        timeZone: tariffTimezone,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hourCycle: 'h23'
+                      }).formatToParts(date).map((part) => [part.type, part.value])
+                    );
+                    const tariffOffset = Date.UTC(
+                      Number(parts.year),
+                      Number(parts.month) - 1,
+                      Number(parts.day),
+                      Number(parts.hour),
+                      Number(parts.minute),
+                      Number(parts.second)
+                    ) - timestamp;
+                    const browserOffset = -date.getTimezoneOffset() * 60 * 1000;
+                    return timestamp + tariffOffset - browserOffset;
+                  };
                   const horizonStart = new Date(tariff?.attributes?.tariff_start).getTime();
                   const horizonEnd = new Date(tariff?.attributes?.tariff_end).getTime();
                   const points = [];
@@ -211,7 +270,10 @@ views:
                     const value = Number(reference.unit_rate_p_per_kwh);
                     if (Number.isFinite(start) && Number.isFinite(end)
                         && Number.isFinite(value) && end > start) {
-                      points.push([start, value], [end - 1, value]);
+                      points.push(
+                        [displayTimestamp(start), value],
+                        [displayTimestamp(end - 1), value]
+                      );
                     }
                   }
                   return points;

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0-beta.4
+
+- Keep tariff-day chart bounds and labels aligned to the configured tariff
+  timezone when the dashboard is viewed from another timezone.
+- Hide the browser-local "now" marker when chart timestamps are transformed.
+
 ## 1.5.0-beta.3
 
 - Anchor the 24-hour tariff graph to the tariff day so unavailable tomorrow
