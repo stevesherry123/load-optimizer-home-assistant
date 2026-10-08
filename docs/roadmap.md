@@ -6,9 +6,11 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- deliver the provider-neutral Tariff Intelligence plan in
-  `docs/tariff-intelligence-plan.md` through a prerelease branch before merging
-  it into the stable release line
+- observe the v1.6 Tariff Intelligence beta through next-day publication and
+  appliance cycles before promoting it; historical comparisons need 14 days
+- deliver dry-run history import and optional AI Task summaries on a separate
+  non-production branch after analysis validation
+- complete HACS default-catalogue submission independently of beta development
 - continue decomposing the embedded compatibility engine behind stable native
   integration entities without changing migrated learning data
 - add appliance-cycle load entries alongside the v1.0 EV charging load type
@@ -26,6 +28,11 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Published v1.5.0 with a configurable regional Ofgem benchmark, tariff-local
+  24/48-hour chart, visible benchmark and Now lines, and bottom-of-page capabilities.
+- Implemented v1.6 beta source-shared tariff history and deterministic analysis,
+  native entities, event refresh, explicit warm-up/incomplete-data states,
+  manual re-analysis and portable history export.
 - Added the Lab dashboard's Automation Capabilities summary to the supported
   full and public dashboards.
 - Added a configurable, daily cached regional Ofgem default-tariff benchmark as

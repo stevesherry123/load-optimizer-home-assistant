@@ -49,6 +49,21 @@ Release gate for v1.6: beta deployment/restart and preservation checks, followed
 by observation across next-day publication and appliance cycles. Historical
 comparisons need 14 complete recent days, either captured or explicitly imported.
 
+Initial v1.6 live checks: learning counts 113 / 189 / 46 retained; current-day
+history captured; incomplete 46-slot next-day feed correctly reported as limited;
+all one-to-four-hour windows matched independent arithmetic from live rates.
+Rollback/upgrade validation and longer observation are tracked separately.
+
+Next-branch design defaults (awaiting any owner-specific format preferences):
+
+- Portable JSON import with explicit schema, timezone and p/kWh unit metadata.
+- Default 90 completed days, dry-run first, all-or-nothing validation and an
+  explicit override before replacing any live-captured day.
+- No silent external history download or assumed redistribution rights.
+- Optional Home Assistant AI Task narrative, explicit/manual requests only,
+  disabled by default, compact deterministic input and independently tracked
+  pending/ready/failed/stale status. No raw history or credentials sent to AI.
+
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as
 ready before their warm-up requirement is met. Routine dashboard edits do not
