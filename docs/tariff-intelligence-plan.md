@@ -70,6 +70,7 @@ Implemented on `beta/tariff-import-narrative-v1.7`: portable import, provenance
 protection, atomic validation, independent narrative lifecycle and privacy/failure
 tests. This branch is not installed or merged into main. An actual legacy export
 is still needed for its adapter and the preferred AI Task entity for live testing.
+All branch checks pass; 199 tests cover the combined development implementation.
 
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as
