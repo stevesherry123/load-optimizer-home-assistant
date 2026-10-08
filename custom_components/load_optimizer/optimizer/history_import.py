@@ -13,6 +13,8 @@ def validate_import(payload: dict, *, timezone_name: str, source: str,
         raise ValueError("Import requires portable history schema 1")
     if payload.get("timezone") != timezone_name or payload.get("price_unit") != "p_per_kwh":
         raise ValueError("Import timezone and p/kWh units must match")
+    if payload.get("source_id") != source:
+        raise ValueError("Import tariff source must match; unverified history cannot be imported")
     rows = payload.get("days")
     if not isinstance(rows, list) or len(rows) > 365:
         raise ValueError("Import requires at most 365 day records")

@@ -43,7 +43,9 @@ class TariffIntelligence:
         self.entity_ids = entity_ids
         self.timezone_name = timezone_name
         self.price_unit = price_unit
-        self.store = Store(hass, 1, f"{DOMAIN}.tariff_history.{source_id}")
+        # Older releases rewrite schema 1 without provenance, so isolate schema 2.
+        self.store = Store(hass, 1, f"{DOMAIN}.tariff_history_v2.{source_id}")
+        self.legacy_store = Store(hass, 1, f"{DOMAIN}.tariff_history.{source_id}")
         self.days = {}
         self.origins = {}
         self.loaded = False
@@ -56,18 +58,25 @@ class TariffIntelligence:
             return
         try:
             payload = await self.store.async_load()
+            migrating = payload is None
+            if migrating:
+                payload = await self.legacy_store.async_load()
             if payload is not None:
-                if payload.get("schema") != 1 or not isinstance(payload.get("days"), dict):
+                if payload.get("schema") != (1 if migrating else 2) or not isinstance(payload.get("days"), dict):
                     raise ValueError("Unsupported tariff history schema")
                 days = {key: TariffDay.from_dict(value) for key, value in payload["days"].items()}
                 if any(key != day.local_date.isoformat() or day.source != self.source_id
                        or day.timezone_name != self.timezone_name for key, day in days.items()):
                     raise ValueError("Tariff history source mismatch")
-                self.days = days
                 origins = payload.get("origins", {})
                 if not isinstance(origins, dict) or any(value not in {"live", "import"} for value in origins.values()):
                     raise ValueError("Invalid tariff-history provenance")
-                self.origins = {key: origins.get(key, "live") for key in days}
+                if not migrating and origins.keys() != days.keys():
+                    raise ValueError("Missing tariff-history provenance")
+                origins = {key: origins.get(key, "live") for key in days}
+                if migrating:
+                    await self.store.async_save({"schema": 2, "days": payload["days"], "origins": origins})
+                self.days, self.origins = days, origins
         except Exception as error:
             self.storage_error = type(error).__name__
             self.read_only = True
@@ -84,6 +93,7 @@ class TariffIntelligence:
             selected = [day for key, day in sorted(self.days.items())
                         if today - timedelta(days=retention_days) <= day.local_date < today]
             return {"schema": 1, "timezone": self.timezone_name, "price_unit": "p_per_kwh",
+                    "source_id": self.source_id,
                     "days": [{"date": day.local_date.isoformat(), "slots": [slot.as_dict() for slot in day.slots]}
                              for day in selected]}
 
@@ -113,7 +123,7 @@ class TariffIntelligence:
                     origins[key] = "import"
                     report["replaced" if old else "imported"] += 1
             if not dry_run and report["imported"] + report["replaced"]:
-                await self.store.async_save({"schema": 1, "days": {key: day.as_dict() for key, day in candidate.items()},
+                await self.store.async_save({"schema": 2, "days": {key: day.as_dict() for key, day in candidate.items()},
                                              "origins": origins})
                 self.days, self.origins = candidate, origins
             return report
@@ -154,7 +164,7 @@ class TariffIntelligence:
             if changed and not self.read_only:
                 try:
                     origins = {key: origins.get(key, "live") for key in retained}
-                    await self.store.async_save({"schema": 1, "days": {key: day.as_dict() for key, day in retained.items()}, "origins": origins})
+                    await self.store.async_save({"schema": 2, "days": {key: day.as_dict() for key, day in retained.items()}, "origins": origins})
                     self.days = retained
                     self.origins = origins
                     self.storage_error = None
@@ -164,7 +174,7 @@ class TariffIntelligence:
             result = analyse(slots, list(self.days.values()), now=now,
                              timezone_name=self.timezone_name, source=self.source_id)
             result["data_quality"] = "storage_error" if self.storage_error else "partial_sources" if errors else "complete" if result["tomorrow_complete"] else "waiting_for_tomorrow"
-            result["storage"] = {"schema": 1, "day_count": len(self.days),
+            result["storage"] = {"schema": 2, "day_count": len(self.days),
                                  "first_day": min(self.days, default=None), "last_day": max(self.days, default=None),
                                  "source_id": self.source_id, "error": self.storage_error}
             if self.storage_error:

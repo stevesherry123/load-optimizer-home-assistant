@@ -11,6 +11,7 @@ Use a JSON export from `load_optimizer.export_tariff_history`. The format is:
 ```json
 {
   "schema": 1,
+  "source_id": "<matching source_id from the destination analysis status attributes>",
   "timezone": "Europe/London",
   "price_unit": "p_per_kwh",
   "days": [
@@ -26,6 +27,14 @@ requires complete contiguous coverage of every local day. DST days may have
 46 or 50 half-hour slots. Units and timezone must match; timestamps require
 explicit offsets; non-finite/boolean prices and conflicting duplicates fail.
 
+Imports also require an exact matching `source_id`. This identifier binds the
+file to the configured tariff entity set, timezone and input price unit; timezone
+alone does not distinguish tariffs or electricity regions. Export from this
+branch includes the identifier automatically. Older exports without it fail
+validation. An adapter for another installation or the old application must
+verify the actual tariff/region before mapping its data to the destination
+identifier; do not simply add or replace an identifier to bypass that check.
+
 `load_optimizer.import_tariff_history` accepts `entry_id`, `history_json`,
 `dry_run` (default true), `overwrite_live` (default false), and `retention_days`
 (default 90, max 365). The service response counts imported, replaced, skipped,
@@ -38,6 +47,20 @@ Identical retries do not rewrite history. Failed writes leave memory untouched.
 An existing Octopus Intelligence CSV/JSON needs an explicit adapter based on
 its actual schema, timezone and units; do not rename it and assume compatibility.
 No external source download or redistribution rights are assumed.
+
+### Rollback Safety
+
+Provenance-aware history uses a separate `tariff_history_v2` store with schema 2.
+On first load, valid schema-1 history is copied into it without modifying the
+original. Failed migration preserves the original and disables history writes.
+Missing provenance in schema 2 is treated as corruption, not guessed as live.
+
+Older releases continue using the original schema-1 store. They cannot erase
+the new imported history or its provenance. While rolled back, their historical
+analysis does not see the new imports; upgrading again restores the schema-2
+history. Once schema 2 exists, schema-1 changes made during rollback are not
+automatically merged: live rates recapture available days, but older days seen
+only during rollback need a verified import. Appliance learning is unaffected.
 
 ## Optional Narrative
 

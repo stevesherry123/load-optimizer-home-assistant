@@ -8,6 +8,10 @@
   Only compact analysis is sent; stale text is hidden and provider failures
   cannot change deterministic analysis or scheduling.
 - This branch is not installed on the owner's Home Assistant instance.
+- Require matching tariff-source metadata for imports; reject unverified or
+  mismatched exports even when overwrite is requested.
+- Isolate provenance-aware history in schema-2 storage, copy existing history
+  without changing the old store, and preserve imported history across rollback.
 
 ## 1.6.0-beta.3
 

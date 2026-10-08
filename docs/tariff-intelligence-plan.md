@@ -58,7 +58,8 @@ Longer observation and historical warm-up remain pending before v1.6 promotion.
 
 Next-branch design defaults (awaiting any owner-specific format preferences):
 
-- Portable JSON import with explicit schema, timezone and p/kWh unit metadata.
+- Portable JSON import with explicit schema, matching tariff-source identifier,
+  timezone and p/kWh unit metadata.
 - Default 90 completed days, dry-run first, all-or-nothing validation and an
   explicit override before replacing any live-captured day.
 - No silent external history download or assumed redistribution rights.
@@ -70,7 +71,11 @@ Implemented on `beta/tariff-import-narrative-v1.7`: portable import, provenance
 protection, atomic validation, independent narrative lifecycle and privacy/failure
 tests. This branch is not installed or merged into main. An actual legacy export
 is still needed for its adapter and the preferred AI Task entity for live testing.
-All branch checks pass; 199 tests cover the combined development implementation.
+Review fixes require matching tariff-source metadata and isolate provenance-aware
+history in schema-2 storage so older rollback writers cannot erase import origins.
+Schema-1 history is copied without modifying the original. Rollback analysis uses
+the old store; see the import documentation for the deliberate isolation limits.
+205 tests cover the combined development implementation.
 
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as
