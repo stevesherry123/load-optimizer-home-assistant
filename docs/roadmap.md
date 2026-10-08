@@ -8,8 +8,8 @@ implementation architecture in `docs/architecture.md`.
 
 - observe the v1.6 Tariff Intelligence beta through next-day publication and
   appliance cycles before promoting it; historical comparisons need 14 days
-- deliver dry-run history import and optional AI Task summaries on a separate
-  non-production branch after analysis validation
+- validate the isolated v1.7 import/narrative branch with an actual legacy export
+  and the owner's preferred AI Task entity before deployment
 - complete HACS default-catalogue submission independently of beta development
 - continue decomposing the embedded compatibility engine behind stable native
   integration entities without changing migrated learning data
@@ -32,7 +32,9 @@ implementation architecture in `docs/architecture.md`.
   24/48-hour chart, visible benchmark and Now lines, and bottom-of-page capabilities.
 - Implemented v1.6 beta source-shared tariff history and deterministic analysis,
   native entities, event refresh, explicit warm-up/incomplete-data states,
-  manual re-analysis and portable history export.
+  manual re-analysis and portable history export; live rollback/upgrade tested.
+- Implemented dry-run import and optional manual AI Task narrative on the separate
+  v1.7 development branch, with 199 passing combined tests and no live AI calls.
 - Added the Lab dashboard's Automation Capabilities summary to the supported
   full and public dashboards.
 - Added a configurable, daily cached regional Ofgem default-tariff benchmark as

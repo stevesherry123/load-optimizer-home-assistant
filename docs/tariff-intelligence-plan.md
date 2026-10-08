@@ -52,7 +52,9 @@ comparisons need 14 complete recent days, either captured or explicitly imported
 Initial v1.6 live checks: learning counts 113 / 189 / 46 retained; current-day
 history captured; incomplete 46-slot next-day feed correctly reported as limited;
 all one-to-four-hour windows matched independent arithmetic from live rates.
-Rollback/upgrade validation and longer observation are tracked separately.
+Rollback to v1.5.0 and upgrade to v1.6.0-beta.3 succeeded with the same learning
+counts, a healthy retained tariff store and matching window calculations.
+Longer observation and historical warm-up remain pending before v1.6 promotion.
 
 Next-branch design defaults (awaiting any owner-specific format preferences):
 
@@ -63,6 +65,12 @@ Next-branch design defaults (awaiting any owner-specific format preferences):
 - Optional Home Assistant AI Task narrative, explicit/manual requests only,
   disabled by default, compact deterministic input and independently tracked
   pending/ready/failed/stale status. No raw history or credentials sent to AI.
+
+Implemented on `beta/tariff-import-narrative-v1.7`: portable import, provenance
+protection, atomic validation, independent narrative lifecycle and privacy/failure
+tests. This branch is not installed or merged into main. An actual legacy export
+is still needed for its adapter and the preferred AI Task entity for live testing.
+All branch checks pass; 199 tests cover the combined development implementation.
 
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as
