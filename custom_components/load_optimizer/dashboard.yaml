@@ -72,19 +72,6 @@ views:
           - button.load_optimizer_1_request_overnight
           - button.load_optimizer_1_cancel_schedule
           - button.load_optimizer_1_recalculate_now
-      - type: markdown
-        title: Automation Capabilities
-        content: |-
-          {% set programs = state_attr('sensor.load_optimizer_1_program_capabilities', 'programs') or [] %}
-          {% if programs %}
-          | Program | Auto | Normal | Free / negative | Remote |
-          |---|---:|---:|---:|---|
-          {% for item in programs %}
-          | {{ item.program }} | {{ 'yes' if item.can_auto_start else 'no' }} | {{ 'yes' if item.can_recommend else 'no' }} | {{ 'yes' if item.can_negative_price else 'no' }} | {{ item.remote_start_status | replace('_', ' ') }} |
-          {% endfor %}
-          {% else %}
-          No automation-capability data has been published yet.
-          {% endif %}
       - type: entities
         title: Special price window
         show_header_toggle: false
@@ -120,6 +107,19 @@ views:
           - sensor.load_optimizer_3_recommended_start
           - sensor.load_optimizer_3_estimated_scheduled_cost
           - sensor.load_optimizer_3_good_to_start
+      - type: markdown
+        title: Automation Capabilities
+        content: |-
+          {% set programs = state_attr('sensor.load_optimizer_1_program_capabilities', 'programs') or [] %}
+          {% if programs %}
+          | Program | Auto | Normal | Free / negative | Remote |
+          |---|---:|---:|---:|---|
+          {% for item in programs %}
+          | {{ item.program }} | {{ 'yes' if item.can_auto_start else 'no' }} | {{ 'yes' if item.can_recommend else 'no' }} | {{ 'yes' if item.can_negative_price else 'no' }} | {{ item.remote_start_status | replace('_', ' ') }} |
+          {% endfor %}
+          {% else %}
+          No automation-capability data has been published yet.
+          {% endif %}
 
   - title: EV charging
     path: ev-charging

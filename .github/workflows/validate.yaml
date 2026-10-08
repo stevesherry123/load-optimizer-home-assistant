@@ -26,6 +26,19 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests
 
+  minimum_ha:
+    name: Minimum Home Assistant imports
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install declared minimum Home Assistant
+        run: pip install "homeassistant==2024.12.0"
+      - name: Import all integration platforms and config flow
+        run: python tests/ha_import_smoke.py
+
   hacs:
     name: HACS validation
     runs-on: ubuntu-24.04

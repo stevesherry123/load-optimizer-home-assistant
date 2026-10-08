@@ -180,12 +180,15 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ):
         """Create the learned-appliance runtime."""
+        if any(
+            entry.data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE
+            for entry in self._async_current_entries()
+        ):
+            return self.async_abort(reason="learned_appliance_already_configured")
         if user_input is not None:
             user_input[CONF_NAME] = self._name
             user_input[CONF_LOAD_TYPE] = LOAD_TYPE_LEARNED_APPLIANCE
-            await self.async_set_unique_id(
-                f"{LOAD_TYPE_LEARNED_APPLIANCE}_{str(self._name).lower()}"
-            )
+            await self.async_set_unique_id(LOAD_TYPE_LEARNED_APPLIANCE)
             self._abort_if_unique_id_configured()
             return self.async_create_entry(title=self._name, data=user_input)
 
