@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0
+
+- Promote the verified regional Ofgem benchmark and 24/48-hour tariff dashboard.
+- Keep tariff time consistent while travelling; show the current-time marker.
+- Place Automation Capabilities at the bottom of the Dishwasher dashboard.
+- Broader historical tariff analysis remains separate beta development.
+
 ## 1.5.0-beta.6
 
 - Add a vertical Now marker to the main tariff chart, refreshed every minute
