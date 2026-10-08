@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0-beta.3
+
+- Anchor the 24-hour tariff graph to the tariff day so unavailable tomorrow
+  rates no longer leave most of the chart blank.
+- Draw the Ofgem benchmark across the tariff source's exact published window.
+
 ## 1.5.0-beta.2
 
 - Fix the Ofgem benchmark entity ID used by the packaged dashboards so it

@@ -150,7 +150,7 @@ class VersionTests(unittest.TestCase):
             self.assertIn("Intl.DateTimeFormat", dashboard)
             self.assertNotIn("datetimeUTC: false", dashboard)
             self.assertNotIn("binary_sensor.octopus_tomorrow_rates_available", dashboard)
-            self.assertNotIn("start: day", dashboard)
+            self.assertIn("start: day", dashboard)
             self.assertIn("graph_span: 24h", dashboard)
             self.assertIn("graph_span: 48h", dashboard)
             self.assertIn("&octopus_price_chart", dashboard)

@@ -32,7 +32,7 @@ views:
               colorize_states: true
             graph_span: 24h
             span:
-              start: minute
+              start: day
             now:
               show: true
               label: Now
@@ -192,12 +192,13 @@ views:
                   legend_value: true
                 data_generator: |
                   const references = entity.attributes.references || [];
-                  const horizonStart = Date.now();
-                  const horizonHours = hass.states['sensor.load_optimizer_1_tariff_horizon']?.state === '48h'
-                    ? 48
-                    : 24;
-                  const horizonEnd = horizonStart + (horizonHours * 60 * 60 * 1000);
+                  const tariff = hass.states['sensor.load_optimizer_1_cost_status'];
+                  const horizonStart = new Date(tariff?.attributes?.tariff_start).getTime();
+                  const horizonEnd = new Date(tariff?.attributes?.tariff_end).getTime();
                   const points = [];
+                  if (!Number.isFinite(horizonStart) || !Number.isFinite(horizonEnd)) {
+                    return points;
+                  }
                   for (const reference of references) {
                     const start = Math.max(
                       horizonStart,
