@@ -12,6 +12,8 @@
   mismatched exports even when overwrite is requested.
 - Isolate provenance-aware history in schema-2 storage, copy existing history
   without changing the old store, and preserve imported history across rollback.
+- Add an explicit legacy dt/r cache adapter, gated by verified tariff identity
+  matching the live rate entities, with off-thread parsing and gap/DST checks.
 
 ## 1.6.0-beta.3
 

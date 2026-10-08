@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import re
 import json
+from functools import partial
+from datetime import datetime, timezone
 
 import voluptuous as vol
 
@@ -18,6 +20,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, PLATFORMS
 from .coordinator import LoadOptimizerCoordinator
+from .optimizer.legacy_history import adapt_agile_buddy
 
 LOGGER = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -143,10 +146,26 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def async_import_tariff_history(call):
         coordinator = tariff_coordinator(call.data["entry_id"])
         try:
-            payload = json.loads(call.data["history_json"])
+            payload = await hass.async_add_executor_job(json.loads, call.data["history_json"])
+            conversion = None
+            if call.data["format"] == "agile_buddy":
+                manager = coordinator.tariff_intelligence
+                codes = set()
+                for entity_id in manager.entity_ids:
+                    state = hass.states.get(entity_id)
+                    codes.add(state.attributes.get("tariff_code") if state else None)
+                if len(codes) != 1 or None in codes:
+                    raise ValueError("Destination tariff must be available and unambiguous")
+                payload, conversion = await hass.async_add_executor_job(partial(
+                    adapt_agile_buddy, payload, history_tariff_code=call.data.get("history_tariff_code"),
+                    target_tariff_code=next(iter(codes)), source_id=manager.source_id,
+                    now=datetime.now(timezone.utc), timezone_name=manager.timezone_name,
+                    retention_days=call.data["retention_days"]))
             result = await coordinator.tariff_intelligence.async_import(
                 payload, dry_run=call.data["dry_run"], overwrite_live=call.data["overwrite_live"],
                 retention_days=call.data["retention_days"])
+            if conversion is not None:
+                result["conversion"] = conversion
         except (ValueError, TypeError, KeyError, AttributeError) as error:
             raise ServiceValidationError("Invalid tariff-history import; no data changed") from error
         if not call.data["dry_run"]:
@@ -171,7 +190,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         supports_response=SupportsResponse.ONLY)
     hass.services.async_register(DOMAIN, "import_tariff_history", async_import_tariff_history,
         schema=vol.Schema({vol.Required("entry_id"): str,
-                           vol.Required("history_json"): vol.All(str, vol.Length(max=4 * 1024 * 1024)),
+                           vol.Required("history_json"): vol.All(str, vol.Length(max=16 * 1024 * 1024)),
+                           vol.Optional("format", default="portable"): vol.In(["portable", "agile_buddy"]),
+                           vol.Optional("history_tariff_code"): str,
                            vol.Optional("dry_run", default=True): bool,
                            vol.Optional("overwrite_live", default=False): bool,
                            vol.Optional("retention_days", default=90): vol.All(vol.Coerce(int), vol.Range(min=1, max=365))}),

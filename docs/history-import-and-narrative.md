@@ -46,6 +46,15 @@ provenance; subsequent live observations take precedence over imported data.
 Identical retries do not rewrite history. Failed writes leave memory untouched.
 An existing Octopus Intelligence CSV/JSON needs an explicit adapter based on
 its actual schema, timezone and units; do not rename it and assume compatibility.
+The implemented `agile_buddy` adapter accepts the old app's JSON list of
+`{"dt": "...Z", "r": 20.0}` records: `dt` is the half-hour period END and
+`r` is p/kWh. Set `format: agile_buddy` and supply `history_tariff_code` verified
+from the cache's original source. It must exactly match the tariff codes on all
+configured destination rate entities. A filename or geographic label is not
+verification. The adapter does not download history or infer missing metadata.
+Incomplete days are reported and excluded rather than padded. Invalid records
+or conflicting duplicate prices reject the entire conversion. JSON input is
+limited to 16 MiB and parsing/conversion runs off Home Assistant's event loop.
 No external source download or redistribution rights are assumed.
 
 ### Rollback Safety

@@ -75,7 +75,19 @@ Review fixes require matching tariff-source metadata and isolate provenance-awar
 history in schema-2 storage so older rollback writers cannot erase import origins.
 Schema-1 history is copied without modifying the original. Rollback analysis uses
 the old store; see the import documentation for the deliberate isolation limits.
-205 tests cover the combined development implementation.
+The legacy dt/r adapter now checks a verified historical tariff code against all
+live destination rate entities and runs conversion off the event loop. Tests
+cover period-end normalization, DST, gaps, malformed data and the service path.
+212 tests cover the combined development implementation.
+
+Live preflight found tariff `E-1R-AGILE-24-10-01-D`. With owner approval, the
+learned-appliance Ofgem benchmark was changed to Merseyside and Northern Wales
+(27.86 p/kWh). The local North Western England file ends in June 2026 and must
+not be imported: it has no recent 90-day data or verified matching tariff.
+The old Octopus Intelligence add-on remains installed/running; its private
+`/data/agile-history.json` cache still needs a verified export. The available
+`ai_task.openai_ai_task_2` is approved for one manual test after complete next-day
+rates arrive; no automatic or incomplete-data provider calls are approved.
 
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as

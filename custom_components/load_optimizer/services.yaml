@@ -64,6 +64,17 @@ import_tariff_history:
       selector:
         text:
           multiline: true
+    format:
+      default: portable
+      selector:
+        select:
+          options:
+            - portable
+            - agile_buddy
+    history_tariff_code:
+      description: Verified tariff code for the legacy cache. Must match the live destination tariff; do not infer it from a filename.
+      selector:
+        text:
     dry_run:
       default: true
       selector:
