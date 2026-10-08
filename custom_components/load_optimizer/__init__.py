@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntry
+from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, PLATFORMS
 from .coordinator import LoadOptimizerCoordinator
@@ -289,6 +290,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             coordinator.async_update_orchestration_data
         )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if coordinator.tariff_intelligence.entity_ids:
+        async def async_tariff_changed(event):
+            await coordinator.async_request_refresh()
+
+        entry.async_on_unload(async_track_state_change_event(
+            hass, coordinator.tariff_intelligence.entity_ids, async_tariff_changed
+        ))
     _async_claim_native_status_entity_ids(hass, entry)
     if coordinator.orchestrator:
         await coordinator.orchestrator.async_start()

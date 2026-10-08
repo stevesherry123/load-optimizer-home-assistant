@@ -28,7 +28,7 @@ Completed and live-verified through v1.5.0-beta.6:
 
 Delivery order now approved by the owner:
 
-1. Finish validation and promote the existing dashboard/benchmark beta as v1.5.0.
+1. Completed: v1.5.0 passed validation, merged to main and published as stable.
 2. Implement live tariff history and deterministic analysis on a separate beta
    branch for v1.6.0, test missing-data recovery, DST, revisions, retention,
    restart persistence and independence from appliance learning.
@@ -36,6 +36,18 @@ Delivery order now approved by the owner:
    branch for historical import and optional narrative summaries. Import defaults
    to dry-run and must never silently overwrite live history. AI remains optional.
 4. HACS default-catalogue submission remains separate and unconfirmed.
+
+The v1.6 implementation includes immutable slot/day models, fingerprints,
+source-shared storage, complete-day capture, 365-day retention, matching-local
+half-hour medians, 14-day warm-up, percentile classification, volatility,
+evening-peak and centered shape analysis, and future-only one-to-four-hour
+continuous windows. New entities are independent of appliance entities.
+Cap-adjusted historical baselines remain a separate Stage 5 follow-up: raw
+history and raw comparison are never silently described as cap-adjusted.
+
+Release gate for v1.6: beta deployment/restart and preservation checks, followed
+by observation across next-day publication and appliance cycles. Historical
+comparisons need 14 complete recent days, either captured or explicitly imported.
 
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as
