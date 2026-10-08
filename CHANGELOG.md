@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.0-beta.6
+
+- Add a vertical Now marker to the main tariff chart, refreshed every minute
+  and aligned with tariff time when viewed from another timezone.
+
 ## 1.5.0-beta.5
 
 - Make the Ofgem benchmark a prominent dashed line instead of allowing the

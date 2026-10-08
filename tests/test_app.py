@@ -174,6 +174,8 @@ class VersionTests(unittest.TestCase):
             self.assertIn('color: "#0057b8"', dashboard)
             self.assertIn("stroke_width: 5", dashboard)
             self.assertIn("stroke_dash: 8", dashboard)
+            self.assertIn("id: 'load-optimizer-now'", dashboard)
+            self.assertIn("update_interval: 1min", dashboard)
 
     def test_options_flow_uses_home_assistant_config_entry_property(self):
         root = Path(__file__).resolve().parents[1]

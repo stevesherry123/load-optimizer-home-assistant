@@ -33,6 +33,7 @@ views:
             graph_span: 24h
             span:
               start: day
+            update_interval: 1min
             now:
               show: false
               label: Now
@@ -44,6 +45,35 @@ views:
                 height: 340
                 toolbar:
                   show: false
+                events:
+                  updated: |
+                    EVAL:function(chart) {
+                      const parts = Object.fromEntries(
+                        new Intl.DateTimeFormat('en-GB', {
+                          timeZone: window.loadOptimizerTariffTimezone || 'UTC',
+                          year: 'numeric', month: '2-digit', day: '2-digit',
+                          hour: '2-digit', minute: '2-digit', second: '2-digit',
+                          hourCycle: 'h23'
+                        }).formatToParts(new Date()).map((part) => [part.type, part.value])
+                      );
+                      const timestamp = new Date(
+                        Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+                        Number(parts.hour), Number(parts.minute), Number(parts.second)
+                      ).getTime();
+                      chart.removeAnnotation('load-optimizer-now');
+                      chart.addXaxisAnnotation({
+                        id: 'load-optimizer-now',
+                        x: timestamp,
+                        borderColor: '#0ea5e9',
+                        borderWidth: 2,
+                        strokeDashArray: 3,
+                        label: {
+                          text: 'Now',
+                          borderColor: '#0ea5e9',
+                          style: { color: '#ffffff', background: '#0ea5e9' }
+                        }
+                      }, false);
+                    }
               xaxis:
                 type: datetime
                 labels:
