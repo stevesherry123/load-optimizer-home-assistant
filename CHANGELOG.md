@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0-beta.1 (Development Branch)
+
+- Add portable JSON history import with atomic validation, dry-run default,
+  90-day default retention and explicit protection for live-captured history.
+- Add optional manually requested Home Assistant AI Task narrative summaries.
+  Only compact analysis is sent; stale text is hidden and provider failures
+  cannot change deterministic analysis or scheduling.
+- This branch is not installed on the owner's Home Assistant instance.
+
 ## 1.6.0-beta.3
 
 - Use the midpoint median for equally weighted even-length tariff datasets.

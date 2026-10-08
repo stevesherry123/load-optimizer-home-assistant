@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import json
 
 import voluptuous as vol
 
@@ -139,11 +140,45 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         coordinator = tariff_coordinator(call.data["entry_id"])
         return await coordinator.tariff_intelligence.async_export(call.data["retention_days"])
 
+    async def async_import_tariff_history(call):
+        coordinator = tariff_coordinator(call.data["entry_id"])
+        try:
+            payload = json.loads(call.data["history_json"])
+            result = await coordinator.tariff_intelligence.async_import(
+                payload, dry_run=call.data["dry_run"], overwrite_live=call.data["overwrite_live"],
+                retention_days=call.data["retention_days"])
+        except (ValueError, TypeError, KeyError, AttributeError) as error:
+            raise ServiceValidationError("Invalid tariff-history import; no data changed") from error
+        if not call.data["dry_run"]:
+            await coordinator.async_request_refresh()
+        return result
+
+    async def async_generate_tariff_summary(call):
+        coordinator = tariff_coordinator(call.data["entry_id"])
+        analysis = coordinator.data.get("tariff_intelligence", {})
+        task = hass.async_create_task(coordinator.narrative.async_generate(analysis, call.data["ai_task_entity"]))
+        await task
+        current = coordinator.data.get("tariff_intelligence", {})
+        current["narrative"] = coordinator.narrative.snapshot(current)
+        coordinator.async_update_listeners()
+        return current["narrative"]
+
     hass.services.async_register(DOMAIN, "analyse_tariffs", async_analyse_tariffs,
         schema=vol.Schema({vol.Required("entry_id"): str}))
     hass.services.async_register(DOMAIN, "export_tariff_history", async_export_tariff_history,
         schema=vol.Schema({vol.Required("entry_id"): str,
                            vol.Optional("retention_days", default=90): vol.All(vol.Coerce(int), vol.Range(min=1, max=365))}),
+        supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(DOMAIN, "import_tariff_history", async_import_tariff_history,
+        schema=vol.Schema({vol.Required("entry_id"): str,
+                           vol.Required("history_json"): vol.All(str, vol.Length(max=4 * 1024 * 1024)),
+                           vol.Optional("dry_run", default=True): bool,
+                           vol.Optional("overwrite_live", default=False): bool,
+                           vol.Optional("retention_days", default=90): vol.All(vol.Coerce(int), vol.Range(min=1, max=365))}),
+        supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(DOMAIN, "generate_tariff_summary", async_generate_tariff_summary,
+        schema=vol.Schema({vol.Required("entry_id"): str,
+                           vol.Required("ai_task_entity"): vol.Match(r"^ai_task\.[a-z0-9_]+$")}),
         supports_response=SupportsResponse.ONLY)
 
     async def async_import_legacy_state(call) -> None:

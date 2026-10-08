@@ -130,6 +130,7 @@ async def async_setup_entry(
             ("evening_peak", "Evening Peak", None),
             ("data_quality", "Data Quality", None),
             ("summary", "Daily Summary", None),
+            ("ai_summary_status", "Optional Summary Status", None),
             *((f"window_{hours}", f"Cheapest {hours} Hour Start", None) for hours in range(1, 5)),
         )
     ])
@@ -184,6 +185,8 @@ class LoadOptimizerIntelligenceSensor(LoadOptimizerEntity, SensorEntity):
     @property
     def native_value(self):
         result = self.coordinator.data.get("tariff_intelligence", {})
+        if self.key == "ai_summary_status":
+            return result.get("narrative", {}).get("status", "disabled")
         if self.key.startswith("window_"):
             value = result.get("windows", {}).get(self.key[-1])
             return datetime.fromisoformat(value["start"]) if value else None
@@ -194,6 +197,8 @@ class LoadOptimizerIntelligenceSensor(LoadOptimizerEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         result = self.coordinator.data.get("tariff_intelligence", {})
+        if self.key == "ai_summary_status":
+            return result.get("narrative", {})
         if self.key.startswith("window_"):
             return result.get("windows", {}).get(self.key[-1])
         if self.key == "status":

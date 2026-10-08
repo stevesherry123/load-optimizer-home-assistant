@@ -51,3 +51,43 @@ export_tariff_history:
         number:
           min: 1
           max: 365
+import_tariff_history:
+  name: Import tariff history
+  description: Validate portable history with a dry run by default. Live history is protected unless explicitly overridden.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    history_json:
+      required: true
+      selector:
+        text:
+          multiline: true
+    dry_run:
+      default: true
+      selector:
+        boolean:
+    overwrite_live:
+      default: false
+      selector:
+        boolean:
+    retention_days:
+      default: 90
+      selector:
+        number:
+          min: 1
+          max: 365
+generate_tariff_summary:
+  name: Generate optional tariff summary
+  description: Explicitly request a compact narrative from a selected Home Assistant AI Task entity. No automatic AI calls occur.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    ai_task_entity:
+      required: true
+      selector:
+        entity:
+          domain: ai_task
