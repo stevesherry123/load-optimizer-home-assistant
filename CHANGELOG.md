@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.5.0
+
+- Promote the verified regional Ofgem benchmark and 24/48-hour tariff dashboard.
+- Keep tariff time consistent while travelling; show the current-time marker.
+- Place Automation Capabilities at the bottom of the Dishwasher dashboard.
+- Broader historical tariff analysis remains separate beta development.
+
+## 1.5.0-beta.6
+
+- Add a vertical Now marker to the main tariff chart, refreshed every minute
+  and aligned with tariff time when viewed from another timezone.
+
+## 1.5.0-beta.5
+
+- Make the Ofgem benchmark a prominent dashed line instead of allowing the
+  chart-wide stroke style to override it.
+- Move Automation Capabilities to the bottom of the Dishwasher dashboard.
+
+## 1.5.0-beta.4
+
+- Keep tariff-day chart bounds and labels aligned to the configured tariff
+  timezone when the dashboard is viewed from another timezone.
+- Hide the browser-local "now" marker when chart timestamps are transformed.
+
+## 1.5.0-beta.3
+
+- Anchor the 24-hour tariff graph to the tariff day so unavailable tomorrow
+  rates no longer leave most of the chart blank.
+- Draw the Ofgem benchmark across the tariff source's exact published window.
+
+## 1.5.0-beta.2
+
+- Fix the Ofgem benchmark entity ID used by the packaged dashboards so it
+  matches the native Home Assistant entity registered by the integration.
+
+## 1.5.0-beta.1
+
+- Add a daily cached Ofgem default-tariff electricity benchmark with validated
+  effective dates, regional selection, payment method, and stale-cache status.
+- Add an Ofgem comparison tile and price line to the compact 24/48-hour tariff
+  dashboard without changing the dynamic tariff's meaning.
+- Restore the Lab dashboard's Automation Capabilities presentation in both the
+  full owner dashboard and the standard public dashboard.
+- Keep price-cap settings separate from optional dishwasher controls.
+
 ## 1.4.4
 
 - Select a compact 24-hour tariff graph until tomorrow's rates are available, then automatically show the complete 48-hour horizon.

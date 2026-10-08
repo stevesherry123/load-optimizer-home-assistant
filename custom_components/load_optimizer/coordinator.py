@@ -17,6 +17,8 @@ from .const import (
     CONF_CHARGER_EFFICIENCY,
     CONF_CONNECTION_STATUS_ENTITY,
     CONF_LOAD_TYPE,
+    CONF_PRICE_CAP_PAYMENT_METHOD,
+    CONF_PRICE_CAP_REGION,
     CONF_READY_BY,
     CONF_SCAN_INTERVAL,
     CONF_SLOT_MINUTES,
@@ -26,6 +28,8 @@ from .const import (
     CONF_TARIFF_PRICE_UNIT,
     CONF_TARIFF_TIMEZONE,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_PRICE_CAP_PAYMENT_METHOD,
+    DEFAULT_TARIFF_TIMEZONE,
     DEFAULT_TARGET_PERCENT,
     DOMAIN,
     LOAD_TYPE_LEARNED_APPLIANCE,
@@ -35,6 +39,7 @@ from .orchestration import NativeOrchestrator
 from .orchestration_migration import OrchestrationMigration
 from .optimizer.ev_charging import connection_is_available, deadline_from_ready_by, plan_ev_charge, state_float
 from .optimizer.tariffs import tariff_periods_from_entity
+from .price_cap import PriceCapManager
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +61,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=update_interval,
         )
         self.config_entry = entry
+        self.price_cap_manager = PriceCapManager(hass, entry)
         self.legacy_runtime = LegacyRuntime(hass) if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE else None
         self.orchestration_migration = (
             OrchestrationMigration(hass, entry)
@@ -72,6 +78,16 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         data = {**self.config_entry.data, **self.config_entry.options}
+        now = datetime.now(timezone.utc)
+        price_cap = await self.price_cap_manager.async_status(
+            region=data.get(CONF_PRICE_CAP_REGION),
+            payment_method=data.get(
+                CONF_PRICE_CAP_PAYMENT_METHOD,
+                DEFAULT_PRICE_CAP_PAYMENT_METHOD,
+            ),
+            timezone_name=data.get(CONF_TARIFF_TIMEZONE, DEFAULT_TARIFF_TIMEZONE),
+            now_utc=now,
+        )
         if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
             assert self.legacy_runtime is not None
             assert self.orchestration_migration is not None
@@ -90,9 +106,8 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "message": result.message,
                 "orchestration_migration": self.orchestration_migration.status,
                 "orchestration": self.orchestrator.status,
+                "price_cap": price_cap,
             }
-
-        now = datetime.now(timezone.utc)
 
         tariff_entity = self._state_payload(data.get(CONF_TARIFF_ENTITY))
         try:
@@ -140,6 +155,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "plan": plan,
             "tariff_period_count": len(periods),
             "last_updated": now.isoformat(),
+            "price_cap": price_cap,
             "entities": {
                 "tariff": data.get(CONF_TARIFF_ENTITY),
                 "battery": data.get(CONF_BATTERY_ENTITY),

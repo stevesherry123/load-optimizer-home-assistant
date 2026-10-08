@@ -38,6 +38,8 @@ from .const import (
     CONF_PUBLISH_COST_FORECAST,
     CONF_PUBLISH_DIAGNOSTICS,
     CONF_PUBLISH_PROFILE_DATA,
+    CONF_PRICE_CAP_PAYMENT_METHOD,
+    CONF_PRICE_CAP_REGION,
     CONF_READY_BY,
     CONF_SCAN_INTERVAL,
     CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
@@ -51,6 +53,8 @@ from .const import (
     DEFAULT_CHARGER_EFFICIENCY,
     DEFAULT_LEGACY_SCAN_INTERVAL_SECONDS,
     DEFAULT_NAME,
+    DEFAULT_PRICE_CAP_REGION,
+    DEFAULT_PRICE_CAP_PAYMENT_METHOD,
     DEFAULT_SLOT_MINUTES,
     DEFAULT_TARGET_PERCENT,
     DEFAULT_TARIFF_PRICE_UNIT,
@@ -58,8 +62,38 @@ from .const import (
     DOMAIN,
     LOAD_TYPE_LEARNED_APPLIANCE,
     LOAD_TYPE_EV,
+    OFGEM_REGIONS,
+    PRICE_CAP_PAYMENT_METHODS,
     PRICE_UNITS,
 )
+
+
+def _price_cap_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
+    """Return shared Ofgem price-cap configuration fields."""
+    existing = existing or {}
+    return {
+        vol.Required(
+            CONF_PRICE_CAP_REGION,
+            default=existing.get(CONF_PRICE_CAP_REGION, DEFAULT_PRICE_CAP_REGION),
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=OFGEM_REGIONS,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        ),
+        vol.Required(
+            CONF_PRICE_CAP_PAYMENT_METHOD,
+            default=existing.get(
+                CONF_PRICE_CAP_PAYMENT_METHOD,
+                DEFAULT_PRICE_CAP_PAYMENT_METHOD,
+            ),
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=PRICE_CAP_PAYMENT_METHODS,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        ),
+    }
 
 
 class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -137,6 +171,7 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Coerce(int), vol.Range(min=5, max=120)
                     ),
                     vol.Optional(CONF_READY_BY): str,
+                    **_price_cap_schema(),
                 }
             ),
         )
@@ -201,6 +236,7 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional(CONF_PUBLISH_DIAGNOSTICS, default=False): bool,
                     vol.Optional(CONF_PUBLISH_PROFILE_DATA, default=True): bool,
                     vol.Optional(CONF_PUBLISH_COST_FORECAST, default=True): bool,
+                    **_price_cap_schema(),
                 }
             ),
         )
@@ -220,6 +256,7 @@ class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
                 "appliances_tariff",
                 "optimisation",
                 "publishing",
+                "price_cap",
                 "dishwasher_control",
             ],
         )
@@ -373,6 +410,7 @@ class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
             return self._save_section(user_input)
 
         existing = self._existing
+        schema: dict[Any, Any] = {}
         entity_fields = (
             CONF_BOSCH_POWER_SWITCH,
             CONF_BOSCH_PROGRAM_SELECT,
@@ -385,12 +423,12 @@ class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
             CONF_BOSCH_REMOTE_START_SENSOR,
             CONF_BOSCH_OPERATION_STATE_SENSOR,
         )
-        schema: dict[Any, Any] = {
+        schema[
             vol.Optional(
                 CONF_BOSCH_DEVICE_ID,
                 default=existing.get(CONF_BOSCH_DEVICE_ID, ""),
-            ): str
-        }
+            )
+        ] = str
         for field in entity_fields:
             schema[
                 vol.Optional(field, default=existing.get(field, ""))
@@ -398,4 +436,16 @@ class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="dishwasher_control",
             data_schema=vol.Schema(schema),
+        )
+
+    async def async_step_price_cap(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Edit the regional Ofgem benchmark configuration."""
+        if user_input is not None:
+            return self._save_section(user_input)
+
+        return self.async_show_form(
+            step_id="price_cap",
+            data_schema=vol.Schema(_price_cap_schema(self._existing)),
         )

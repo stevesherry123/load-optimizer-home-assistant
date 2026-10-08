@@ -24,7 +24,9 @@
           "target_percent": "Fallback target percentage",
           "charger_efficiency": "Charger efficiency",
           "slot_minutes": "Slot length",
-          "ready_by": "Ready by"
+          "ready_by": "Ready by",
+          "price_cap_region": "Ofgem electricity region",
+          "price_cap_payment_method": "Price-cap payment method"
         }
       },
       "learned_appliance": {
@@ -46,7 +48,9 @@
           "schedule_preference_weight_pence": "Schedule preference weight",
           "publish_diagnostics": "Publish diagnostics",
           "publish_profile_data": "Publish profile data",
-          "publish_cost_forecast": "Publish cost forecast"
+          "publish_cost_forecast": "Publish cost forecast",
+          "price_cap_region": "Ofgem electricity region",
+          "price_cap_payment_method": "Price-cap payment method"
         }
       }
     }
@@ -60,12 +64,14 @@
           "appliances_tariff": "Appliances and tariff",
           "optimisation": "Cost optimisation",
           "publishing": "Published data",
+          "price_cap": "Price-cap benchmark",
           "dishwasher_control": "Dishwasher control (optional)"
         },
         "menu_option_descriptions": {
           "appliances_tariff": "Appliance definitions, refresh timing, tariff entities and calendar windows.",
           "optimisation": "Search horizon, forecast resolution and schedule preference weighting.",
           "publishing": "Choose whether detailed profiles, forecasts and diagnostics are exposed.",
+          "price_cap": "Regional Ofgem default-tariff benchmark shown alongside dynamic prices.",
           "dishwasher_control": "Home Connect entities used only for automatic dishwasher starting and verification."
         }
       },
@@ -103,6 +109,14 @@
           "publish_cost_forecast": "Publish cost forecasts"
         }
       },
+      "price_cap": {
+        "title": "Price-cap benchmark",
+        "description": "Choose the Ofgem electricity region and payment method used for the daily default-tariff benchmark. This is a comparison line, not a cap on dynamic tariff prices.",
+        "data": {
+          "price_cap_region": "Ofgem electricity region",
+          "price_cap_payment_method": "Payment method"
+        }
+      },
       "dishwasher_control": {
         "title": "Dishwasher control (optional)",
         "description": "Only configure these Home Connect references when Load Optimizer should start and verify a dishwasher automatically. They are not required for learning, tariff analysis, washing machines, robot vacuums or EVs.",
@@ -132,7 +146,8 @@
       "estimated_profit": {"name": "Estimated profit"},
       "needed_energy": {"name": "Needed battery energy"},
       "wall_energy": {"name": "Wall energy"},
-      "next_slot_start": {"name": "Next slot start"}
+      "next_slot_start": {"name": "Next slot start"},
+      "ofgem_price_cap": {"name": "Ofgem price cap benchmark"}
     },
     "binary_sensor": {
       "charge_now": {"name": "Charge now"},

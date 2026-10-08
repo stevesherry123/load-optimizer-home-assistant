@@ -84,6 +84,12 @@ The HACS installation includes a standard Home Assistant dashboard covering
 integration health, appliance plans, EV charging, and learned-cycle data. See
 [`docs/dashboard.md`](docs/dashboard.md) for the short installation step.
 
+The v1.5 beta adds an effective-dated Ofgem default-tariff benchmark. Choose the
+electricity region and payment method in the integration setup or options. Load
+Optimizer checks Ofgem's official tables daily, caches the last validated
+value, and exposes it as a native sensor for the tariff chart. This is a
+comparison benchmark, not a price limit on dynamic tariffs such as Agile.
+
 ## Goals
 
 - Schedule flexible electrical loads from normalized tariff data.

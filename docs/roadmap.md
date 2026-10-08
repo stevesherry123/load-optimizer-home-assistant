@@ -6,6 +6,9 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- deliver the provider-neutral Tariff Intelligence plan in
+  `docs/tariff-intelligence-plan.md` through a prerelease branch before merging
+  it into the stable release line
 - continue decomposing the embedded compatibility engine behind stable native
   integration entities without changing migrated learning data
 - add appliance-cycle load entries alongside the v1.0 EV charging load type
@@ -22,6 +25,11 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Added the Lab dashboard's Automation Capabilities summary to the supported
+  full and public dashboards.
+- Added a configurable, daily cached regional Ofgem default-tariff benchmark as
+  the first independently testable Tariff Intelligence beta slice.
 
 - Clarified instance runtime status so active capture reports `capturing` while
   configuration health remains separately available.
