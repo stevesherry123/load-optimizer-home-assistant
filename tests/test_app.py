@@ -157,7 +157,9 @@ class VersionTests(unittest.TestCase):
             self.assertIn("<<: *octopus_price_chart", dashboard)
             self.assertIn('state: "24h"', dashboard)
             self.assertIn('state: "48h"', dashboard)
-            self.assertIn("sensor.load_optimizer_ofgem_price_cap", dashboard)
+            self.assertIn(
+                "sensor.load_optimizer_ofgem_price_cap_benchmark", dashboard
+            )
             self.assertIn("Ofgem default-tariff benchmark", dashboard)
             self.assertIn("effective_from_utc", dashboard)
             self.assertIn("title: Automation Capabilities", dashboard)

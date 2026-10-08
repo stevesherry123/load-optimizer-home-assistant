@@ -14,7 +14,7 @@ views:
             name: Current import price
             icon: mdi:cash-clock
           - type: tile
-            entity: sensor.load_optimizer_ofgem_price_cap
+            entity: sensor.load_optimizer_ofgem_price_cap_benchmark
             name: Ofgem benchmark
             icon: mdi:chart-line-variant
           - &octopus_price_chart
@@ -181,7 +181,7 @@ views:
                     points.push([lastEnd + 1, null]);
                   }
                   return points;
-              - entity: sensor.load_optimizer_ofgem_price_cap
+              - entity: sensor.load_optimizer_ofgem_price_cap_benchmark
                 name: Ofgem default-tariff benchmark
                 type: line
                 color: "#475569"

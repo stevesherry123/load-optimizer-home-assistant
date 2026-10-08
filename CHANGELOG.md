@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.0-beta.2
+
+- Fix the Ofgem benchmark entity ID used by the packaged dashboards so it
+  matches the native Home Assistant entity registered by the integration.
+
 ## 1.5.0-beta.1
 
 - Add a daily cached Ofgem default-tariff electricity benchmark with validated
