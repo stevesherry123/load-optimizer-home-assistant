@@ -128,6 +128,10 @@ class IntelligenceTests(unittest.TestCase):
         self.assertAlmostEqual(result["shape_similarity"], -1)
         self.assertEqual(result["pattern"], "unusual")
 
+    def test_even_half_hour_median(self):
+        value = day(date(2026, 10, 9), [10, 20])
+        self.assertEqual(module.stats(value.slots)["median"], 15)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -114,10 +114,10 @@ def stats(slots: tuple[TariffSlot, ...]) -> dict:
     ordered = sorted(zip((s.price for s in slots), weights))
     cumulative = 0
     median = ordered[-1][0]
-    for price, weight in ordered:
+    for index, (price, weight) in enumerate(ordered):
         cumulative += weight
         if cumulative >= total / 2:
-            median = price
+            median = (price + ordered[index + 1][0]) / 2 if cumulative == total / 2 and index + 1 < len(ordered) else price
             break
     low, high = min(s.price for s in slots), max(s.price for s in slots)
     return {"mean": round(mean, 6), "median": median, "min": low, "max": high,

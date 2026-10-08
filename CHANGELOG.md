@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.0-beta.3
+
+- Use the midpoint median for equally weighted even-length tariff datasets.
+
 ## 1.6.0-beta.2
 
 - Add explicit read-only tariff re-analysis and portable history-export actions.
