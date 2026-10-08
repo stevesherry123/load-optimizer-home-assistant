@@ -29,3 +29,25 @@ activate_native_orchestration:
 deactivate_native_orchestration:
   name: Deactivate native orchestration
   description: Stop native command ownership and re-enable the captured package automations.
+analyse_tariffs:
+  name: Analyse tariffs
+  description: Recalculate the selected entry's read-only tariff analysis.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+export_tariff_history:
+  name: Export tariff history
+  description: Return complete historical days as portable JSON, separate from appliance learning.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    retention_days:
+      default: 90
+      selector:
+        number:
+          min: 1
+          max: 365

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.6.0-beta.3
+
+- Use the midpoint median for equally weighted even-length tariff datasets.
+
+## 1.6.0-beta.2
+
+- Add explicit read-only tariff re-analysis and portable history-export actions.
+- Export only completed history with timezone and price-unit metadata.
+
+## 1.6.0-beta.1
+
+- Add source-scoped tariff history in independent integration storage, retaining
+  complete local days for 365 days with revision detection and deduplication.
+- Add a Tariff Intelligence device with tomorrow average/classification,
+  volatility, evening peak, shape comparison and cheapest one-to-four-hour starts.
+- Historical comparisons require 14 complete recent days; missing next-day data
+  remains explicitly waiting rather than producing a definitive classification.
+- Recalculate on rate publication as well as the normal coordinator interval.
+- Appliance profile costing and learning data are unchanged.
+
 ## 1.5.0
 
 - Promote the verified regional Ofgem benchmark and 24/48-hour tariff dashboard.

@@ -8,10 +8,12 @@ import re
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntry
+from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, PLATFORMS
 from .coordinator import LoadOptimizerCoordinator
@@ -123,6 +125,26 @@ def _async_remove_obsolete_control_entities(
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up Load Optimizer services."""
+
+    def tariff_coordinator(entry_id):
+        coordinator = hass.data.get(DOMAIN, {}).get(entry_id)
+        if coordinator is None:
+            raise ServiceValidationError("Load Optimizer entry not found")
+        return coordinator
+
+    async def async_analyse_tariffs(call):
+        await tariff_coordinator(call.data["entry_id"]).async_request_refresh()
+
+    async def async_export_tariff_history(call):
+        coordinator = tariff_coordinator(call.data["entry_id"])
+        return await coordinator.tariff_intelligence.async_export(call.data["retention_days"])
+
+    hass.services.async_register(DOMAIN, "analyse_tariffs", async_analyse_tariffs,
+        schema=vol.Schema({vol.Required("entry_id"): str}))
+    hass.services.async_register(DOMAIN, "export_tariff_history", async_export_tariff_history,
+        schema=vol.Schema({vol.Required("entry_id"): str,
+                           vol.Optional("retention_days", default=90): vol.All(vol.Coerce(int), vol.Range(min=1, max=365))}),
+        supports_response=SupportsResponse.ONLY)
 
     async def async_import_legacy_state(call) -> None:
         payload = call.data[CONF_LEGACY_STATE_JSON]
@@ -289,6 +311,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             coordinator.async_update_orchestration_data
         )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if coordinator.tariff_intelligence.entity_ids:
+        async def async_tariff_changed(event):
+            await coordinator.async_request_refresh()
+
+        entry.async_on_unload(async_track_state_change_event(
+            hass, coordinator.tariff_intelligence.entity_ids, async_tariff_changed
+        ))
     _async_claim_native_status_entity_ids(hass, entry)
     if coordinator.orchestrator:
         await coordinator.orchestrator.async_start()
