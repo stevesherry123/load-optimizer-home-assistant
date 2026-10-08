@@ -1,13 +1,15 @@
 # Changelog
 
-## 1.7.0-beta.1 (Development Branch)
+## 1.7.0-beta.1
 
 - Add portable JSON history import with atomic validation, dry-run default,
   90-day default retention and explicit protection for live-captured history.
 - Add optional manually requested Home Assistant AI Task narrative summaries.
   Only compact analysis is sent; stale text is hidden and provider failures
   cannot change deterministic analysis or scheduling.
-- This branch is not installed on the owner's Home Assistant instance.
+- Installed on the owner's Home Assistant for controlled beta testing; stable
+  users remain on v1.5.0. The approved exact-tariff backfill is independently
+  verified; the mismatching legacy cache was preserved and not imported.
 - Require matching tariff-source metadata for imports; reject unverified or
   mismatched exports even when overwrite is requested.
 - Isolate provenance-aware history in schema-2 storage, copy existing history

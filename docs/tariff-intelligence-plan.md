@@ -69,8 +69,8 @@ Next-branch design defaults (awaiting any owner-specific format preferences):
 
 Implemented on `beta/tariff-import-narrative-v1.7`: portable import, provenance
 protection, atomic validation, independent narrative lifecycle and privacy/failure
-tests. This branch is not installed or merged into main. An actual legacy export
-is still needed for its adapter and the preferred AI Task entity for live testing.
+tests. This branch is installed as v1.7.0-beta.1 for controlled testing, but is
+not merged into main or promoted to stable.
 Review fixes require matching tariff-source metadata and isolate provenance-aware
 history in schema-2 storage so older rollback writers cannot erase import origins.
 Schema-1 history is copied without modifying the original. Rollback analysis uses
@@ -84,10 +84,19 @@ Live preflight found tariff `E-1R-AGILE-24-10-01-D`. With owner approval, the
 learned-appliance Ofgem benchmark was changed to Merseyside and Northern Wales
 (27.86 p/kWh). The local North Western England file ends in June 2026 and must
 not be imported: it has no recent 90-day data or verified matching tariff.
-The old Octopus Intelligence add-on remains installed/running; its private
-`/data/agile-history.json` cache still needs a verified export. The available
-`ai_task.openai_ai_task_2` is approved for one manual test after complete next-day
-rates arrive; no automatic or incomplete-data provider calls are approved.
+The old Octopus Intelligence add-on remains installed/running. Its private
+cache was exported, but all 4,320 recent normalized prices differed from the
+official live-tariff API; no legacy cache data was imported. With separate owner
+approval, 90 complete official tariff days were backfilled instead. Preview,
+full export read-back and on-disk provenance verification passed. Storage has
+91 days including today and the 14-day baseline is ready; appliance totals are
+unchanged. The final post-import restart check passed with all 91 days retained,
+healthy storage, unchanged learning totals and optional AI disabled as designed.
+The available `ai_task.openai_ai_task_2` is approved for one manual test after
+complete next-day rates arrive; the readiness gate returned waiting without a
+provider call because the upstream API has only 46 periods. No automatic or
+incomplete-data provider calls are approved. Observation, actual provider testing
+and a live v1.7 downgrade remain release gates before stable promotion.
 
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as

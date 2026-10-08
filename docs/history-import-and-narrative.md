@@ -1,8 +1,9 @@
 # History Import And Optional Narrative (Development Only)
 
-Branch: `beta/tariff-import-narrative-v1.7`. This is not part of stable v1.5.0
-or the installed v1.6 analysis beta. No user history has been imported and no
-live AI provider has been called as part of developing this branch.
+Branch: `beta/tariff-import-narrative-v1.7`, released as `v1.7.0-beta.1` and
+installed on the owner's Home Assistant for controlled testing. Stable remains
+v1.5.0. An explicitly approved 90-day official Octopus backfill has been imported;
+no live AI provider has been called.
 
 ## Portable Import
 
@@ -92,6 +93,30 @@ waiting/stale; text is exposed only while its analysis fingerprint remains
 current. Narratives are not retained across restart and are never presented as
 the authoritative price or scheduling decision.
 
-An actual historical export and the owner's preferred AI Task entity still
-need confirmation before migration/provider testing. These operations have
-not been enabled automatically on the live installation.
+## Owner Installation Verification (8 October 2026)
+
+- Live tariff: `E-1R-AGILE-24-10-01-D`. The approved Ofgem benchmark now uses
+  Merseyside and Northern Wales / direct debit (27.86 p/kWh).
+- Exported the running old app's recent cache without modifying the original.
+  Its 4,320 recent prices did not match the exact live tariff's official API;
+  half-hour timestamp shifts did not explain the mismatch. That cache was not
+  imported or relabelled, and the old app remains installed/running.
+- With explicit approval, fetched 90 complete official tariff days (10 July
+  through 7 October). Preview found no conflicts; imported all 4,320 prices
+  without replacing live history. Export read-back and independent on-disk
+  checks matched every price and all 90 imported provenance records.
+- Schema-2 history contains 91 days including today. The original schema-1
+  rollback store remains intact. Historical baseline coverage is ready (14 days).
+- Learning totals remain dishwasher 113, washing machine 189, robot vacuum 46;
+  Quick45 remains 22 and MixedLoad remains 3 / 51% confidence. Runtime and
+  appliance costing are ready, with no integration errors or retired dashboard
+  references in the post-upgrade audit.
+- The owner approved `ai_task.openai_ai_task_2` for one manual provider test.
+  The action correctly returned `waiting` without calling the provider because
+  both HA and the official tariff API contain only 46 next-day periods.
+  Actual provider generation is still pending complete next-day data.
+- Final post-import restart verification passed: all 91 stored days, the
+  corrected benchmark and unchanged learning counts returned without storage
+  errors. Optional AI status reset to disabled as designed. A live downgrade of
+  v1.7 is not claimed; rollback provenance is covered by regression tests and
+  independent inspection of the retained on-disk stores.
