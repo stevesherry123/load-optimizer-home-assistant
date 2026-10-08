@@ -66,9 +66,10 @@ views:
                     text: Import price (p/kWh)
               stroke:
                 curve: stepline
-                width: 2
               fill:
-                type: gradient
+                type:
+                  - gradient
+                  - solid
                 gradient:
                   opacityFrom: 0.55
                   opacityTo: 0.15
@@ -109,6 +110,7 @@ views:
             series:
               - entity: sensor.load_optimizer_status
                 name: Import price
+                stroke_width: 2
                 show:
                   in_header: false
                   legend_value: false
@@ -211,10 +213,12 @@ views:
               - entity: sensor.load_optimizer_ofgem_price_cap_benchmark
                 name: Ofgem default-tariff benchmark
                 type: line
-                color: "#475569"
-                stroke_width: 2
+                color: "#0057b8"
+                stroke_width: 5
+                stroke_dash: 8
                 opacity: 1
                 show:
+                  in_chart: true
                   in_header: true
                   legend_value: true
                 data_generator: |
@@ -546,28 +550,6 @@ views:
                 | default('unknown') }} |
 
                 {%- endfor %}
-          - type: markdown
-            title: Automation Capabilities
-            grid_options:
-              columns: 24
-              rows: auto
-            content: |-
-              {% set programs = state_attr('sensor.load_optimizer_1_program_capabilities', 'programs') or [] %}
-              {% if programs %}
-              {% for item in programs %}
-              ### {{ item.program }}
-
-              **Learned:** {{ item.runs }} runs, {{ item.confidence }}% confidence, {{ item.classification }}
-
-              - **Normal recommendation:** {{ 'eligible' if item.can_recommend else 'not eligible' }}
-              - **Free / negative price:** {{ 'eligible' if item.can_negative_price else 'not eligible' }}
-              - **Automatic start:** {{ 'available' if item.can_auto_start else 'blocked' }}
-              - **Remote start:** {{ item.remote_start_status | replace('_', ' ') }}
-
-              {% endfor %}
-              {% else %}
-              No automation-capability data has been published yet.
-              {% endif %}
       - type: grid
         cards:
           - type: entities
@@ -1284,6 +1266,31 @@ views:
                 {% for item in blocked %} | {% if item is mapping %}{{ item.program | default('unknown', true) }} | {{ item.reason | default('blocked by Bosch', true) }}{% else %}{{ item }} | blocked by Bosch{% endif %} |
 
                 {% endfor %}
+      - type: grid
+        column_span: 3
+        cards:
+          - type: markdown
+            title: Automation Capabilities
+            grid_options:
+              columns: 24
+              rows: auto
+            content: |-
+              {% set programs = state_attr('sensor.load_optimizer_1_program_capabilities', 'programs') or [] %}
+              {% if programs %}
+              {% for item in programs %}
+              ### {{ item.program }}
+
+              **Learned:** {{ item.runs }} runs, {{ item.confidence }}% confidence, {{ item.classification }}
+
+              - **Normal recommendation:** {{ 'eligible' if item.can_recommend else 'not eligible' }}
+              - **Free / negative price:** {{ 'eligible' if item.can_negative_price else 'not eligible' }}
+              - **Automatic start:** {{ 'available' if item.can_auto_start else 'blocked' }}
+              - **Remote start:** {{ item.remote_start_status | replace('_', ' ') }}
+
+              {% endfor %}
+              {% else %}
+              No automation-capability data has been published yet.
+              {% endif %}
     cards: []
   - title: Washing Machine
     path: washing-machine-1

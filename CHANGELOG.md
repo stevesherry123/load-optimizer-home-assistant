@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0-beta.5
+
+- Make the Ofgem benchmark a prominent dashed line instead of allowing the
+  chart-wide stroke style to override it.
+- Move Automation Capabilities to the bottom of the Dishwasher dashboard.
+
 ## 1.5.0-beta.4
 
 - Keep tariff-day chart bounds and labels aligned to the configured tariff

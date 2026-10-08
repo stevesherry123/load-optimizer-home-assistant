@@ -167,6 +167,13 @@ class VersionTests(unittest.TestCase):
             self.assertIn("Ofgem default-tariff benchmark", dashboard)
             self.assertIn("effective_from_utc", dashboard)
             self.assertIn("title: Automation Capabilities", dashboard)
+            self.assertGreater(
+                dashboard.index("title: Automation Capabilities"),
+                dashboard.index("title: Remote Start Diagnostics"),
+            )
+            self.assertIn('color: "#0057b8"', dashboard)
+            self.assertIn("stroke_width: 5", dashboard)
+            self.assertIn("stroke_dash: 8", dashboard)
 
     def test_options_flow_uses_home_assistant_config_entry_property(self):
         root = Path(__file__).resolve().parents[1]
