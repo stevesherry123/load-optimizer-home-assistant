@@ -4,13 +4,43 @@
 
 This plan brings the useful ideas from Octopus Intelligence into Load Optimizer
 without reintroducing a second runtime or making the integration depend on one
-energy supplier. The existing v1.4.2 integration remains the stable publication
-baseline. Development takes place on `feature/tariff-intelligence`, is released
+energy supplier. The existing v1.4.4 integration remains the stable publication
+baseline. Development takes place on `beta/tariff-intelligence-v1.5`, is released
 as a prerelease, and reaches `main` only after the acceptance checks below pass.
 
 The accompanying detailed project brief remains the product specification. This
 document records the implementation sequence and release gates derived from a
 review of both repositories and the live Home Assistant installation.
+
+## Current Delivery Status (8 October 2026)
+
+Completed and live-verified through v1.5.0-beta.6:
+
+- Regional Ofgem lookup, daily caching, effective dates and freshness diagnostics.
+- North Western England / direct debit configured for the owner's installation.
+- Native benchmark sensor and visible horizontal benchmark line.
+- Main tariff chart: today only (24 hours), or today and tomorrow (48 hours)
+  when next-day data exists. This supersedes the rolling-chart proposal below.
+- Tariff-time rendering and a vertical Now marker refreshed every minute.
+- Automation Capabilities retained at the bottom of the Dishwasher page.
+- Lab dashboard retired; no further Lab functionality is requested.
+- 162 tests passing; live learning counts unchanged by the dashboard updates.
+
+Delivery order now approved by the owner:
+
+1. Finish validation and promote the existing dashboard/benchmark beta as v1.5.0.
+2. Implement live tariff history and deterministic analysis on a separate beta
+   branch for v1.6.0, test missing-data recovery, DST, revisions, retention,
+   restart persistence and independence from appliance learning.
+3. After that implementation is validated, create a separate non-production
+   branch for historical import and optional narrative summaries. Import defaults
+   to dry-run and must never silently overwrite live history. AI remains optional.
+4. HACS default-catalogue submission remains separate and unconfirmed.
+
+Longer observation is a release gate for new analysis, not a claim that can be
+established by a short test run. Do not advertise history-dependent outputs as
+ready before their warm-up requirement is met. Routine dashboard edits do not
+require backups; use them for actual migrations or risky deployment changes.
 
 ## Review Findings
 
@@ -141,7 +171,7 @@ entity attributes.
 
 ### Stage 0 Repository and live baseline
 
-- Preserve v1.4.2 on `main` as the publication baseline.
+- Preserve v1.4.4 on `main` until v1.5.0 validation completes.
 - Retire the restored `Load Optimizer Lab` dashboard after preserving its
   `Automation Capabilities` card as a backlog item for the supported dashboard.
 - Record current learning counts, tariff horizon, entity IDs, diagnostics, and
@@ -228,8 +258,8 @@ missing next-day data never produces a definitive tomorrow classification.
 - Compare `Load Optimizer Lab` with the production dashboard card by card.
 - Move useful controls, decision explanations, and boundary views into the
   integration dashboard or documented optional dashboard.
-- Add a rolling now-to-end-of-tomorrow tariff comparison chart using tariff-local
-  time, not the browser timezone.
+- Retain the approved 24/48-hour tariff-day chart using tariff-local time,
+  not the browser timezone.
 - Show forecast, historical median, optional percentile band, now marker, and
   cheapest two-hour window without fixing the axis at midnight or 48 points.
 - Test desktop, mobile, UK, and a browser five time zones away.
@@ -252,18 +282,18 @@ or dashboards, and stale prose cannot masquerade as today's summary.
 
 ## Beta and Promotion Process
 
-1. Implement in small commits on `feature/tariff-intelligence`.
+1. Implement in small commits on the appropriate `beta/**` branch.
 2. Run unit tests, Home Assistant hassfest, HACS validation, and store migration
    tests on every pull request.
 3. Publish the first installable build as a prerelease, provisionally
    `v1.5.0-beta.1`, without moving the stable HACS release.
 4. Back up Home Assistant and the integration store before installation.
-5. Install the beta only on the owner's instance and retain v1.4.2 for rollback.
+5. Install the beta only on the owner's instance and retain the previous stable for rollback.
 6. Observe at least seven days, including next-day publication, a restart,
    missing-data recovery, a tariff revision, and at least one appliance cycle.
 7. Compare deterministic outputs with an offline fixture and manual calculations.
-8. Test beta-to-stable and beta-to-v1.4.2 rollback without learning-data loss.
-9. Promote the validated commit to `main`, publish `v1.5.0`, and update the
+8. Test beta-to-stable and beta-to-previous-stable rollback without learning-data loss.
+9. Promote the validated commit to `main`, publish the corresponding stable version, and update the
    public documentation only after all gates pass.
 
 ## Decisions Needed Before Stage 3
@@ -283,7 +313,7 @@ or dashboards, and stale prose cannot masquerade as today's summary.
 
 ## Publication Boundary
 
-The tariff-intelligence work is not required to publish v1.4.2. Publication can
+The tariff-intelligence work is not required to publish v1.5.0. Publication can
 proceed while this branch develops, provided the public documentation describes
 the current feature set accurately. Octopus Intelligence should remain available
 as a reference until feature parity is demonstrated; it should then be archived,
