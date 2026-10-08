@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.0-beta.2
+
+- Add explicit read-only tariff re-analysis and portable history-export actions.
+- Export only completed history with timezone and price-unit metadata.
+
 ## 1.6.0-beta.1
 
 - Add source-scoped tariff history in independent integration storage, retaining

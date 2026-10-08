@@ -36,3 +36,9 @@ or unsupported store is preserved without overwrite and reported as limited.
 Historical cap rebasing, import and optional AI narrative are not part of this
 beta. No OpenAI API key is needed. The previous stable integration ignores this
 new separate store on rollback; it does not delete it.
+
+`load_optimizer.analyse_tariffs` accepts `entry_id` for manual re-analysis.
+`load_optimizer.export_tariff_history` returns portable JSON via a service
+response, using `entry_id` and optional `retention_days` (default 90, max 365).
+The export declares schema, timezone and p/kWh units, and excludes unfinished
+current/future days. It refuses export when storage is unhealthy.

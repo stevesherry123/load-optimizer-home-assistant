@@ -1,13 +1,14 @@
 """Exercise the actual history manager with in-memory Home Assistant storage."""
 
 import copy
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 import importlib.util
 from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 from test_intelligence import module as core, day
 
@@ -121,6 +122,23 @@ class TariffHistoryTests(unittest.IsolatedAsyncioTestCase):
         result = await self.service.async_status({}, self.now)
         self.assertIsNone(result["storage"]["error"])
         self.assertEqual(result["storage"]["day_count"], 1)
+
+    async def test_explicit_export_excludes_future_and_has_unit_metadata(self):
+        self.service.loaded = True
+        today = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/London")).date()
+        values = [day(today - timedelta(days=1)), day(today + timedelta(days=1))]
+        self.service.days = {value.local_date.isoformat(): value for value in values}
+        result = await self.service.async_export()
+        self.assertEqual(result["price_unit"], "p_per_kwh")
+        self.assertEqual(result["timezone"], "Europe/London")
+        self.assertEqual(len(result["days"]), 1)
+        self.assertEqual(result["days"][0]["date"], (today - timedelta(days=1)).isoformat())
+
+    async def test_export_refuses_unhealthy_storage(self):
+        self.service.loaded = True
+        self.service.storage_error = "ValueError"
+        with self.assertRaises(ValueError):
+            await self.service.async_export()
 
 
 if __name__ == "__main__":

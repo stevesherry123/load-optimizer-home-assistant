@@ -68,6 +68,19 @@ class TariffIntelligence:
             LOGGER.exception("Tariff history could not be loaded; preserved without overwrite")
         self.loaded = True
 
+    async def async_export(self, retention_days=90):
+        """Return an explicit portable export, never entity attributes."""
+        async with self.lock:
+            await self.async_load()
+            if self.storage_error:
+                raise ValueError("Tariff history storage is not healthy")
+            today = datetime.now(timezone.utc).astimezone(ZoneInfo(self.timezone_name)).date()
+            selected = [day for key, day in sorted(self.days.items())
+                        if today - timedelta(days=retention_days) <= day.local_date < today]
+            return {"schema": 1, "timezone": self.timezone_name, "price_unit": "p_per_kwh",
+                    "days": [{"date": day.local_date.isoformat(), "slots": [slot.as_dict() for slot in day.slots]}
+                             for day in selected]}
+
     async def async_status(self, benchmark: dict, now: datetime | None = None) -> dict:
         async with self.lock:
             await self.async_load()
