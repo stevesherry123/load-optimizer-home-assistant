@@ -147,4 +147,3 @@ def reference_for_date(
         ),
         None,
     )
-
