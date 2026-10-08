@@ -12,8 +12,9 @@ implementation architecture in `docs/architecture.md`.
   the approved manual request correctly waited on the current 46-of-48-slot feed
 - observe the v1.6/v1.7 beta through complete next-day publication, revisions and
   appliance cycles before stable promotion; imported history now satisfies warm-up
-- implement EV options editing on a separate beta branch, preserving entry and
-  entity IDs, unrelated settings and disabled physical control
+- live-test EV options editing from `beta/ev-options-v1.5.2`; automated tests cover
+  preserved entry identity, unrelated settings, prefilled values and optional
+  reference clearing. The minimum-HA smoke job validates the actual schema.
 - implement effective-dated price-cap references and additive historical rebasing;
   retain raw comparisons and disclose missing references rather than guessing
 - add a public Tariff Intelligence dashboard section for the new beta entities,
@@ -49,6 +50,8 @@ implementation architecture in `docs/architecture.md`.
   Northern Wales), not the separately named North Western England region G.
 - Prepared v1.5.1 publication documentation, corrected minimum HA compatibility
   and added a single learned-hub guard. This is independent of beta promotion.
+- Implemented the separate v1.5.2-beta.1 EV options editor; it is not installed
+  on the owner's tariff-intelligence beta or promoted to stable.
 - Added the Lab dashboard's Automation Capabilities summary to the supported
   full and public dashboards.
 - Added a configurable, daily cached regional Ofgem default-tariff benchmark as

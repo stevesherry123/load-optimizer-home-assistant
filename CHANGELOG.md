@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.2-beta.1
+
+- Add EV options editing for tariff and battery references, charge power,
+  efficiency, target, slot length and deadline, plus regional benchmark settings.
+- Preserve the config entry and entity identities and unrelated options; support
+  clearing optional references. Charger control remains advisory and opt-in.
+- Keep this change in separate beta development pending live options verification.
+
 ## 1.5.1
 
 - Prepare the stable publication line without promoting the tariff-intelligence
