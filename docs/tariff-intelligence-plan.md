@@ -4,8 +4,8 @@
 
 This plan brings the useful ideas from Octopus Intelligence into Load Optimizer
 without reintroducing a second runtime or making the integration depend on one
-energy supplier. The existing v1.4.4 integration remains the stable publication
-baseline. Development takes place on `beta/tariff-intelligence-v1.5`, is released
+energy supplier. v1.5.0 is now the stable publication
+baseline. Analysis development takes place on `beta/tariff-analysis-v1.6`, is released
 as a prerelease, and reaches `main` only after the acceptance checks below pass.
 
 The accompanying detailed project brief remains the product specification. This

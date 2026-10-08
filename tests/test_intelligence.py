@@ -110,6 +110,24 @@ class IntelligenceTests(unittest.TestCase):
         self.assertEqual(module.utc(result["start"]), start + timedelta(minutes=30))
         self.assertEqual(result["average_price_p_per_kwh"], 7.5)
 
+    def test_strong_evening_peak_and_negative_minutes(self):
+        value = day(date(2026, 10, 9))
+        from zoneinfo import ZoneInfo
+        slots = tuple(module.TariffSlot(s.start, s.end,
+                      50 if 16 <= s.start.astimezone(ZoneInfo("Europe/London")).hour < 19 else -1)
+                      for s in value.slots)
+        result = module.analyse(slots, [], now=module.utc("2026-10-08T12:00:00Z"), timezone_name="Europe/London", source="test")
+        self.assertEqual(result["evening_peak"], "strong")
+        self.assertEqual(result["volatility"], "high")
+        self.assertEqual(result["tomorrow_statistics"]["negative_minutes"], 21 * 60)
+
+    def test_anomalous_shape_is_detected(self):
+        target = day(date(2026, 10, 9), [30, 20, 10, 20])
+        past = [day(date(2026, 10, 7) - timedelta(days=i), [10, 20, 30, 20]) for i in range(14)]
+        result = module.analyse(target.slots, past, now=module.utc("2026-10-08T12:00:00Z"), timezone_name="Europe/London", source="test")
+        self.assertAlmostEqual(result["shape_similarity"], -1)
+        self.assertEqual(result["pattern"], "unusual")
+
 
 if __name__ == "__main__":
     unittest.main()
