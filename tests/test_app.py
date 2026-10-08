@@ -151,6 +151,11 @@ class VersionTests(unittest.TestCase):
             self.assertNotIn("binary_sensor.octopus_tomorrow_rates_available", dashboard)
             self.assertNotIn("start: day", dashboard)
             self.assertIn("graph_span: 24h", dashboard)
+            self.assertIn("graph_span: 48h", dashboard)
+            self.assertIn("&octopus_price_chart", dashboard)
+            self.assertIn("<<: *octopus_price_chart", dashboard)
+            self.assertIn('state: "24h"', dashboard)
+            self.assertIn('state: "48h"', dashboard)
 
     def test_options_flow_uses_home_assistant_config_entry_property(self):
         root = Path(__file__).resolve().parents[1]
@@ -158,6 +163,27 @@ class VersionTests(unittest.TestCase):
 
         self.assertIn("return LoadOptimizerOptionsFlow()", source)
         self.assertNotIn("self.config_entry = config_entry", source)
+
+    def test_options_flow_separates_general_and_optional_dishwasher_settings(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "custom_components/load_optimizer/config_flow.py").read_text()
+        translations = json.loads(
+            (root / "custom_components/load_optimizer/translations/en.json").read_text()
+        )
+
+        for step in (
+            "appliances_tariff",
+            "optimisation",
+            "publishing",
+            "dishwasher_control",
+        ):
+            self.assertIn(f'async_step_{step}', source)
+            self.assertIn(step, translations["options"]["step"])
+        self.assertIn("self.config_entry.options, **user_input", source)
+        self.assertIn(
+            "Dishwasher control (optional)",
+            translations["options"]["step"]["dishwasher_control"]["title"],
+        )
 
     def test_global_legacy_sensors_stay_on_hub_device(self):
         root = Path(__file__).resolve().parents[1]

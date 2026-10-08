@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.4
+
+- Select a compact 24-hour tariff graph until tomorrow's rates are available, then automatically show the complete 48-hour horizon.
+- Replace the dishwasher-only configuration cog with separate appliance/tariff, optimisation, publishing, and optional dishwasher-control sections.
+- Preserve settings from every other section when one options section is saved.
+
 ## 1.4.3
 
 - Restore the integration options dialog on current Home Assistant releases by

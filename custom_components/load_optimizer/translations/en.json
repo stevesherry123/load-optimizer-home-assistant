@@ -54,8 +54,58 @@
   "options": {
     "step": {
       "init": {
-        "title": "Dishwasher orchestration",
-        "description": "Select the Home Connect entities used to start and verify the dishwasher.",
+        "title": "Load Optimizer settings",
+        "description": "Choose the part of Load Optimizer you want to change. Saving one section preserves every other setting.",
+        "menu_options": {
+          "appliances_tariff": "Appliances and tariff",
+          "optimisation": "Cost optimisation",
+          "publishing": "Published data",
+          "dishwasher_control": "Dishwasher control (optional)"
+        },
+        "menu_option_descriptions": {
+          "appliances_tariff": "Appliance definitions, refresh timing, tariff entities and calendar windows.",
+          "optimisation": "Search horizon, forecast resolution and schedule preference weighting.",
+          "publishing": "Choose whether detailed profiles, forecasts and diagnostics are exposed.",
+          "dishwasher_control": "Home Connect entities used only for automatic dishwasher starting and verification."
+        }
+      },
+      "appliances_tariff": {
+        "title": "Appliances and tariff",
+        "description": "These are the integration's main data sources. Existing values are retained unless you change and save them here.",
+        "data": {
+          "instances_yaml": "Appliance definitions",
+          "scan_interval": "Refresh interval (seconds)",
+          "tariff_entity": "Primary tariff entity",
+          "tariff_entities": "Additional tariff entities",
+          "tariff_timezone": "Tariff timezone",
+          "tariff_price_unit": "Tariff price unit",
+          "green_window_entity": "Preferred green-window calendar",
+          "blocked_window_entity": "Blocked-window calendar"
+        }
+      },
+      "optimisation": {
+        "title": "Cost optimisation",
+        "description": "Control how far ahead Load Optimizer searches and how precisely it evaluates possible start times.",
+        "data": {
+          "cost_search_hours": "Search horizon (hours)",
+          "cost_forecast_hours": "Published forecast horizon (hours)",
+          "cost_forecast_interval": "Forecast interval (minutes)",
+          "cost_candidate_interval": "Candidate start interval (minutes)",
+          "schedule_preference_weight_pence": "Schedule preference weight (pence)"
+        }
+      },
+      "publishing": {
+        "title": "Published data",
+        "description": "Detailed attributes are useful for dashboards and troubleshooting but can increase state size.",
+        "data": {
+          "publish_diagnostics": "Publish detailed diagnostics",
+          "publish_profile_data": "Publish learned profile data",
+          "publish_cost_forecast": "Publish cost forecasts"
+        }
+      },
+      "dishwasher_control": {
+        "title": "Dishwasher control (optional)",
+        "description": "Only configure these Home Connect references when Load Optimizer should start and verify a dishwasher automatically. They are not required for learning, tariff analysis, washing machines, robot vacuums or EVs.",
         "data": {
           "bosch_device_id": "Home Connect device ID",
           "bosch_power_switch": "Power switch",

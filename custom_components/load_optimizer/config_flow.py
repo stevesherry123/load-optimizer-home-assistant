@@ -207,16 +207,172 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
-    """Edit appliance orchestration entity references."""
+    """Edit learned-appliance settings without exposing one giant form."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Route to the options supported by this load type."""
         if self.config_entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
             return self.async_abort(reason="not_supported")
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
 
-        existing = {**self.config_entry.data, **self.config_entry.options}
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=[
+                "appliances_tariff",
+                "optimisation",
+                "publishing",
+                "dishwasher_control",
+            ],
+        )
+
+    @property
+    def _existing(self) -> dict[str, Any]:
+        """Return setup data with saved options taking precedence."""
+        return {**self.config_entry.data, **self.config_entry.options}
+
+    def _save_section(self, user_input: dict[str, Any]):
+        """Merge one options section without discarding the other sections."""
+        return self.async_create_entry(
+            title="",
+            data={**self.config_entry.options, **user_input},
+        )
+
+    async def async_step_appliances_tariff(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Edit appliance sources and tariff inputs."""
+        if user_input is not None:
+            return self._save_section(user_input)
+
+        existing = self._existing
+        return self.async_show_form(
+            step_id="appliances_tariff",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_INSTANCES_YAML,
+                        default=existing.get(CONF_INSTANCES_YAML, ""),
+                    ): str,
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL,
+                        default=existing.get(
+                            CONF_SCAN_INTERVAL,
+                            DEFAULT_LEGACY_SCAN_INTERVAL_SECONDS,
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
+                    vol.Optional(
+                        CONF_TARIFF_ENTITY,
+                        default=existing.get(CONF_TARIFF_ENTITY, ""),
+                    ): selector.EntitySelector(selector.EntitySelectorConfig()),
+                    vol.Optional(
+                        CONF_TARIFF_ENTITIES,
+                        default=existing.get(CONF_TARIFF_ENTITIES, ""),
+                    ): str,
+                    vol.Optional(
+                        CONF_TARIFF_TIMEZONE,
+                        default=existing.get(
+                            CONF_TARIFF_TIMEZONE,
+                            DEFAULT_TARIFF_TIMEZONE,
+                        ),
+                    ): str,
+                    vol.Optional(
+                        CONF_TARIFF_PRICE_UNIT,
+                        default=existing.get(
+                            CONF_TARIFF_PRICE_UNIT,
+                            DEFAULT_TARIFF_PRICE_UNIT,
+                        ),
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=PRICE_UNITS,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_GREEN_WINDOW_ENTITY,
+                        default=existing.get(CONF_GREEN_WINDOW_ENTITY, ""),
+                    ): str,
+                    vol.Optional(
+                        CONF_BLOCKED_WINDOW_ENTITY,
+                        default=existing.get(CONF_BLOCKED_WINDOW_ENTITY, ""),
+                    ): str,
+                }
+            ),
+        )
+
+    async def async_step_optimisation(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Edit cost-search and scheduling settings."""
+        if user_input is not None:
+            return self._save_section(user_input)
+
+        existing = self._existing
+        return self.async_show_form(
+            step_id="optimisation",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_COST_SEARCH_HOURS,
+                        default=existing.get(CONF_COST_SEARCH_HOURS, 24),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=72)),
+                    vol.Optional(
+                        CONF_COST_FORECAST_HOURS,
+                        default=existing.get(CONF_COST_FORECAST_HOURS, 12),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=72)),
+                    vol.Optional(
+                        CONF_COST_FORECAST_INTERVAL,
+                        default=existing.get(CONF_COST_FORECAST_INTERVAL, 30),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=60)),
+                    vol.Optional(
+                        CONF_COST_CANDIDATE_INTERVAL,
+                        default=existing.get(CONF_COST_CANDIDATE_INTERVAL, 5),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
+                    vol.Optional(
+                        CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
+                        default=existing.get(
+                            CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
+                            0.1,
+                        ),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=0, max=10)),
+                }
+            ),
+        )
+
+    async def async_step_publishing(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Edit optional diagnostic and forecast publishing settings."""
+        if user_input is not None:
+            return self._save_section(user_input)
+
+        existing = self._existing
+        return self.async_show_form(
+            step_id="publishing",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_PUBLISH_DIAGNOSTICS,
+                        default=existing.get(CONF_PUBLISH_DIAGNOSTICS, False),
+                    ): bool,
+                    vol.Optional(
+                        CONF_PUBLISH_PROFILE_DATA,
+                        default=existing.get(CONF_PUBLISH_PROFILE_DATA, True),
+                    ): bool,
+                    vol.Optional(
+                        CONF_PUBLISH_COST_FORECAST,
+                        default=existing.get(CONF_PUBLISH_COST_FORECAST, True),
+                    ): bool,
+                }
+            ),
+        )
+
+    async def async_step_dishwasher_control(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Edit optional Home Connect dishwasher control references."""
+        if user_input is not None:
+            return self._save_section(user_input)
+
+        existing = self._existing
         entity_fields = (
             CONF_BOSCH_POWER_SWITCH,
             CONF_BOSCH_PROGRAM_SELECT,
@@ -239,4 +395,7 @@ class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
             schema[
                 vol.Optional(field, default=existing.get(field, ""))
             ] = selector.EntitySelector(selector.EntitySelectorConfig())
-        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))
+        return self.async_show_form(
+            step_id="dishwasher_control",
+            data_schema=vol.Schema(schema),
+        )

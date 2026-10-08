@@ -13,9 +13,14 @@ views:
             entity: sensor.load_optimizer_1_current_energy_price
             name: Current import price
             icon: mdi:cash-clock
-          - type: custom:apexcharts-card
+          - &octopus_price_chart
+            type: custom:apexcharts-card
             grid_options:
               columns: full
+            visibility:
+              - condition: state
+                entity: sensor.load_optimizer_1_tariff_horizon
+                state: "24h"
             header:
               show: true
               title: Octopus Prices
@@ -172,6 +177,12 @@ views:
                     points.push([lastEnd + 1, null]);
                   }
                   return points;
+          - <<: *octopus_price_chart
+            graph_span: 48h
+            visibility:
+              - condition: state
+                entity: sensor.load_optimizer_1_tariff_horizon
+                state: "48h"
       - type: grid
         cards:
           - type: entities
