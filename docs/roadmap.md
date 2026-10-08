@@ -12,8 +12,10 @@ implementation architecture in `docs/architecture.md`.
   the approved manual request correctly waited on the current 46-of-48-slot feed
 - observe the v1.6/v1.7 beta through complete next-day publication, revisions and
   appliance cycles before stable promotion; imported history now satisfies warm-up
-- implement EV options editing on a separate beta branch, preserving entry and
-  entity IDs, unrelated settings and disabled physical control
+- live-test the implemented EV options editor on `beta/ev-options-v1.5.2`
+  ([draft PR #7](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/7));
+  174 local tests cover the slice, with real minimum-HA schema validation in CI.
+  It is not installed over the owner's v1.7 tariff-intelligence beta or stable.
 - implement effective-dated price-cap references and additive historical rebasing;
   retain raw comparisons and disclose missing references rather than guessing
 - add a public Tariff Intelligence dashboard section for the new beta entities,
@@ -49,6 +51,9 @@ implementation architecture in `docs/architecture.md`.
   Northern Wales), not the separately named North Western England region G.
 - Prepared v1.5.1 publication documentation, corrected minimum HA compatibility
   and added a single learned-hub guard. This is independent of beta promotion.
+- Implemented a separate EV options editor with retained entry/entity identity,
+  independent benchmark settings, clearable references and local-HH:MM deadline
+  validation. Live options/reload/restart/rollback tests remain before promotion.
 - Added the Lab dashboard's Automation Capabilities summary to the supported
   full and public dashboards.
 - Added a configurable, daily cached regional Ofgem default-tariff benchmark as
