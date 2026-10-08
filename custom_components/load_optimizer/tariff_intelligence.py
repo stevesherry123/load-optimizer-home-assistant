@@ -47,6 +47,7 @@ class TariffIntelligence:
         self.loaded = False
         self.lock = asyncio.Lock()
         self.storage_error = None
+        self.read_only = False
 
     async def async_load(self):
         if self.loaded:
@@ -63,6 +64,7 @@ class TariffIntelligence:
                 self.days = days
         except Exception as error:
             self.storage_error = type(error).__name__
+            self.read_only = True
             LOGGER.exception("Tariff history could not be loaded; preserved without overwrite")
         self.loaded = True
 
@@ -97,10 +99,11 @@ class TariffIntelligence:
                     changed = True
             retained = {key: day for key, day in candidate.items() if today - timedelta(days=365) <= day.local_date <= today + timedelta(days=1)}
             changed = changed or retained.keys() != candidate.keys()
-            if changed and not self.storage_error:
+            if changed and not self.read_only:
                 try:
                     await self.store.async_save({"schema": 1, "days": {key: day.as_dict() for key, day in retained.items()}})
                     self.days = retained
+                    self.storage_error = None
                 except Exception as error:
                     self.storage_error = type(error).__name__
                     LOGGER.exception("Tariff history save failed; previous history retained")

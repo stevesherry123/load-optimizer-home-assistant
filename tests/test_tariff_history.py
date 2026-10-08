@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from test_intelligence import module as core, day
 
@@ -111,6 +111,16 @@ class TariffHistoryTests(unittest.IsolatedAsyncioTestCase):
         await self.service.async_status({}, self.now)
         self.assertNotIn(old.local_date.isoformat(), self.service.days)
         self.assertEqual(MemoryStore.values[learning_key], {"runs": 113})
+
+    async def test_transient_save_failure_recovers(self):
+        self.publish(day(date(2026, 10, 9)))
+        with patch.object(self.service.store, "async_save", AsyncMock(side_effect=OSError("test"))):
+            result = await self.service.async_status({}, self.now)
+            self.assertEqual(result["data_quality"], "storage_error")
+            self.assertEqual(self.service.days, {})
+        result = await self.service.async_status({}, self.now)
+        self.assertIsNone(result["storage"]["error"])
+        self.assertEqual(result["storage"]["day_count"], 1)
 
 
 if __name__ == "__main__":

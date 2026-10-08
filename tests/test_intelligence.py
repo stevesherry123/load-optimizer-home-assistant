@@ -102,6 +102,14 @@ class IntelligenceTests(unittest.TestCase):
         result = module.analyse(target.slots, past, now=module.utc("2026-10-08T12:00:00Z"), timezone_name="Europe/London", source="test")
         self.assertEqual(result["history_days"], 0)
 
+    def test_window_can_end_at_price_boundary_for_irregular_slots(self):
+        start = module.utc("2026-10-08T12:00:00Z")
+        slots = (module.TariffSlot(start, start + timedelta(minutes=45), 30),
+                 module.TariffSlot(start + timedelta(minutes=45), start + timedelta(minutes=90), 0))
+        result = module.cheapest_window(slots, 1, start)
+        self.assertEqual(module.utc(result["start"]), start + timedelta(minutes=30))
+        self.assertEqual(result["average_price_p_per_kwh"], 7.5)
+
 
 if __name__ == "__main__":
     unittest.main()

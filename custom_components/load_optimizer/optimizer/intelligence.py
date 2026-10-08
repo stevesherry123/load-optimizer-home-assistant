@@ -128,19 +128,25 @@ def stats(slots: tuple[TariffSlot, ...]) -> dict:
 def cheapest_window(slots: tuple[TariffSlot, ...], hours: int, now: datetime) -> dict | None:
     duration = timedelta(hours=hours)
     candidates = []
-    for index, first in enumerate(slots):
-        if first.start < now:
-            continue
-        end = first.start + duration
-        cursor, cost = first.start, 0.0
-        for slot in slots[index:]:
-            if slot.start != cursor:
+    future = tuple(slot for slot in slots if slot.start >= now)
+    if not future:
+        return None
+    starts = {slot.start for slot in future} | {
+        slot.end - duration for slot in future if slot.end - duration >= future[0].start
+    }
+    for start in sorted(starts):
+        end = start + duration
+        cursor, cost = start, 0.0
+        for slot in future:
+            if slot.end <= cursor:
+                continue
+            if slot.start > cursor:
                 break
             stop = min(slot.end, end)
             cost += slot.price * (stop - cursor).total_seconds() / 3600
             cursor = stop
             if cursor == end:
-                candidates.append((cost, first.start, end))
+                candidates.append((cost, start, end))
                 break
     if not candidates:
         return None
