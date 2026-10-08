@@ -17,7 +17,8 @@ review of both repositories and the live Home Assistant installation.
 Completed and live-verified through v1.5.0-beta.6:
 
 - Regional Ofgem lookup, daily caching, effective dates and freshness diagnostics.
-- North Western England / direct debit configured for the owner's installation.
+- Region configurable; owner now uses live tariff region D / direct debit
+  (Merseyside and Northern Wales), after the approved 8 October correction.
 - Native benchmark sensor and visible horizontal benchmark line.
 - Main tariff chart: today only (24 hours), or today and tomorrow (48 hours)
   when next-day data exists. This supersedes the rolling-chart proposal below.
@@ -54,9 +55,10 @@ history captured; incomplete 46-slot next-day feed correctly reported as limited
 all one-to-four-hour windows matched independent arithmetic from live rates.
 Rollback to v1.5.0 and upgrade to v1.6.0-beta.3 succeeded with the same learning
 counts, a healthy retained tariff store and matching window calculations.
-Longer observation and historical warm-up remain pending before v1.6 promotion.
+Historical warm-up is now satisfied by the separately approved official backfill.
+Longer publication/appliance-cycle observation remains pending before promotion.
 
-Next-branch design defaults (awaiting any owner-specific format preferences):
+Implemented next-branch design defaults:
 
 - Portable JSON import with explicit schema, timezone and p/kWh unit metadata.
 - Default 90 completed days, dry-run first, all-or-nothing validation and an
@@ -68,9 +70,25 @@ Next-branch design defaults (awaiting any owner-specific format preferences):
 
 Implemented on `beta/tariff-import-narrative-v1.7`: portable import, provenance
 protection, atomic validation, independent narrative lifecycle and privacy/failure
-tests. This branch is not installed or merged into main. An actual legacy export
-is still needed for its adapter and the preferred AI Task entity for live testing.
-All branch checks pass; 199 tests cover the combined development implementation.
+tests. It is installed as v1.7.0-beta.1 for controlled owner testing, but is not
+merged into main. The verified legacy adapter and service path have 212 combined
+tests; all branch checks pass. The old cache was exported and preserved because
+all 4,320 recent prices differed from the exact live tariff's official API.
+With separate approval, 90 complete official days were imported instead.
+All prices/provenance matched read-back and independent disk checks. Storage
+contains 91 days including today and the 14-day baseline is ready. Learning
+totals stayed 113 / 189 / 46 across import, restart and actual downgrade/re-upgrade.
+Generic one-to-four-hour windows matched independent arithmetic, with clean
+integration logs and dashboard references. The approved OpenAI AI Task action
+returned waiting without a provider call because tomorrow has only 46 periods.
+Actual provider testing and longer observation remain beta promotion gates.
+
+The independent v1.5.1 publication preparation adds truthful installation and
+dashboard guidance, corrects minimum HA to 2024.12, adds minimum-version import
+CI and guards the shared learned-appliance store against a second hub. HACS
+default-catalogue submission is planned for 9 October, not already completed.
+EV options editing is the next separate development slice; cap-adjusted history
+and the beta analysis dashboard remain subsequent work.
 
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as

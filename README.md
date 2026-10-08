@@ -15,8 +15,10 @@ integration. The integration is now the sole supported installation path.
 
 The integration supports two setup paths:
 
-- **Learned appliance migration**: runs the existing add-on engine inside the
-  integration and publishes the same `sensor.load_optimizer_*` entities.
+- **Learned appliances**: learns power profiles from completed cycles and
+  publishes profile-weighted running costs and scheduling recommendations.
+  Existing add-on users can import their learning database without changing
+  the `sensor.load_optimizer_*` entity IDs.
 - **EV charging**: reads an existing battery percentage entity, battery capacity
   entity, target percentage, charger power, and future tariff entity, then
   publishes the cheapest charging windows required to reach the target.
@@ -41,6 +43,14 @@ Assistant, then add **Load Optimizer** from Settings > Devices & services.
 For public/stable installs, use tagged releases. The HACS metadata hides the
 default branch so ordinary users are not nudged toward development builds.
 
+Home Assistant **2024.12 or later** is required. The Ofgem benchmark is for
+Great Britain; other supplier integrations can supply compatible tariff data.
+No Octopus API token, separate app, or AI subscription is required.
+
+Start with the [new-installation guide](docs/getting-started.md). Installation
+does not enable automatic physical control. Configure one learned-appliance
+hub containing all your appliance instances; EV planning uses separate entries.
+
 ### Add-on Migration
 
 To migrate the existing add-on, create a Load Optimizer integration entry with
@@ -48,7 +58,10 @@ load type `learned_appliance`, paste your existing add-on `instances_yaml` and
 tariff settings, then import the old `/data/load_optimizer.json` database with
 the `load_optimizer.import_legacy_state` service.
 
-See `docs/migration-addon-to-integration.md`.
+See the [migration guide](docs/migration-addon-to-integration.md). Stop the old
+add-on before activating the integration so two runtimes cannot capture or
+control the same appliance concurrently. Keep its database and backup until
+the imported counts and a new complete cycle are verified.
 
 ### EV Entities
 
@@ -80,8 +93,10 @@ for users migrating older installations.
 
 ## Optional Dashboard
 
-The HACS installation includes a standard Home Assistant dashboard covering
-integration health, appliance plans, EV charging, and learned-cycle data. See
+The HACS installation includes an optional dashboard template covering
+integration health, appliance plans, EV charging, and learned-cycle data. It is
+not automatically added to your sidebar and its example entity IDs must match
+your installation. See
 [`docs/dashboard.md`](docs/dashboard.md) for the short installation step.
 
 Version 1.5 adds an effective-dated Ofgem default-tariff benchmark. Choose the
@@ -160,7 +175,34 @@ learning counts and taking a backup.
 
 ## Roadmap
 
-Planned work and backlog ideas are tracked in `docs/roadmap.md`.
+Planned work and remaining gaps are tracked in [the roadmap](docs/roadmap.md).
+Stable v1.5.x includes appliance learning, opt-in orchestration, advisory EV
+planning and the regional price-cap benchmark. Tariff history, historical
+analysis, import and optional AI summaries are separate **v1.6/v1.7 betas**;
+they are not features of the stable publication release.
+
+## Known Limitations
+
+- EV charging is advisory, not a built-in charger switch controller. In the
+  stable release, EV configuration cannot yet be edited through its options cog.
+- Appliance setup uses YAML definitions; a fully guided appliance editor is
+  planned. Only one learned-appliance hub is supported.
+- The packaged dashboard is a standard-card template. The richer tariff-chart
+  example requires ApexCharts Card and installation-specific entity edits.
+- Ofgem is a comparison benchmark, not a ceiling on Agile prices. Select the
+  electricity region used by your meter's tariff, not a general geographic label.
+- Home Assistant unavailable/unknown states and incomplete future tariffs can
+  leave a recommendation waiting. Do not turn missing data into a start command.
+
+## Support And Development
+
+Report faults with the release number, Home Assistant version and redacted
+diagnostics in [GitHub Issues](https://github.com/stevesherry123/load-optimizer-home-assistant/issues).
+Never post access tokens or a full private configuration. See the
+[contribution guide](CONTRIBUTING.md) for release-channel and testing rules.
+
+The [publication checklist](docs/hacs-publication.md) distinguishes custom
+repository installation from inclusion in HACS's default catalogue.
 
 ## Repository Layout
 

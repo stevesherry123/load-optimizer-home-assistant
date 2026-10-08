@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.1
+
+- Prepare the stable publication line without promoting the tariff-intelligence
+  development branches.
+- Correct minimum Home Assistant to 2024.12 and add real minimum-version import CI.
+- Prevent multiple learned-appliance hubs from sharing and overwriting one store;
+  existing entries and entity IDs are not migrated or renamed.
+- Add a new-installation guide, honest dashboard limitations, contribution rules
+  and a HACS catalogue submission checklist.
+
 ## 1.5.0
 
 - Promote the verified regional Ofgem benchmark and 24/48-hour tariff dashboard.
