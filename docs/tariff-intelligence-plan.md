@@ -90,13 +90,18 @@ official live-tariff API; no legacy cache data was imported. With separate owner
 approval, 90 complete official tariff days were backfilled instead. Preview,
 full export read-back and on-disk provenance verification passed. Storage has
 91 days including today and the 14-day baseline is ready; appliance totals are
-unchanged. The final post-import restart check passed with all 91 days retained,
-healthy storage, unchanged learning totals and optional AI disabled as designed.
+unchanged. Post-import restart and actual v1.7-to-v1.6.0-beta.3 rollback checks
+passed, including independent disk verification of all imported prices and
+provenance while the older beta was running. Reinstalled v1.7.0-beta.1 and
+restarted: all 91 days returned with healthy storage, unchanged learning totals
+and optional AI disabled as designed. Independent one-to-four-hour window
+calculations matched; dashboard references and integration logs were clean.
 The available `ai_task.openai_ai_task_2` is approved for one manual test after
 complete next-day rates arrive; the readiness gate returned waiting without a
 provider call because the upstream API has only 46 periods. No automatic or
-incomplete-data provider calls are approved. Observation, actual provider testing
-and a live v1.7 downgrade remain release gates before stable promotion.
+incomplete-data provider calls are approved. Observation and actual provider
+testing remain release gates before stable promotion; the live rollback and
+re-upgrade gate has passed. Stable remains v1.5.0.
 
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as

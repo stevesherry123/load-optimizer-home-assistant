@@ -115,8 +115,13 @@ the authoritative price or scheduling decision.
   The action correctly returned `waiting` without calling the provider because
   both HA and the official tariff API contain only 46 next-day periods.
   Actual provider generation is still pending complete next-day data.
-- Final post-import restart verification passed: all 91 stored days, the
-  corrected benchmark and unchanged learning counts returned without storage
-  errors. Optional AI status reset to disabled as designed. A live downgrade of
-  v1.7 is not claimed; rollback provenance is covered by regression tests and
-  independent inspection of the retained on-disk stores.
+- Post-import restart and live downgrade/re-upgrade verification passed.
+  Temporarily installed v1.6.0-beta.3: runtime and appliance costing were ready,
+  learning counts were unchanged and the old schema-1 store remained readable.
+  Independent disk inspection confirmed that all imported prices and their
+  provenance stayed intact in the separate schema-2 store during rollback.
+  Restored v1.7.0-beta.1 and restarted: all 91 stored days, the corrected
+  benchmark and unchanged learning counts returned without storage errors.
+  Optional AI status reset to disabled as designed. One-to-four-hour cheapest
+  windows matched independently calculated prices and start times; dashboard
+  references and integration logs were clean. Stable remains v1.5.0.

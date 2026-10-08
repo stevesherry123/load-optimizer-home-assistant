@@ -10,6 +10,9 @@
 - Installed on the owner's Home Assistant for controlled beta testing; stable
   users remain on v1.5.0. The approved exact-tariff backfill is independently
   verified; the mismatching legacy cache was preserved and not imported.
+- Verified a post-import restart and live downgrade/re-upgrade with all 90
+  imported days, their provenance and appliance learning counts preserved.
+  Actual AI provider testing remains gated on complete next-day prices.
 - Require matching tariff-source metadata for imports; reject unverified or
   mismatched exports even when overwrite is requested.
 - Isolate provenance-aware history in schema-2 storage, copy existing history
