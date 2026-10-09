@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.6
+
+- Support both older identifier-based and current scoped device registries when
+  linking appliance/orchestration devices to an already registered hub.
+- Verify actual appliance device registration on minimum Home Assistant, not
+  only module imports or EV entries. Preserve identifiers and registered IDs.
+
 ## 1.5.5
 
 - Add EV options editing for tariff and battery references, charge power,
