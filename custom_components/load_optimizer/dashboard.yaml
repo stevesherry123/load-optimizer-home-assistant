@@ -43,9 +43,13 @@ views:
               {% if is_number(price) and is_number(benchmark) %}
                 --primary-text-color: {{ foreground }};
                 --secondary-text-color: {{ foreground }};
-                --tile-color: {{ foreground }};
               {% endif %}
             }
+            {% if is_number(price) and is_number(benchmark) %}
+              ha-tile-icon {
+                --tile-color: {{ foreground }} !important;
+              }
+            {% endif %}
       - type: tile
         entity: sensor.load_optimizer_ofgem_price_cap_benchmark
         name: Ofgem default-tariff benchmark
