@@ -139,9 +139,15 @@ def parse_structured_rates(rates: Sequence[Mapping], *, price_unit: str) -> list
         price = float(price_value)
         if price_unit == "gbp_per_kwh":
             price *= 100
+        if not math.isfinite(price):
+            raise ValueError("Structured tariff price must be finite")
+        start = _parse_timestamp(start_value)
+        end = _parse_timestamp(end_value)
+        if end <= start:
+            raise ValueError("Structured tariff period must have a positive duration")
         periods.append({
-            "start": _parse_timestamp(start_value),
-            "end": _parse_timestamp(end_value),
+            "start": start,
+            "end": end,
             "price_p_per_kwh": round(price, 6),
         })
     periods.sort(key=lambda period: period["start"])
@@ -376,6 +382,9 @@ def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> di
 
 
 def _next_candidate(reference: datetime, interval_minutes: int) -> datetime:
+    if (isinstance(interval_minutes, bool) or not isinstance(interval_minutes, (int, float))
+            or not math.isfinite(interval_minutes) or not 1 <= interval_minutes <= 60):
+        raise ValueError("Candidate interval must be between 1 and 60 minutes")
     reference = reference.astimezone(timezone.utc)
     seconds = interval_minutes * 60
     rounded = math.ceil(reference.timestamp() / seconds) * seconds
@@ -914,6 +923,8 @@ def forecast_cycle_costs(
     blocked_windows: list[dict] | None = None,
     excluded_programs: list[str] | None = None,
 ) -> tuple[list[dict], list[dict]]:
+    if not math.isfinite(forecast_hours) or not 0 <= forecast_hours <= 72:
+        raise ValueError("Forecast horizon must be between 0 and 72 hours")
     policy_by_program = {policy["program"]: policy for policy in policies}
     excluded = set(excluded_programs or [])
     forecast_end = reference_utc + timedelta(hours=max(0, forecast_hours))
@@ -1047,6 +1058,11 @@ def recommend_cycle(
     excluded_programs: list[str] | None = None,
 ) -> dict:
     """Find the least-cost policy-eligible program and start time."""
+    if not math.isfinite(search_hours) or not 0 <= search_hours <= 72:
+        raise ValueError("Search horizon must be between 0 and 72 hours")
+    if not math.isfinite(forecast_hours) or not 0 <= forecast_hours <= 72:
+        raise ValueError("Forecast horizon must be between 0 and 72 hours")
+    _next_candidate(reference_utc, forecast_interval_minutes)
     if schedule_strategy not in SCHEDULE_STRATEGIES:
         raise ValueError(f"Unsupported schedule strategy: {schedule_strategy}")
     if window_preference not in WINDOW_PREFERENCES:

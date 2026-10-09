@@ -415,6 +415,14 @@ class NativeOrchestrator:
     async def async_deactivate(self) -> None:
         """Return command ownership to the package automations."""
         self.state["active"] = False
+        if self._execution_task and not self._execution_task.done():
+            self._execution_task.cancel()
+            try:
+                await self._execution_task
+            except asyncio.CancelledError:
+                pass
+        self.state["request"] = None
+        self.state["execution_status"] = "idle"
         await self._async_save()
         self._publish()
         existing_automations = [
@@ -613,7 +621,7 @@ class NativeOrchestrator:
                 mode,
                 program,
                 "command_error",
-                f"Dishwasher start command failed: {error}",
+                f"Dishwasher start command failed ({type(error).__name__}).",
             )
             return
         self.state["request"] = None
@@ -654,8 +662,11 @@ class NativeOrchestrator:
         for reason, entity_id in checks.items():
             if self._state(entity_id) != STATE_ON:
                 return reason
-        if self._state(self.config.get("bosch_door_sensor")) in {"on", "open"}:
+        door_state = self._state(self.config.get("bosch_door_sensor"))
+        if door_state in {"on", "open"}:
             return "door_open"
+        if door_state not in {"off", "closed"}:
+            return "door_state_unavailable"
         if mode == "negative_price":
             recommendation = self._recommendation("negative_price")
             if (

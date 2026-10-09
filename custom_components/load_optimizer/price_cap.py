@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, time, timezone
 import logging
+from urllib.parse import urljoin, urlsplit
 from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
@@ -22,6 +24,9 @@ from .optimizer.ofgem import (
 
 LOGGER = logging.getLogger(__name__)
 STORE_VERSION = 1
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+MAX_TABLES = 16
+TRUSTED_SOURCE_HOSTS = {"www.ofgem.gov.uk", "ofgem.gov.uk", "app.everviz.com"}
 REQUEST_HEADERS = {
     "User-Agent": "Load-Optimizer-Home-Assistant/1.5 (+https://github.com/stevesherry123/load-optimizer-home-assistant)"
 }
@@ -39,7 +44,8 @@ class PriceCapManager:
     async def _async_load(self) -> None:
         if self.loaded:
             return
-        self.cache = await self.store.async_load() or {}
+        stored = await self.store.async_load()
+        self.cache = stored if isinstance(stored, dict) else {}
         self.loaded = True
 
     @staticmethod
@@ -65,20 +71,14 @@ class PriceCapManager:
         self, region: str, payment_method: str
     ) -> list[PriceCapReference]:
         session = async_get_clientsession(self.hass)
-        async with session.get(
-            OFGEM_PRICE_CAP_URL,
-            headers=REQUEST_HEADERS,
-            timeout=30,
-        ) as response:
-            response.raise_for_status()
-            page = await response.text()
+        page = await self._async_fetch_text(session, OFGEM_PRICE_CAP_URL)
         urls = everviz_urls(page)
         if not urls:
             raise ValueError("Ofgem page contains no price-cap tables")
+        if len(urls) > MAX_TABLES:
+            raise ValueError("Ofgem page contains too many price-cap tables")
         for url in urls:
-            async with session.get(url, headers=REQUEST_HEADERS, timeout=30) as response:
-                response.raise_for_status()
-                source = await response.text()
+            source = await self._async_fetch_text(session, url)
             references = parse_everviz_references(
                 source,
                 region=region,
@@ -87,6 +87,32 @@ class PriceCapManager:
             if references:
                 return references
         raise ValueError("Ofgem page contains no matching electricity table")
+
+    @staticmethod
+    async def _async_fetch_text(session, url: str) -> str:
+        """Constrain redirects and decompressed response size at the HTTP boundary."""
+        for _ in range(4):
+            parsed = urlsplit(url)
+            if (parsed.scheme != "https" or parsed.hostname not in TRUSTED_SOURCE_HOSTS
+                    or parsed.username or parsed.password or parsed.port not in (None, 443)):
+                raise ValueError("Price-cap source URL is not permitted")
+            async with session.get(url, headers=REQUEST_HEADERS, timeout=30, allow_redirects=False) as response:
+                if response.status in {301, 302, 303, 307, 308}:
+                    location = response.headers.get("Location")
+                    if not location:
+                        raise ValueError("Price-cap source redirect has no destination")
+                    url = urljoin(url, location)
+                    continue
+                response.raise_for_status()
+                if response.status != 200:
+                    raise ValueError("Price-cap source did not return a document")
+                body = bytearray()
+                async for chunk in response.content.iter_chunked(65536):
+                    body.extend(chunk)
+                    if len(body) > MAX_RESPONSE_BYTES:
+                        raise ValueError("Price-cap source exceeds the response size limit")
+                return body.decode(response.charset or "utf-8")
+        raise ValueError("Price-cap source redirected too many times")
 
     async def async_status(
         self,
@@ -122,7 +148,8 @@ class PriceCapManager:
         fetch_error = None
         if not retrieved_today:
             try:
-                references = await self._async_fetch(region, payment_method)
+                async with asyncio.timeout(60):
+                    references = await self._async_fetch(region, payment_method)
                 retrieved_at = now_utc.isoformat()
                 self.cache = {
                     "region": region,
@@ -135,7 +162,7 @@ class PriceCapManager:
                 cache_matches = True
             except Exception as error:  # Retain the last validated official value.
                 fetch_error = type(error).__name__
-                LOGGER.warning("Unable to refresh Ofgem price-cap reference: %s", error)
+                LOGGER.warning("Unable to refresh Ofgem price-cap reference (%s)", fetch_error)
 
         references = self._references(self.cache.get("references", [])) if cache_matches else []
         current = reference_for_date(references, local_date)

@@ -11,21 +11,35 @@ from datetime import datetime, timezone
 from typing import Any
 
 SENSITIVE_KEY = re.compile(r"token|password|secret|authorization|api[_-]?key", re.I)
+CREDENTIAL_VALUE = re.compile(
+    r"(?i)\bBearer\s+\S+|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"
+    r"|\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)"
+    r"|\b(?:sk-proj-|sk-)[A-Za-z0-9_-]{16,}"
+    r"|(?:(?:access_)?token|password|secret|api[_-]?key)\s*[=:]\s*[^\s&,;]+"
+    r"|https?://[^/\s:@]+:[^/\s@]+@"
+)
 
 
-def _safe(value: Any, key: str = "") -> Any:
+def redact_text(value: str) -> str:
+    """Remove common credentials even when embedded in exception messages."""
+    return CREDENTIAL_VALUE.sub("<redacted>", value)
+
+
+def _safe(value: Any, key: str = "", depth: int = 0) -> Any:
     """Return bounded, JSON-safe diagnostic data without credentials."""
     if SENSITIVE_KEY.search(key):
         return "<redacted>"
+    if depth >= 8:
+        return "<truncated>"
     if isinstance(value, dict):
-        return {str(k): _safe(v, str(k)) for k, v in list(value.items())[:20]}
+        return {redact_text(str(k))[:250]: _safe(v, str(k), depth + 1) for k, v in list(value.items())[:20]}
     if isinstance(value, (list, tuple)):
-        return [_safe(item) for item in value[:25]]
+        return [_safe(item, depth=depth + 1) for item in value[:25]]
     if isinstance(value, (str, int, float, bool)) or value is None:
         text = value
     else:
         text = str(value)
-    return text[:250] if isinstance(text, str) else text
+    return redact_text(text)[:250] if isinstance(text, str) else text
 
 
 class EventEngine:
@@ -39,6 +53,8 @@ class EventEngine:
 
     def emit(self, level: int, event: str, message: str, **context: Any) -> None:
         safe_context = _safe(context)
+        message = redact_text(message)[:1000]
+        event = redact_text(event)[:100]
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": logging.getLevelName(level).lower(),
@@ -70,7 +86,7 @@ class EventEngine:
 
     def exception(self, event: str, message: str, **context: Any) -> None:
         self.emit(logging.ERROR, event, message, **context)
-        self.logger.debug("Exception details for %s", event, exc_info=True)
+        self.logger.debug("Exception recorded for %s; inspect the redacted event context", redact_text(event))
 
     def snapshot(self) -> dict:
         with self._lock:

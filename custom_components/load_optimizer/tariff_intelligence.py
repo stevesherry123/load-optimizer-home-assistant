@@ -80,7 +80,7 @@ class TariffIntelligence:
         except Exception as error:
             self.storage_error = type(error).__name__
             self.read_only = True
-            LOGGER.exception("Tariff history could not be loaded; preserved without overwrite")
+            LOGGER.warning("Tariff history could not be loaded; preserved without overwrite (%s)", type(error).__name__)
         self.loaded = True
 
     async def async_export(self, retention_days=90):
@@ -170,7 +170,7 @@ class TariffIntelligence:
                     self.storage_error = None
                 except Exception as error:
                     self.storage_error = type(error).__name__
-                    LOGGER.exception("Tariff history save failed; previous history retained")
+                    LOGGER.warning("Tariff history save failed; previous history retained (%s)", type(error).__name__)
             result = analyse(slots, list(self.days.values()), now=now,
                              timezone_name=self.timezone_name, source=self.source_id)
             result["data_quality"] = "storage_error" if self.storage_error else "partial_sources" if errors else "complete" if result["tomorrow_complete"] else "waiting_for_tomorrow"

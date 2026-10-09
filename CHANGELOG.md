@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0-beta.5
+
+- Carry all stable v1.5.7 security/privacy, storage and control-boundary fixes
+  without promoting beta features or changing learning/history storage formats.
+- Require an administrator for tariff re-analysis, history import/export and
+  optional paid AI generation, including response-bearing actions on minimum HA.
+- Extend real HA permission checks to all ten actions using synthetic providers;
+  reject deeply nested history JSON without exposing request details.
+
 ## 1.7.0-beta.4
 
 - Carry the validated stable v1.5.5 EV editor, retained settings, validation and
@@ -60,6 +69,27 @@
   remains explicitly waiting rather than producing a definitive classification.
 - Recalculate on rate publication as well as the normal coordinator interval.
 - Appliance profile costing and learning data are unchanged.
+
+## 1.5.7
+
+- Restrict learning import, recovery and orchestration handover actions to Home
+  Assistant administrators. Trusted system automations retain HA's normal access.
+- Replace diagnostic configuration dumps with allowlisted health summaries;
+  omit names, raw YAML, entity/device identifiers, schedules and arbitrary text.
+- Bound and validate imported learning JSON, reject non-finite/deep/malformed
+  data, serialize imports with scans, and preserve memory if storage fails.
+  Active captures and queued requests must finish or be cancelled first.
+- Redact common credentials embedded in event messages and exception values.
+- Remove the retired add-on web server, standalone runner and HTTP fallback.
+- Bound external Ofgem lookups, allow only trusted HTTPS source hosts and
+  redirects, retain TLS verification, and limit decompressed response size.
+- Reject unsafe planner intervals, excessive search horizons and invalid prices.
+  Bound EV candidate generation and reject non-finite vehicle inputs.
+- Block starts when the door state is unknown; cancel in-flight native commands
+  and queued requests before returning ownership to legacy automations.
+- Pin validation actions, grant only read access, and add mandatory security,
+  credential-history and real Home Assistant permission/privacy checks.
+- Document security reporting, data handling and the static review scope.
 
 ## 1.5.6
 
