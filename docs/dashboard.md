@@ -59,7 +59,9 @@ Manufacturer updates can produce short power captures. A rejected capture withou
 a newly learned wash or an observed Bosch running operation must not confirm a
 wash or cancel its pending overnight request. A real observed wash may still
 complete without entering learning, for example if its capture was interrupted.
-Live verification of this distinction is a publication gate for the fix branch.
+Startup, forecasts and programme selection were verified live on 9 October with
+v1.7.0-beta.3, which contains the stable v1.5.4 fixes. The next real wash and its
+learning increment remain a publication gate; no wash was started during checks.
 
 ## Manual Programme Selection
 
