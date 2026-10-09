@@ -3,5 +3,5 @@
   "country": "GB",
   "render_readme": true,
   "hide_default_branch": true,
-  "homeassistant": "2024.8.0"
+  "homeassistant": "2024.12.0"
 }

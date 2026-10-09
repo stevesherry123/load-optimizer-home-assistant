@@ -26,6 +26,11 @@ the same entity IDs while the add-on is mothballed.
 
 ## Migration Steps
 
+Before creating the integration entry, preserve/export the old database and stop
+the add-on, including its start-on-boot setting. Do not run both engines against
+the same appliance. The stopped add-on and its private data remain available
+for export or rollback; no uninstall is performed by the integration.
+
 1. Install the HACS integration release.
 2. Restart Home Assistant.
 3. Go to Settings > Devices & services > Add integration > Load Optimizer.

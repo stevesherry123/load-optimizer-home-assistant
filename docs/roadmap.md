@@ -6,15 +6,32 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- observe the v1.6 Tariff Intelligence beta through next-day publication and
-  appliance cycles before promoting it; historical comparisons need 14 days
-- validate the isolated v1.7 import/narrative branch with an actual legacy export
-  and the owner's preferred AI Task entity before deployment
-- complete HACS default-catalogue submission independently of beta development
+- HACS publication gate: observe a real wash after the v1.5.3 scheduling fix
+  (also carried into the owner's tariff-intelligence beta). On 8 October a
+  3.4-minute manufacturer-update power capture was
+  correctly rejected by learning but incorrectly cancelled the pending wash;
+  its request timestamp then suppressed another automatic request that night.
+  Automated regressions cover request preservation and manual cooldown bypass;
+  installation checks do not substitute for the next real cycle/learning check.
+- submit the prepared stable v1.5.3 line to HACS's default catalogue; no submission
+  exists yet, and installation as a custom repository is not catalogue acceptance
+- finish the real optional AI provider test after complete tomorrow rates arrive;
+  the approved manual request correctly waited on the current 46-of-48-slot feed
+- observe the v1.6/v1.7 beta through complete next-day publication, revisions and
+  appliance cycles before stable promotion; imported history now satisfies warm-up
+- live-test the implemented EV options editor on `beta/ev-options-v1.5.2`
+  ([draft PR #7](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/7));
+  174 local tests cover the slice, with real minimum-HA schema validation in CI.
+  It is not installed over the owner's v1.7 tariff-intelligence beta or stable.
+- implement effective-dated price-cap references and additive historical rebasing;
+  retain raw comparisons and disclose missing references rather than guessing
+- add a public Tariff Intelligence dashboard section for the new beta entities,
+  with travel-timezone/mobile/DST tests before it enters stable
+- retire Octopus Intelligence only after the accepted replacement features and
+  provider tests pass; its mismatching cache and running app are still preserved
 - continue decomposing the embedded compatibility engine behind stable native
   integration entities without changing migrated learning data
 - add appliance-cycle load entries alongside the v1.0 EV charging load type
-- add options-flow editing for EV charging settings after initial setup
 - add integration diagnostics and repairs for missing tariff or vehicle entities
 - improve profile-weighted tariff cost estimation across half-hour slots
 - extend helper-driven deadline support for calendar and travel-aware scheduling
@@ -33,8 +50,17 @@ implementation architecture in `docs/architecture.md`.
 - Implemented v1.6 beta source-shared tariff history and deterministic analysis,
   native entities, event refresh, explicit warm-up/incomplete-data states,
   manual re-analysis and portable history export; live rollback/upgrade tested.
-- Implemented dry-run import and optional manual AI Task narrative on the separate
-  v1.7 development branch, with 199 passing combined tests and no live AI calls.
+- Deployed v1.7.0-beta.1 on the owner's instance; 212 combined tests passed.
+  Approved official backfill imported 90 complete days / 4,320 exact-tariff prices,
+  not the mismatching old cache. Read-back, disk provenance, restart and actual
+  downgrade/re-upgrade passed with unchanged 113 / 189 / 46 learning totals.
+- Matched the owner's Ofgem benchmark to live tariff region D (Merseyside and
+  Northern Wales), not the separately named North Western England region G.
+- Prepared v1.5.1 publication documentation, corrected minimum HA compatibility
+  and added a single learned-hub guard. This is independent of beta promotion.
+- Implemented a separate EV options editor with retained entry/entity identity,
+  independent benchmark settings, clearable references and local-HH:MM deadline
+  validation. Live options/reload/restart/rollback tests remain before promotion.
 - Added the Lab dashboard's Automation Capabilities summary to the supported
   full and public dashboards.
 - Added a configurable, daily cached regional Ofgem default-tariff benchmark as
@@ -56,6 +82,10 @@ implementation architecture in `docs/architecture.md`.
   persistence-safe opt-ins, and missed/successful start notifications.
 
 ## Scheduling And Cost Estimation
+
+The following sections retain longer-term design ideas. Already released
+strategies, cost components, helper constraints and capture-status improvements
+above are not outstanding work merely because their original proposal is below.
 
 Load Optimizer should remain device-agnostic while improving the user-facing
 experience around tariff windows and run recommendations. Community Agile-window
@@ -124,7 +154,7 @@ Assistant. Washing machines connected only through a smart plug are a good
 example: the app can see power and energy, but not whether the user selected a
 short spin, rinse, cotton wash, eco wash, or maintenance cycle.
 
-Future versions should infer a probable cycle class from the learned power
+An optional future classifier could infer a probable cycle class from the learned power
 signature. Useful signals include:
 
 - total runtime
@@ -135,7 +165,9 @@ signature. Useful signals include:
 - idle gaps or soak periods
 - energy distribution across the cycle
 
-The first implementation should stay conservative. A dumb washing machine can
+This must be an explicit opt-in, not automatic fragmentation of existing washing
+machine learning. The owner has requested that the current learning settings be
+preserved. A future implementation should stay conservative. A dumb washing machine can
 initially learn under `Default`, then later split learned runs into inferred
 classes such as `ShortSpin`, `Wash`, `EcoWash`, `Rinse`, or `Maintenance` once
 there is enough evidence. Inferred classes should be visible to the user and

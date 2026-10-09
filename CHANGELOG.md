@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0-beta.2
+
+- Carry the stable v1.5.3 scheduling diagnostics and MixedLoad/manual cooldown
+  fixes into the tariff-intelligence beta without removing history, import or AI
+  functionality. Preserve learned profiles, tariff history and selected controls.
+
 ## 1.7.0-beta.1
 
 - Add portable JSON history import with atomic validation, dry-run default,
@@ -39,6 +45,36 @@
   remains explicitly waiting rather than producing a definitive classification.
 - Recalculate on rate publication as well as the normal coordinator interval.
 - Appliance profile costing and learning data are unchanged.
+
+## 1.5.3
+
+- Keep a pending overnight wash when a manufacturer firmware update produces a
+  short, rejected power capture; do not mark that capture as a completed wash.
+- Reset the loaded-door flag on a reported Bosch wash start, not any power spike.
+- Explain automatic scheduling separately from recommendations, including an
+  already-reserved night, confidence, safety checks and next eligibility.
+- Retain a bounded scheduling-event history across restarts, and add an
+  Automatic Scheduling explanation to both supported dashboard templates.
+- Refresh the manual programme dropdown from the appliance instead of the old
+  migration snapshot, including MixedLoad and programmes added by firmware.
+- Keep automatic cooldowns intact while explicit manual starts use their own
+  programme duration, not an unrelated or delayed recommendation's finish time.
+- Allow explicitly selected manual starts without a ready recommendation;
+  retain physical safety checks, including an already-running appliance.
+- Expose selected-programme buttons in the public dashboard and correct the
+  rich dashboard's engine buttons to call the native button service.
+- A real post-upgrade wash remains the final live cycle/learning acceptance
+  check; regression tests exercise appliance commands with isolated mocks.
+
+## 1.5.1
+
+- Prepare the stable publication line without promoting the tariff-intelligence
+  development branches.
+- Correct minimum Home Assistant to 2024.12 and add real minimum-version import CI.
+- Prevent multiple learned-appliance hubs from sharing and overwriting one store;
+  existing entries and entity IDs are not migrated or renamed.
+- Add a new-installation guide, honest dashboard limitations, contribution rules
+  and a HACS catalogue submission checklist.
 
 ## 1.5.0
 

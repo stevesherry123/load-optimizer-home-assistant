@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Set up Load Optimizer",
-        "description": "Create an optimizer for a flexible electrical load. Use learned_appliance to migrate the existing add-on runtime, or ev_charging for EV planning.",
+        "description": "Choose learned_appliance for appliance learning and scheduling, or ev_charging for an advisory charging plan.",
         "data": {
           "name": "Name",
           "load_type": "Load type"
@@ -30,8 +30,8 @@
         }
       },
       "learned_appliance": {
-        "title": "Migrate learned appliances",
-        "description": "Paste the same add-on options first. After setup, call load_optimizer.import_legacy_state with the contents of /data/load_optimizer.json from the old add-on.",
+        "title": "Set up learned appliances",
+        "description": "Enter your appliance definitions and tariff settings. Existing add-on users can import their saved learning database after setup; new installations learn from completed cycles.",
         "data": {
           "instances_yaml": "Instances YAML",
           "scan_interval": "Scan interval",
@@ -53,6 +53,9 @@
           "price_cap_payment_method": "Price-cap payment method"
         }
       }
+    },
+    "abort": {
+      "learned_appliance_already_configured": "A learned-appliance hub is already configured. Add appliances to its Appliances and tariff settings instead."
     }
   },
   "options": {
