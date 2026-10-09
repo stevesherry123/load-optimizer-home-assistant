@@ -707,6 +707,17 @@ def summarize_program_option(candidate: dict, reference_utc: datetime, now_cost:
     }
 
 
+def _negative_candidate_sort_key(candidate: dict, reference_utc: datetime) -> tuple:
+    return (
+        candidate["start"] > reference_utc,
+        -candidate.get("negative_price_priority", 50),
+        -candidate.get("energy_kwh_per_minute", 0),
+        -candidate.get("energy_kwh", 0),
+        candidate["total_cost_pence"],
+        candidate.get("preference_rank", 50),
+    )
+
+
 def summarize_program_options(
     candidates: list[dict],
     *,
@@ -741,13 +752,7 @@ def summarize_program_options(
         eligible = [item for item in candidates if item.get("negative_price_run")]
 
         def sort_key(item: dict) -> tuple:
-            return (
-                -item.get("negative_price_priority", 50),
-                -item.get("energy_kwh_per_minute", 0),
-                -item.get("energy_kwh", 0),
-                item["total_cost_pence"],
-                item.get("preference_rank", 50),
-            )
+            return _negative_candidate_sort_key(item, reference_utc)
     elif intent == "greenest":
         eligible = [item for item in candidates if item.get("green_window_overlap_seconds", 0) > 0]
 
@@ -1086,6 +1091,14 @@ def recommend_cycle(
     earliest_allowed_start = earliest_start_utc.astimezone(timezone.utc) if earliest_start_utc else reference_utc
     latest_allowed_finish = latest_finish_utc.astimezone(timezone.utc) if latest_finish_utc else None
     first_start = _next_candidate(max(reference_utc, earliest_allowed_start), candidate_interval_minutes)
+    candidate_starts = []
+    start = first_start
+    while start <= search_end:
+        candidate_starts.append(start)
+        start += timedelta(minutes=candidate_interval_minutes)
+    # Probe the actual scan time so free-price runs cannot chase the next grid point.
+    if earliest_allowed_start <= reference_utc < first_start:
+        candidate_starts.insert(0, reference_utc)
     for model in models:
         diagnostic = {
             "program": model.get("program"),
@@ -1127,20 +1140,20 @@ def recommend_cycle(
         if cooldown_until:
             diagnostic["cooldown_until"] = cooldown_until.isoformat()
             diagnostic["minimum_hours_between_runs"] = policy.get("minimum_hours_between_runs")
-        start = first_start
-        while start <= search_end:
+        for start in candidate_starts:
+            immediate_probe = start < first_start
+            if immediate_probe and not policy["allow_negative_price_run"]:
+                continue
             diagnostic["candidate_points"] += 1
             finish = start + timedelta(minutes=float(model["expected_runtime_minutes"]))
             if latest_allowed_finish and finish > latest_allowed_finish:
                 rejected_constraints += 1
                 diagnostic["rejected_constraints"] += 1
-                start += timedelta(minutes=candidate_interval_minutes)
                 continue
             cooldown_active = bool(cooldown_until and start < cooldown_until)
             if candidate_overlaps_windows({"start": start, "finish": finish}, blocked_windows or []):
                 rejected_blocked += 1
                 diagnostic["rejected_blocked_points"] += 1
-                start += timedelta(minutes=candidate_interval_minutes)
                 continue
             is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
             is_daytime = not is_overnight
@@ -1148,7 +1161,6 @@ def recommend_cycle(
                 estimate = estimate_cycle_cost(start, model, periods)
             except ValueError:
                 diagnostic["rejected_unpriced_points"] += 1
-                start += timedelta(minutes=candidate_interval_minutes)
                 continue
             negative_fit = _apply_negative_run_limit(
                 model,
@@ -1161,8 +1173,12 @@ def recommend_cycle(
                 if negative_fit.get("reason") == "maximum_runs_per_window_reached":
                     diagnostic["rejected_negative_run_limit_points"] += 1
                     rejected_negative_run_limits += 1
+            if immediate_probe and not negative_eligible:
+                continue
             estimate = apply_operating_costs(estimate, policy)
-            normal_eligible = bool(policy["allow_normal_recommendation"] and not cooldown_active)
+            normal_eligible = bool(
+                policy["allow_normal_recommendation"] and not cooldown_active and not immediate_probe
+            )
             automatic_eligible = bool(normal_eligible or negative_eligible)
             if cooldown_active:
                 rejected_cooldowns += 1
@@ -1212,13 +1228,10 @@ def recommend_cycle(
                 if negative_eligible:
                     negative_candidates.append(candidate)
                 if not negative_eligible and window_preference == "overnight_only" and not is_overnight:
-                    start += timedelta(minutes=candidate_interval_minutes)
                     continue
                 if not negative_eligible and window_preference == "daytime_only" and not is_daytime:
-                    start += timedelta(minutes=candidate_interval_minutes)
                     continue
                 candidates.append(candidate)
-            start += timedelta(minutes=candidate_interval_minutes)
         if diagnostic["priced_points"] == 0:
             if not automatic_policy_allowed:
                 diagnostic.update(status="excluded", reason="policy_not_allowed_for_recommendation")
@@ -1323,15 +1336,9 @@ def recommend_cycle(
         soon_candidates,
         key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]),
     ) if soon_candidates else None
-    best_negative = max(
+    best_negative = min(
         negative_candidates,
-        key=lambda item: (
-            item["negative_price_priority"],
-            item["energy_kwh_per_minute"],
-            item["energy_kwh"],
-            -item["total_cost_pence"],
-            -item["preference_rank"],
-        ),
+        key=lambda item: _negative_candidate_sort_key(item, reference_utc),
     ) if negative_candidates else None
     now_program_options = summarize_program_options(
         normal_candidates,

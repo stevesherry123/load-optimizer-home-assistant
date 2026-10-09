@@ -6,10 +6,14 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- submit the prepared stable v1.5.6 application to HACS (owner action).
-  The owner explicitly chose to submit it themselves; no catalogue
-  pull request is created by this work. Custom-repository installation is not
-  catalogue acceptance.
+- validate the free/negative-price repeated-run fix on the owner's beta before
+  stable promotion. Off-grid scan times must not perpetually defer starts;
+  active opportunities must remain usable even when later rates are cheaper.
+  Preserve programme opt-ins, per-window limits, learning and queued requests.
+- await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
+  for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
+  checks passed; respond to requested changes without duplicate requests or
+  routine comments. Submission is not catalogue acceptance.
 - finish the real optional AI provider test after complete tomorrow rates arrive;
   the approved manual request correctly waited on incomplete data. Latest check:
   tomorrow unpublished, current day 46 of 48 slots; no provider call made
