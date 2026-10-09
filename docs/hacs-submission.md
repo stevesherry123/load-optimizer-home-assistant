@@ -3,8 +3,23 @@
 The owner authorized submission on their behalf on 9 October 2026, superseding
 the earlier prepare-only request. The stable submission is v1.5.7 after its
 security review. Custom-repository installation already works; catalogue
-acceptance is a separate review. The submission URL will be recorded here after
-the release and upstream pull request are created.
+acceptance is a separate review.
+
+## Submission Status
+
+- Stable [v1.5.7](https://github.com/stevesherry123/load-optimizer-home-assistant/releases/tag/v1.5.7)
+  was published on 9 October after all five checks passed on exact release commit
+  `28f4380b0b6a596227dc1159aab1bb41dbd0ecac`.
+- Submitted [hacs/default#11744](https://github.com/hacs/default/pull/11744)
+  from the owner's personal fork, with maintainer edits enabled. Only the
+  integration catalogue entry changed; no reviewers were requested.
+- The [catalogue validation](https://github.com/hacs/default/actions/runs/37955630280)
+  and [catalogue lint](https://github.com/hacs/default/actions/runs/37955623302)
+  both passed. The initial check run was automatically cancelled and replaced
+  after HACS's bot updated the submission title; the replacement passed.
+- Status: open and queued for maintainer review, **not yet accepted/listed**.
+  Follow the bot's guidance: no duplicate requests, review requests, routine
+  comments or upstream merges unless a maintainer asks.
 
 ## Submission Procedure
 
@@ -39,8 +54,8 @@ the release and upstream pull request are created.
 ## Links
 
 Link to current release: <https://github.com/stevesherry123/load-optimizer-home-assistant/releases/tag/v1.5.7>
-Link to successful HACS action (without the `ignore` key): <https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37954574738/job/113901706117>
-Link to successful hassfest action (if integration): <https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37954574738/job/113901705903>
+Link to successful HACS action (without the `ignore` key): <https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37954979544/job/113903087252>
+Link to successful hassfest action (if integration): <https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37954979544/job/113903087354>
 
 <!-- tid:73253df5-5376-4e68-8c16-b234da6a2de3 -->
 ```
@@ -55,8 +70,9 @@ inside the configuration flow. The benchmark is GB-specific; `hacs.json`
 declares `country: GB`. Rich charts and tile colouring use optional frontend
 cards; core operation does not require them.
 
-The security code merged in `6e4791814f6499d59eba622867bb8aac07550b13`.
-The [full validation run](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37954574738)
+The security code merged in `6e4791814f6499d59eba622867bb8aac07550b13`;
+the final release commit additionally updates publication documentation.
+The [release validation run](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37954979544)
 checks 221 unit tests, actual minimum Home Assistant 2024.12 imports and forms,
 dashboard templates, actual appliance/orchestration device registration and EV
 options/reload/restart persistence, service authorization, diagnostic privacy,

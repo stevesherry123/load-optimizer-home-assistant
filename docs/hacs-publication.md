@@ -45,6 +45,12 @@ of testing every supported Home Assistant or appliance combination.
 
 ## Catalogue Submission
 
+Submitted on 9 October: [hacs/default#11744](https://github.com/hacs/default/pull/11744).
+All upstream catalogue validation and lint checks passed. The request remains
+open in the maintainer review queue; submission is not catalogue acceptance.
+Stable v1.5.7 was published from `28f4380b0b6a596227dc1159aab1bb41dbd0ecac`
+after [all five release checks passed](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37954979544).
+
 The owner now authorizes submission on their behalf. This supersedes the earlier
 prepare-only instruction. Use [the submission record](hacs-submission.md) for
 the current upstream checklist, exact release/check links and submission status.
@@ -69,8 +75,12 @@ fix without removing beta history/import. Live restart acceptance preserved all
 222 entity/device identities, the exact dashboard configuration, learning totals
 114 / 189 / 46, MixedLoad 4 runs / 61%, and 91 history days. Forecasts, EV form
 defaults and focused logs passed. This does not promote experimental analysis
-into the stable v1.5.7 submission. Security fixes also carry to v1.7.0-beta.5;
-publishing that prerelease does not automatically install it on the owner's HA.
+into the stable v1.5.7 submission. Security fixes also carry to the published
+[v1.7.0-beta.5](https://github.com/stevesherry123/load-optimizer-home-assistant/releases/tag/v1.7.0-beta.5),
+from `88e23d4c628f428f998429cfd0d86b269d1915c6` after
+[all five beta checks passed](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37955524653).
+Its 271 unit tests and isolated real-HA permission tests include the beta-only
+history/AI actions. Publishing it did not install or restart the owner's HA.
 
 Until acceptance, users can install through HACS Custom repositories,
 category Integration, using the existing repository URL. This is distinct from

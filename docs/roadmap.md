@@ -6,10 +6,10 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- submit the reviewed stable v1.5.7 application to HACS. On 9 October the owner
-  authorized submission on their behalf, superseding the prepare-only request.
-  Record the upstream PR and follow its checks; do not equate submission with
-  catalogue acceptance.
+- await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
+  for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
+  checks passed; respond to requested changes without duplicate requests or
+  routine comments. Submission is not catalogue acceptance.
 - finish the real optional AI provider test after complete tomorrow rates arrive;
   the approved manual request correctly waited on incomplete data. Latest check:
   tomorrow unpublished, current day 46 of 48 slots; no provider call made
@@ -42,8 +42,10 @@ implementation architecture in `docs/architecture.md`.
   imports, planner/HTTP limits, safe command handover and removal of unused
   add-on networking. 221 unit tests, real-HA security/lifecycle checks and all
   five main CI jobs pass. Added private vulnerability reporting and policies.
-  Beta carries the same fixes plus administrator-only history/AI actions in
-  v1.7.0-beta.5, with 271 unit tests; no live deployment is performed by this task.
+  Published stable v1.5.7 and submitted HACS catalogue PR #11744; all upstream
+  checks passed and maintainer review remains pending. Published separate
+  v1.7.0-beta.5 with the same fixes plus administrator-only history/AI actions,
+  271 unit tests and green checks. No live deployment was performed by this task.
 - Installed v1.7.0-beta.4 with the stable EV editor and minimum-HA compatibility
   fix after fresh idle/no-queue/no-capture checks. One restart; all 222 entity and
   device identities and the exact dashboard configuration are unchanged.
@@ -53,8 +55,8 @@ implementation architecture in `docs/architecture.md`.
 - Published stable v1.5.5's EV editor and follow-up v1.5.6 compatibility fix.
   Expanded real minimum-HA acceptance found and fixed a newer-only device-link
   API in appliances/orchestration; 209 stable unit tests and all main CI checks
-  pass. The prepared owner-led HACS application has exact v1.5.6 release and
-  validation links in `docs/hacs-submission.md`; no upstream PR was opened.
+  pass. At that stage the owner-led HACS application was prepared but not
+  submitted; the reviewed v1.5.7 submission above supersedes that record.
 - Passed the final real-wash publication gate on 9 October: MixedLoad completed
   at 13:36 BST, dishwasher learning increased 113 to 114, and MixedLoad increased
   3 to 4 runs with 61% confidence. The request cleared, completion was confirmed,
