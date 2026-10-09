@@ -95,9 +95,8 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         intelligence = await self.tariff_intelligence.async_status(price_cap, now)
         intelligence["narrative"] = self.narrative.snapshot(intelligence)
         if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
-            assert self.legacy_runtime is not None
-            assert self.orchestration_migration is not None
-            assert self.orchestrator is not None
+            if self.legacy_runtime is None or self.orchestration_migration is None or self.orchestrator is None:
+                raise RuntimeError("Learned-appliance runtime was not initialized")
             await self.orchestration_migration.async_load()
             await self.orchestrator.async_load()
             result = await self.legacy_runtime.async_scan(data)

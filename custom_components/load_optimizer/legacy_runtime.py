@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import json
 import logging
 import re
 import textwrap
@@ -34,11 +34,12 @@ from .const import (
     DOMAIN,
 )
 from .legacy import app_runtime
+from .optimizer.state_import import validate_import
 
 LOGGER = logging.getLogger(__name__)
 LEGACY_STORE_VERSION = 1
 LEGACY_STORE_KEY = f"{DOMAIN}_legacy_state"
-TOKEN = "__hass_adapter__"
+ADAPTER_MARKER = "__hass_adapter__"
 WRAPPED_OPTION_KEYS = {
     CONF_BLOCKED_WINDOW_ENTITY,
     CONF_COST_CANDIDATE_INTERVAL,
@@ -90,6 +91,7 @@ class LegacyRuntime:
         self.published_entities: dict[str, dict[str, Any]] = {}
         self.calendar_events: dict[str, list[dict[str, Any]]] = {}
         self.started = False
+        self._state_lock = asyncio.Lock()
         self.external_state_provider: Callable[[str], dict[str, Any] | None] | None = None
         self._patch_legacy_runtime()
 
@@ -98,24 +100,23 @@ class LegacyRuntime:
         if self.state is not None:
             return
         stored = await self.store.async_load()
-        if isinstance(stored, dict) and stored.get("schema_version"):
-            self.state = stored
+        if stored is None:
+            self.state = {"schema_version": 1, "instances": {}}
         else:
-            self.state = dict(app_runtime.EMPTY_STATE)
+            self.state = await self.hass.async_add_executor_job(validate_import, stored)
         self.last_signature = app_runtime.state_signature(self.state)
 
     async def async_import_state(self, payload: str | dict[str, Any]) -> dict[str, Any]:
         """Import legacy add-on JSON into integration storage."""
-        if isinstance(payload, str):
-            data = json.loads(payload)
-        else:
-            data = payload
-        if not isinstance(data, dict) or "instances" not in data:
-            raise ValueError("Imported state must be a Load Optimizer database with an instances object")
-        data.setdefault("schema_version", 1)
-        self.state = data
-        self.last_signature = app_runtime.state_signature(data)
-        await self.store.async_save(data)
+        data = await self.hass.async_add_executor_job(validate_import, payload)
+        async with self._state_lock:
+            await self.async_load()
+            if any(instance.get("cycle_start") for instance in self.state.get("instances", {}).values()):
+                raise ValueError("Finish active appliance captures before importing memory")
+            signature = app_runtime.state_signature(data)
+            await self.store.async_save(data)
+            self.state = data
+            self.last_signature = signature
         return {
             "status": "imported",
             "instances": sorted(str(key) for key in data.get("instances", {})),
@@ -123,8 +124,14 @@ class LegacyRuntime:
 
     async def async_scan(self, options: dict[str, Any]) -> LegacyScanResult:
         """Run one legacy compatibility scan."""
+        async with self._state_lock:
+            return await self._async_scan(options)
+
+    async def _async_scan(self, options: dict[str, Any]) -> LegacyScanResult:
+        """Serialize scans with imports so persisted learning cannot race."""
         await self.async_load()
-        assert self.state is not None
+        if self.state is None:
+            raise RuntimeError("Appliance memory was not loaded")
         options = self._normalise_options(options)
         now = datetime.now(timezone.utc)
         if not self.started:
@@ -143,30 +150,30 @@ class LegacyRuntime:
             app_runtime.repair_learning_quality(self.state, configs)
             startup_running = app_runtime.running_instances(self.state, configs)
             app_runtime.mark_interrupted_captures(self.state, startup_running)
-            app_runtime.publish_restart_warning(TOKEN, startup_running)
+            app_runtime.publish_restart_warning(ADAPTER_MARKER, startup_running)
             self.started = True
         reset_status = app_runtime.reset_request_status(self.state, options)
         app_runtime.LAST_SCAN_STARTED_AT = now
         for config in configs:
             try:
-                app_runtime.update_instance(TOKEN, self.state, config, now=now)
+                app_runtime.update_instance(ADAPTER_MARKER, self.state, config, now=now)
             except Exception as error:  # pragma: no cover - defensive integration isolation
-                LOGGER.exception("Legacy Load Optimizer scan failed for instance %s", config.get("instance_id"))
+                LOGGER.error("Legacy Load Optimizer scan failed for instance %s (%s)", config.get("instance_id"), type(error).__name__)
                 app_runtime.publish_entity(
-                    TOKEN,
+                    ADAPTER_MARKER,
                     f"sensor.load_optimizer_{config.get('instance_id')}_status",
                     "error",
                     {
                         "friendly_name": f"{config.get('name', 'Load Optimizer')} Optimizer Status",
                         "icon": "mdi:alert-circle",
-                        "reason": str(error),
+                        "reason": type(error).__name__,
                     },
                 )
         running = app_runtime.running_instances(self.state, configs)
-        app_runtime.publish_restart_safety(TOKEN, running)
+        app_runtime.publish_restart_safety(ADAPTER_MARKER, running)
         app_runtime.LAST_SCAN_COMPLETED_AT = datetime.now(timezone.utc)
-        app_runtime.publish_status(TOKEN, len(configs), running=running, reset_status=reset_status)
-        app_runtime.publish_logging_diagnostics(TOKEN)
+        app_runtime.publish_status(ADAPTER_MARKER, len(configs), running=running, reset_status=reset_status)
+        app_runtime.publish_logging_diagnostics(ADAPTER_MARKER)
         signature = app_runtime.state_signature(self.state)
         if signature != self.last_signature:
             await self.store.async_save(self.state)
@@ -351,7 +358,7 @@ class LegacyRuntime:
                     return_response=True,
                 )
             except Exception as error:  # pragma: no cover - depends on HA calendar platform
-                LOGGER.debug("Could not prefetch calendar events for %s: %s", entity_id, error)
+                LOGGER.debug("Could not prefetch calendar events for %s (%s)", entity_id, type(error).__name__)
                 continue
             events = []
             if isinstance(response, dict):

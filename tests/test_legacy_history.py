@@ -97,21 +97,24 @@ class LegacyImportServiceTests(unittest.IsolatedAsyncioTestCase):
         tree = ast.parse((ROOT / "__init__.py").read_text())
         handler = next(node for node in ast.walk(tree)
                        if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_import_tariff_history")
+        authorization = next(node for node in ast.walk(tree)
+                             if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_check_admin")
         namespace = {"hass": fixture.hass, "tariff_coordinator": lambda entry: coordinator,
                      "json": json, "partial": partial, "datetime": datetime, "timezone": timezone,
                      "adapt_agile_buddy": adapter.adapt_agile_buddy, "ServiceValidationError": ValueError}
-        exec(compile(ast.Module(body=[handler], type_ignores=[]), "<actual-service-handler>", "exec"), namespace)
+        exec(compile(ast.Module(body=[authorization, handler], type_ignores=[]), "<actual-service-handler>", "exec"), namespace)
         records = [{"dt": slot.end.isoformat(), "r": slot.price} for slot in day(date(2026, 10, 7)).slots]
         data = {"entry_id": "test", "history_json": json.dumps(records), "format": "agile_buddy",
                 "history_tariff_code": "E-1R-AGILE-24-10-01-D", "retention_days": 365,
                 "dry_run": True, "overwrite_live": False}
-        result = await namespace[handler.name](SimpleNamespace(data=data))
+        call = SimpleNamespace(data=data, context=SimpleNamespace(user_id=None))
+        result = await namespace[handler.name](call)
         self.assertEqual(result["imported"], 1)
         self.assertEqual(result["conversion"]["complete_days"], 1)
         self.assertEqual(history_fixtures.MemoryStore.writes, 0)
         data["history_tariff_code"] = "E-1R-AGILE-24-10-01-G"
         data["dry_run"] = False
         with self.assertRaises(ValueError):
-            await namespace[handler.name](SimpleNamespace(data=data))
+            await namespace[handler.name](call)
         self.assertEqual(history_fixtures.MemoryStore.writes, 0)
         coordinator.async_request_refresh.assert_not_called()

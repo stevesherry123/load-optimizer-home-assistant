@@ -82,9 +82,8 @@ def plan_ev_charge(
     if validation_error:
         return _not_ready(validation_error)
 
-    assert battery_percent is not None
-    assert battery_capacity_kwh is not None
-    assert charge_power_kw is not None
+    if battery_percent is None or battery_capacity_kwh is None or charge_power_kw is None:
+        return _not_ready("missing_charging_inputs")
 
     needed_battery_kwh = max(0.0, (target_percent - battery_percent) / 100 * battery_capacity_kwh)
     wall_energy_kwh = needed_battery_kwh / charger_efficiency
@@ -171,17 +170,21 @@ def _validate_inputs(
         return "missing_battery_capacity"
     if charge_power_kw is None:
         return "missing_charge_power"
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+           for value in (battery_percent, battery_capacity_kwh, charge_power_kw,
+                         target_percent, charger_efficiency, slot_minutes)):
+        return "invalid_charging_inputs"
     if not 0 <= battery_percent <= 100:
         return "invalid_battery_percent"
     if not 0 < target_percent <= 100:
         return "invalid_target_percent"
-    if battery_capacity_kwh <= 0:
+    if not 0 < battery_capacity_kwh <= 1000:
         return "invalid_battery_capacity"
-    if charge_power_kw <= 0:
+    if not 0.1 <= charge_power_kw <= 1000:
         return "invalid_charge_power"
-    if not 0 < charger_efficiency <= 1:
+    if not 0.1 <= charger_efficiency <= 1:
         return "invalid_charger_efficiency"
-    if slot_minutes <= 0:
+    if not 1 <= slot_minutes <= 120 or int(slot_minutes) != slot_minutes:
         return "invalid_slot_minutes"
     return None
 
@@ -198,7 +201,7 @@ def _candidate_slots(
     duration = timedelta(minutes=slot_minutes)
     for period in periods:
         period_start = period["start"].astimezone(timezone.utc)
-        period_end = period["end"].astimezone(timezone.utc)
+        period_end = min(period["end"].astimezone(timezone.utc), reference_utc + timedelta(days=7))
         cursor = max(_round_up(reference_utc, slot_minutes), period_start)
         cursor = _round_up(cursor, slot_minutes)
         while cursor + duration <= period_end:
