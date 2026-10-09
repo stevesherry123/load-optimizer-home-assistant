@@ -6,23 +6,18 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- HACS publication gate: observe a real wash after the v1.5.4 scheduling/startup fix
-  (also carried into the owner's tariff-intelligence beta). On 8 October a
-  3.4-minute manufacturer-update power capture was
-  correctly rejected by learning but incorrectly cancelled the pending wash;
-  its request timestamp then suppressed another automatic request that night.
-  Automated regressions cover request preservation and manual cooldown bypass;
-  installation checks do not substitute for the next real cycle/learning check.
-- submit the prepared stable v1.5.4 line to HACS's default catalogue; no submission
-  exists yet, and installation as a custom repository is not catalogue acceptance
+- prepare the validated stable v1.5.5 line for the owner's HACS catalogue
+  submission. The owner explicitly chose to submit it themselves; no catalogue
+  pull request is created by this work. Custom-repository installation is not
+  catalogue acceptance.
 - finish the real optional AI provider test after complete tomorrow rates arrive;
   the approved manual request correctly waited on the current 46-of-48-slot feed
 - observe the v1.6/v1.7 beta through complete next-day publication, revisions and
   appliance cycles before stable promotion; imported history now satisfies warm-up
-- live-test the implemented EV options editor on `beta/ev-options-v1.5.2`
-  ([draft PR #7](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/7));
-  174 local tests cover the slice, with real minimum-HA schema validation in CI.
-  It is not installed over the owner's v1.7 tariff-intelligence beta or stable.
+- carry the merged EV options editor from main into the owner's v1.7
+  tariff-intelligence beta without removing history/import features, then verify
+  the live upgrade. Isolated minimum-HA UI, options/reload, restart and stable
+  rollback checks passed, and the queued dishwasher wash has completed.
 - implement effective-dated price-cap references and additive historical rebasing;
   retain raw comparisons and disclose missing references rather than guessing
 - add a public Tariff Intelligence dashboard section for the new beta entities,
@@ -45,12 +40,21 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Passed the final real-wash publication gate on 9 October: MixedLoad completed
+  at 13:36 BST, dishwasher learning increased 113 to 114, and MixedLoad increased
+  3 to 4 runs with 61% confidence. The request cleared, completion was confirmed,
+  no active captures remained and integration diagnostics were clean.
+- Verified the EV options editor in isolated Home Assistant 2024.12 using synthetic
+  sources: real browser form/save/error display, independent settings, clearable
+  references, reload and persisted restart. Fixed deadline form serialization
+  and unset-description EV labels; 204 unit tests pass. No production restart or
+  dishwasher/charger command was used for this work.
 - Published v1.5.4 and deployed the same scheduling/startup fixes in
   v1.7.0-beta.3 (245 tests). Live forecasts and MixedLoad selection restored;
   dishwasher / washing machine / vacuum learning totals remain 113 / 189 / 46,
   MixedLoad remains 3 runs at 51%, and all 91 tariff-history days are preserved.
-  No wash was started by deployment verification. The next physical wash and
-  learning increment remain the publication acceptance gate.
+  No wash was started by deployment verification. The subsequent physical wash
+  passed the publication gate as recorded above; these are the earlier totals.
 - Published v1.5.0 with a configurable regional Ofgem benchmark, tariff-local
   24/48-hour chart, visible benchmark and Now lines, and bottom-of-page capabilities.
 - Implemented v1.6 beta source-shared tariff history and deterministic analysis,
@@ -66,7 +70,8 @@ implementation architecture in `docs/architecture.md`.
   and added a single learned-hub guard. This is independent of beta promotion.
 - Implemented a separate EV options editor with retained entry/entity identity,
   independent benchmark settings, clearable references and local-HH:MM deadline
-  validation. Live options/reload/restart/rollback tests remain before promotion.
+  validation. Isolated options/reload/restart/rollback acceptance is recorded in
+  `docs/ev-options-beta.md`; tariff beta promotion remains independent.
 - Added the Lab dashboard's Automation Capabilities summary to the supported
   full and public dashboards.
 - Added a configurable, daily cached regional Ofgem default-tariff benchmark as

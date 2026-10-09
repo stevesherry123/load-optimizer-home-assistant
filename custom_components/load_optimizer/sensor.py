@@ -218,7 +218,8 @@ class LoadOptimizerSensor(LoadOptimizerEntity, SensorEntity):
     entity_description: SensorEntityDescription
 
     def __init__(self, coordinator: LoadOptimizerCoordinator, description: SensorEntityDescription) -> None:
-        super().__init__(coordinator, description.key, description.name or description.key.replace("_", " ").title())
+        name = description.name if isinstance(description.name, str) else description.key.replace("_", " ").title()
+        super().__init__(coordinator, description.key, name)
         self.entity_description = description
 
     @property

@@ -12,7 +12,7 @@ The accompanying detailed project brief remains the product specification. This
 document records the implementation sequence and release gates derived from a
 review of both repositories and the live Home Assistant installation.
 
-## Current Delivery Status (8 October 2026)
+## Current Delivery Status (9 October 2026)
 
 Completed and live-verified through v1.5.0-beta.6:
 
@@ -107,14 +107,18 @@ re-upgrade gate has passed. The v1.7.0-beta.2 update carries stable v1.5.3's
 scheduling explanations, rejected-capture fix and manual programme selection
 without promoting tariff-intelligence functionality into stable.
 
-The independent v1.5.1 publication preparation adds truthful installation and
-dashboard guidance, corrects minimum HA to 2024.12, adds minimum-version import
-CI and guards the shared learned-appliance store against a second hub. HACS
-default-catalogue submission is planned for 9 October, not already completed.
-EV options editing is implemented in separate `beta/ev-options-v1.5.2` development
-([draft PR #7](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/7));
-174 local tests pass, with live acceptance still outstanding. Cap-adjusted
-history and the beta analysis dashboard remain subsequent work.
+Stable v1.5.5 is published after all main checks passed, including 204 unit tests
+and actual minimum-HA EV configuration/reload/restart checks. Isolated browser,
+rollback and re-upgrade acceptance passed without renaming entries or entities.
+The owner's physical MixedLoad wash completed on 9 October at 13:36 BST:
+dishwasher learning is now 114 total and MixedLoad 4 runs at 61% confidence;
+washing machine / vacuum remain 189 / 46. All 91 tariff-history days remain.
+This completes the physical-cycle gate, not next-day publication observation or
+the optional provider test. v1.7.0-beta.4 carries the released EV editor into
+the owner's tariff branch; its CI and live installation are separate checks.
+The owner will submit HACS personally using `docs/hacs-submission.md`; no
+upstream application has been opened. Cap-adjusted history and the beta analysis
+dashboard remain subsequent work.
 
 ### Outstanding Versus Implemented
 
@@ -123,13 +127,13 @@ history and the beta analysis dashboard remain subsequent work.
 | Stable appliance migration/orchestration | Released; legacy packaging retired | Community compatibility testing and guided appliance setup |
 | Ofgem benchmark and 24/48-hour chart | Stable; regional, cached, tariff-local, benchmark/Now lines | Historical cap rebasing is separate, not implemented |
 | Lab dashboard | Retired; capabilities retained at the bottom | No further Lab content requested |
-| History and deterministic analysis | v1.6/v1.7 beta; warm-up satisfied | Full publication/revision and appliance-cycle observation |
+| History and deterministic analysis | v1.6/v1.7 beta; warm-up and physical wash passed | Full next-day publication/revision observation |
 | Official history backfill | 90 complete days verified | No further legacy-cache import; retain source/provenance isolation |
 | Optional AI narrative | Implemented, disabled unless manually requested | Actual provider test when tomorrow is complete; currently 46/48 slots |
-| EV options editor | Separate v1.5.2 beta slice implemented | Live form, reload/restart and downgrade checks; not in stable |
+| EV options editor | Stable v1.5.5; real isolated lifecycle/rollback passed | Carry into owner's tariff beta and verify live installation |
 | New analysis dashboard | Not consolidated into stable | Bounded chart/entity presentation, mobile/travel/DST validation |
 | Octopus Intelligence retirement | Not done; old cache/app preserved | Demonstrate accepted replacement parity first |
-| HACS default catalogue | Repository prepared; no submission yet | Owner submission on 9 October, maintainer acceptance and scan |
+| HACS default catalogue | Stable release and owner application prepared | Owner chooses submission time; maintainer acceptance and scan |
 
 Later work includes optional solar/storage context, greener-window tradeoffs,
 missing-entity repair guidance and compatibility-engine decomposition. Inferred

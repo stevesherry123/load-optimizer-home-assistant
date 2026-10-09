@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.0-beta.4
+
+- Carry the validated stable v1.5.5 EV editor, retained settings, validation and
+  entity labels into the history/import beta without changing either store.
+- Extend real minimum-HA EV options/reload/restart acceptance to include the
+  beta's additional read-only tariff-analysis entities and devices.
+- Stable publication remains v1.5.5; tariff history/import/AI are not promoted.
+
 ## 1.7.0-beta.3
 
 - Carry the v1.5.4 unavailable-confidence startup fix into the tariff beta.
@@ -50,6 +58,30 @@
   remains explicitly waiting rather than producing a definitive classification.
 - Recalculate on rate publication as well as the normal coordinator interval.
 - Appliance profile costing and learning data are unchanged.
+
+## 1.5.5
+
+- Add EV options editing for tariff and battery references, charge power,
+  efficiency, target, slot length and deadline, plus regional benchmark settings.
+- Preserve the config entry and entity identities and unrelated options; support
+  clearing optional references. Charger control remains advisory and opt-in.
+- Keep this independently tested EV slice separate from the unpromoted tariff
+  history/analysis/import/AI betas.
+- Fix Home Assistant form serialization for the optional deadline and report
+  invalid local times, timezones, non-finite numbers and fractional slot lengths
+  without changing saved options.
+- Correct EV sensor names when Home Assistant's description name is unset;
+  existing registered entity IDs are retained.
+- Add real minimum-Home-Assistant setup, form serialization, options, reload and
+  persisted restart acceptance to CI, alongside the existing unit suite.
+- Include benchmark-aware current-price tile colours and the empty-forecast
+  dashboard guard from main.
+- Acceptance used isolated minimum-version Home Assistant, actual browser save
+  and validation, and stable rollback/re-upgrade with unchanged EV identities.
+
+## 1.5.5-beta.1
+
+- Publish the separately validated EV options slice before stable promotion.
 
 ## 1.5.4
 
