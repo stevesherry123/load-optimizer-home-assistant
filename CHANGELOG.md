@@ -6,7 +6,9 @@
   entity labels into the history/import beta without changing either store.
 - Extend real minimum-HA EV options/reload/restart acceptance to include the
   beta's additional read-only tariff-analysis entities and devices.
-- Stable publication remains v1.5.5; tariff history/import/AI are not promoted.
+- Support registered hub links on both minimum and current Home Assistant for
+  tariff-analysis devices as well as appliances. Stable submission uses v1.5.6;
+  tariff history/import/AI are not promoted.
 
 ## 1.7.0-beta.3
 
@@ -58,6 +60,13 @@
   remains explicitly waiting rather than producing a definitive classification.
 - Recalculate on rate publication as well as the normal coordinator interval.
 - Appliance profile costing and learning data are unchanged.
+
+## 1.5.6
+
+- Support both older identifier-based and current scoped device registries when
+  linking appliance/orchestration devices to an already registered hub.
+- Verify actual appliance device registration on minimum Home Assistant, not
+  only module imports or EV entries. Preserve identifiers and registered IDs.
 
 ## 1.5.5
 

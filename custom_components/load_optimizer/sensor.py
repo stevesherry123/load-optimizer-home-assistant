@@ -15,14 +15,13 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, MANUFACTURER
 from .coordinator import LoadOptimizerCoordinator
-from .entity import LoadOptimizerEntity
+from .entity import LoadOptimizerEntity, registered_hub_link
 from .orchestration_entity import OrchestrationEntity
 
 PENCE = "p"
@@ -180,13 +179,10 @@ class LoadOptimizerIntelligenceSensor(LoadOptimizerEntity, SensorEntity):
     @property
     def device_info(self):
         entry = self.coordinator.config_entry
-        hub = dr.async_get(self.coordinator.hass).async_get_device_by_identifier(
-            (DOMAIN, entry.entry_id), entry.entry_id
-        )
         return DeviceInfo(identifiers={(DOMAIN, f"{entry.entry_id}_tariff_intelligence")},
                           manufacturer=MANUFACTURER, name=f"{entry.title} Tariff Intelligence",
                           model="Deterministic tariff analysis",
-                          **({"via_device_id": hub.id} if hub else {}))
+                          **registered_hub_link(self.coordinator.hass, entry))
 
     @property
     def native_value(self):
@@ -464,13 +460,10 @@ class LoadOptimizerLegacySensor(CoordinatorEntity[LoadOptimizerCoordinator], Sen
                 model="Learned appliance optimizer",
             )
         metadata = self.coordinator.data.get("legacy_instances", {}).get(self._instance_id, {})
-        hub = dr.async_get(self.coordinator.hass).async_get_device_by_identifier(
-            (DOMAIN, entry.entry_id), entry.entry_id
-        )
         return DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_instance_{self._instance_id}")},
             manufacturer=MANUFACTURER,
             name=metadata.get("name") or f"Load Optimizer {self._instance_id}",
             model="Learned appliance optimizer",
-            **({"via_device_id": hub.id} if hub else {}),
+            **registered_hub_link(self.coordinator.hass, entry),
         )
