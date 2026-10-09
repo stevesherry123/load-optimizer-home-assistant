@@ -77,6 +77,12 @@ SENSOR_DESCRIPTIONS = (
 
 NATIVE_STATUS_SENSORS = (
     (
+        "automation_explanation",
+        "load_optimizer_1_automation_explanation",
+        "Automatic Scheduling Explanation",
+        "mdi:text-box-check-outline",
+    ),
+    (
         "overnight_readiness",
         "load_optimizer_1_overnight_readiness",
         "Overnight Readiness",

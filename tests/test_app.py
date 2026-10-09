@@ -177,6 +177,16 @@ class VersionTests(unittest.TestCase):
             self.assertIn("id: 'load-optimizer-now'", dashboard)
             self.assertIn("update_interval: 1min", dashboard)
 
+    def test_full_dashboard_handles_empty_forecast_at_startup(self):
+        root = Path(__file__).resolve().parents[1]
+        dashboard = (
+            root / "homeassistant/dashboards/full/load_optimizer_dashboard.yaml"
+        ).read_text()
+
+        self.assertIn("sort | first | default(none)", dashboard)
+        self.assertNotIn("sort | first %}", dashboard)
+        self.assertIn("No fully priced cycle forecast is currently available.", dashboard)
+
     def test_options_flow_uses_home_assistant_config_entry_property(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "custom_components/load_optimizer/config_flow.py").read_text()

@@ -8,7 +8,7 @@ templates. Do not advertise the v1.6/v1.7 history, analysis, import or AI betas
 as stable. Publishing does not require retiring the separate Octopus
 Intelligence reference app or promoting its unobserved replacement features.
 
-## Repository Preflight (8 October 2026)
+## Repository Preflight (9 October 2026)
 
 - Public, active repository; `main` is the default branch.
 - Description, topics, enabled Issues, MIT licence and owner codeowner present.
@@ -20,14 +20,21 @@ Intelligence reference app or promoting its unobserved replacement features.
 - A HACS catalogue submission has not yet been created.
 
 The v1.5.1 preparation corrects the minimum version, prevents a second shared
-learned-appliance hub and updates public documentation. Check the actual CI
+learned-appliance hub and updates public documentation. The v1.5.3 update fixes
+rejected firmware captures cancelling washes, exposes scheduling reasons and
+refreshes programme selection with manual cooldown bypass. v1.5.4 fixes startup
+when live scheduling confidence is not yet available. The owner has these fixes
+in v1.7.0-beta.3, retaining the existing tariff-history features. Live checks
+confirmed restored forecasts and programme options with unchanged learning and
+91 history days. Observe the next real wash and learning increment before
+catalogue submission. Check the actual CI
 results and stable release immediately before submitting; this is not a claim
 of testing every supported Home Assistant or appliance combination.
 
 ## Tomorrow's Submission
 
 1. Confirm main's tests, minimum-version imports, HACS validation and hassfest
-   are green and a full stable v1.5.1 GitHub release exists after those checks.
+   are green and a full stable v1.5.4 GitHub release exists after those checks.
 2. Sign in as repository owner `stevesherry123` and fork `hacs/default`.
 3. Create a new branch from its `master` branch. Add
    `stevesherry123/load-optimizer-home-assistant` to the JSON `integration` list

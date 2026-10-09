@@ -33,6 +33,66 @@ For customisation, use your own copy outside `custom_components/` and change
 the `filename` above. HACS replaces the packaged template during updates. The
 integration never deletes or replaces your storage-mode dashboards.
 
+## Automatic Scheduling Explanation
+
+The Overview and Appliances views include an Automatic Scheduling card in the
+full and standard templates respectively. It separates a candidate recommendation
+from a saved start request: a ready programme is not a promise that a wash will
+start. It shows the queued programme/time, last automatic request, actual start
+attempt, learning confidence, outstanding safety checks and recent decisions.
+
+`sensor.load_optimizer_1_automation_explanation` supplies the reasons from the
+native scheduler, rather than reproducing the scheduling rules in dashboard
+templates. An already-used overnight reservation is amber, not green. Scheduling
+events are bounded to the most recent 20 and stored with the native controls,
+so diagnosis does not depend on Recorder being enabled for optimizer sensors.
+Existing history is not reconstructed or guessed during an upgrade.
+
+Dates use Home Assistant's configured home timezone, including its timezone
+abbreviation, even when the dashboard is opened while travelling. The card falls
+back to the existing queue and attempt records on older integration versions.
+It does not start, cancel or re-arm a wash. The new sensor and durable reasons
+require the scheduling-diagnostics update; adding the card alone does not fix
+older scheduling behaviour.
+
+Manufacturer updates can produce short power captures. A rejected capture without
+a newly learned wash or an observed Bosch running operation must not confirm a
+wash or cancel its pending overnight request. A real observed wash may still
+complete without entering learning, for example if its capture was interrupted.
+Startup, forecasts and programme selection were verified live on 9 October with
+v1.7.0-beta.3, which contains the stable v1.5.4 fixes. The next real wash and its
+learning increment remain a publication gate; no wash was started during checks.
+
+## Manual Programme Selection
+
+The override dropdown follows the configured dishwasher's live programme selector,
+with its last known options retained while the appliance is unavailable. It is
+not restricted by learning confidence or automatic programme cooldowns.
+
+Select a programme such as MixedLoad, then press **Start Selected Program Now**
+to request it immediately. Explicit manual starts work even without a ready cost
+recommendation. Scheduled selected-programme requests use manual candidate windows
+when available, without automatic cooldown filtering. Normal connection, closed
+door, remote-start and already-running checks still apply. The automatic engine
+retains its existing cooldowns; manual requests do not silently re-arm automation.
+
+## Current Price Colours
+
+The current import-price tile optionally uses
+[card-mod](https://github.com/thomasloven/lovelace-card-mod), installed through
+HACS as a dashboard resource, using a release compatible with your HA version.
+Its background is light green below the regional
+Ofgem benchmark, light yellow when equal, and red above it. Comparisons use
+two decimal places in p/kWh so visually equal prices are not marked higher or
+lower because of hidden precision. Missing, unavailable or non-finite values
+keep the normal neutral background. Both source entities are watched, so a
+tariff update or a new benchmark changes the colour without a reload.
+
+The Ofgem tile remains neutral. Without card-mod, both tiles remain usable
+standard Home Assistant tiles, but comparison colouring is not applied. This
+optional styling does not affect scheduling, learning or the daily benchmark
+lookup, and does not require a Home Assistant restart.
+
 The richer example dashboards under `homeassistant/dashboards/` use
 `apexcharts-card`. Their future-price axes are formatted in the tariff timezone
 published by Load Optimizer, not the viewing browser's timezone. This keeps the

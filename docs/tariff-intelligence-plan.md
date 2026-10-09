@@ -4,8 +4,8 @@
 
 This plan brings the useful ideas from Octopus Intelligence into Load Optimizer
 without reintroducing a second runtime or making the integration depend on one
-energy supplier. v1.5.0 is now the stable publication
-baseline. Analysis development takes place on `beta/tariff-analysis-v1.6`, is released
+energy supplier. v1.5.x is the stable publication
+line. Analysis development takes place on `beta/tariff-analysis-v1.6`, is released
 as a prerelease, and reaches `main` only after the acceptance checks below pass.
 
 The accompanying detailed project brief remains the product specification. This
@@ -87,8 +87,30 @@ The independent v1.5.1 publication preparation adds truthful installation and
 dashboard guidance, corrects minimum HA to 2024.12, adds minimum-version import
 CI and guards the shared learned-appliance store against a second hub. HACS
 default-catalogue submission is planned for 9 October, not already completed.
-EV options editing is the next separate development slice; cap-adjusted history
-and the beta analysis dashboard remain subsequent work.
+EV options editing is implemented in separate `beta/ev-options-v1.5.2` development
+([draft PR #7](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/7));
+174 local tests pass, with live acceptance still outstanding. Cap-adjusted
+history and the beta analysis dashboard remain subsequent work.
+
+### Outstanding Versus Implemented
+
+| Area | Current status | Remaining gate/work |
+|---|---|---|
+| Stable appliance migration/orchestration | Released; legacy packaging retired | Community compatibility testing and guided appliance setup |
+| Ofgem benchmark and 24/48-hour chart | Stable; regional, cached, tariff-local, benchmark/Now lines | Historical cap rebasing is separate, not implemented |
+| Lab dashboard | Retired; capabilities retained at the bottom | No further Lab content requested |
+| History and deterministic analysis | v1.6/v1.7 beta; warm-up satisfied | Full publication/revision and appliance-cycle observation |
+| Official history backfill | 90 complete days verified | No further legacy-cache import; retain source/provenance isolation |
+| Optional AI narrative | Implemented, disabled unless manually requested | Actual provider test when tomorrow is complete; currently 46/48 slots |
+| EV options editor | Separate v1.5.2 beta slice implemented | Live form, reload/restart and downgrade checks; not in stable |
+| New analysis dashboard | Not consolidated into stable | Bounded chart/entity presentation, mobile/travel/DST validation |
+| Octopus Intelligence retirement | Not done; old cache/app preserved | Demonstrate accepted replacement parity first |
+| HACS default catalogue | Repository prepared; no submission yet | Owner submission on 9 October, maintainer acceptance and scan |
+
+Later work includes optional solar/storage context, greener-window tradeoffs,
+missing-entity repair guidance and compatibility-engine decomposition. Inferred
+washing-machine class splitting is not enabled or required; preserve the owner's
+current learning behavior unless a future opt-in is explicitly approved.
 
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as

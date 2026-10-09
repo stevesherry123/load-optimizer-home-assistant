@@ -1,12 +1,39 @@
 # Changelog
 
-## 1.5.2-beta.1
+## 1.5.5-beta.1
 
 - Add EV options editing for tariff and battery references, charge power,
   efficiency, target, slot length and deadline, plus regional benchmark settings.
 - Preserve the config entry and entity identities and unrelated options; support
   clearing optional references. Charger control remains advisory and opt-in.
 - Keep this change in separate beta development pending live options verification.
+
+## 1.5.4
+
+- Handle missing, null and invalid confidence thresholds while tariff/appliance
+  entities are still starting. Scheduling diagnostics must not prevent setup,
+  future scans or live programme discovery.
+- Exercise startup with unavailable inputs followed by live capability recovery.
+
+## 1.5.3
+
+- Keep a pending overnight wash when a manufacturer firmware update produces a
+  short, rejected power capture; do not mark that capture as a completed wash.
+- Reset the loaded-door flag on a reported Bosch wash start, not any power spike.
+- Explain automatic scheduling separately from recommendations, including an
+  already-reserved night, confidence, safety checks and next eligibility.
+- Retain a bounded scheduling-event history across restarts, and add an
+  Automatic Scheduling explanation to both supported dashboard templates.
+- Refresh the manual programme dropdown from the appliance instead of the old
+  migration snapshot, including MixedLoad and programmes added by firmware.
+- Keep automatic cooldowns intact while explicit manual starts use their own
+  programme duration, not an unrelated or delayed recommendation's finish time.
+- Allow explicitly selected manual starts without a ready recommendation;
+  retain physical safety checks, including an already-running appliance.
+- Expose selected-programme buttons in the public dashboard and correct the
+  rich dashboard's engine buttons to call the native button service.
+- A real post-upgrade wash remains the final live cycle/learning acceptance
+  check; regression tests exercise appliance commands with isolated mocks.
 
 ## 1.5.1
 
