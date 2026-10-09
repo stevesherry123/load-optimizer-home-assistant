@@ -80,7 +80,8 @@ retains its existing cooldowns; manual requests do not silently re-arm automatio
 
 The current import-price tile optionally uses
 [card-mod](https://github.com/thomasloven/lovelace-card-mod), installed through
-HACS as a dashboard resource. Its background is light green below the regional
+HACS as a dashboard resource, using a release compatible with your HA version.
+Its background is light green below the regional
 Ofgem benchmark, light yellow when equal, and red above it. Comparisons use
 two decimal places in p/kWh so visually equal prices are not marked higher or
 lower because of hidden precision. Missing, unavailable or non-finite values
