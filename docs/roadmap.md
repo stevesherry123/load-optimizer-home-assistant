@@ -14,11 +14,10 @@ implementation architecture in `docs/architecture.md`.
   the approved manual request correctly waited on the current 46-of-48-slot feed
 - observe the v1.6/v1.7 beta through complete next-day publication, revisions and
   appliance cycles before stable promotion; imported history now satisfies warm-up
-- finish CI and release the EV options editor on `beta/ev-options-v1.5.2`
-  ([draft PR #7](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/7));
-  isolated minimum-HA UI, real options/reload, restart and stable rollback checks
-  passed. The queued dishwasher cycle has now completed successfully.
-  It is not yet installed over the owner's v1.7 tariff-intelligence beta.
+- carry the merged EV options editor from main into the owner's v1.7
+  tariff-intelligence beta without removing history/import features, then verify
+  the live upgrade. Isolated minimum-HA UI, options/reload, restart and stable
+  rollback checks passed, and the queued dishwasher wash has completed.
 - implement effective-dated price-cap references and additive historical rebasing;
   retain raw comparisons and disclose missing references rather than guessing
 - add a public Tariff Intelligence dashboard section for the new beta entities,
@@ -54,8 +53,8 @@ implementation architecture in `docs/architecture.md`.
   v1.7.0-beta.3 (245 tests). Live forecasts and MixedLoad selection restored;
   dishwasher / washing machine / vacuum learning totals remain 113 / 189 / 46,
   MixedLoad remains 3 runs at 51%, and all 91 tariff-history days are preserved.
-  No wash was started by deployment verification. The next physical wash and
-  learning increment remain the publication acceptance gate.
+  No wash was started by deployment verification. The subsequent physical wash
+  passed the publication gate as recorded above; these are the earlier totals.
 - Published v1.5.0 with a configurable regional Ofgem benchmark, tariff-local
   24/48-hour chart, visible benchmark and Now lines, and bottom-of-page capabilities.
 - Implemented v1.6 beta source-shared tariff history and deterministic analysis,

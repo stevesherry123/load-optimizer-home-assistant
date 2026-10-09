@@ -40,6 +40,8 @@ of testing every supported Home Assistant or appliance combination.
 
 The owner chose to submit the integration personally. This work prepares the
 release and application evidence but does not open an upstream pull request.
+Use [the prepared submission](hacs-submission.md) for the owner steps, current
+upstream checklist and exact release/validation links.
 
 1. Confirm main's tests, minimum-version imports, HACS validation and hassfest
    are green and a full stable v1.5.5 GitHub release exists after those checks.
