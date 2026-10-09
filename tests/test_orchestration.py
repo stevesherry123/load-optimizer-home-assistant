@@ -326,3 +326,36 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
             "entity_id": "button.start"}, blocking=True)
         self.assertEqual(self.scheduler.state["last_result"], "confirmed")
         self.assertEqual(self.scheduler.state["last_auto_normal_request"], Clock.current.isoformat())
+
+    def test_startup_threshold_handles_missing_null_and_invalid_attributes(self):
+        self.values.pop("sensor.load_optimizer_1_schedule_status")
+        self.assertEqual(self.scheduler._confidence_threshold(), 20)
+        for value in (None, "", "unknown", "unavailable", "bad", "nan", "inf", -1, 101):
+            with self.subTest(value=value):
+                self.put("sensor.load_optimizer_1_schedule_status", "not_ready", confidence_threshold=value)
+                self.assertEqual(self.scheduler._confidence_threshold(), 20)
+                self.assertEqual(self.scheduler.status["automation_explanation"]["confidence_threshold"], 20)
+        for value in (0, 50, "70"):
+            self.put("sensor.load_optimizer_1_schedule_status", "ready", confidence_threshold=value)
+            self.assertEqual(self.scheduler._confidence_threshold(), float(value))
+
+    async def test_startup_before_source_entities_then_capability_recovery(self):
+        ready_values = dict(self.values)
+        self.values.clear()
+        self.put("sensor.load_optimizer_1_schedule_status", "not_ready", confidence_threshold=None)
+        self.scheduler.async_load = AsyncMock()
+        self.scheduler.set_update_callback(Mock())
+        self.scheduler.state["last_auto_normal_request"] = Clock.current.isoformat()
+        with patch.dict(namespace, async_track_state_change_event=Mock(return_value=Mock()),
+                        async_track_time_interval=Mock(return_value=Mock())):
+            await self.scheduler.async_start()
+        self.scheduler._update_callback.assert_called()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.values.update(ready_values)
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.MixedLoad", options=[
+            "Dishcare.Dishwasher.Program.MixedLoad", "Dishcare.Dishwasher.Program.Eco50"])
+        await self.scheduler.async_evaluate()
+        self.assertIn("MixedLoad", self.scheduler.program_options)
+        self.assertEqual(self.scheduler.status["automation_explanation"]["confidence_threshold"], 50)
+        self.assertEqual(self.scheduler.state["shadow_decision"]["reason"], "automatic_window_already_used")
+        self.hass.services.async_call.assert_not_awaited()

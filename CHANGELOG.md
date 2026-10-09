@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.0-beta.3
+
+- Carry the v1.5.4 unavailable-confidence startup fix into the tariff beta.
+  Learning and tariff-history stores are unchanged.
+
 ## 1.7.0-beta.2
 
 - Carry the stable v1.5.3 scheduling diagnostics and MixedLoad/manual cooldown
@@ -45,6 +50,13 @@
   remains explicitly waiting rather than producing a definitive classification.
 - Recalculate on rate publication as well as the normal coordinator interval.
 - Appliance profile costing and learning data are unchanged.
+
+## 1.5.4
+
+- Handle missing, null and invalid confidence thresholds while tariff/appliance
+  entities are still starting. Scheduling diagnostics must not prevent setup,
+  future scans or live programme discovery.
+- Exercise startup with unavailable inputs followed by live capability recovery.
 
 ## 1.5.3
 
