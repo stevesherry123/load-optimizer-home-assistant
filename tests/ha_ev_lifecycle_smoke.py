@@ -15,6 +15,7 @@ import logging
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,7 @@ sys.path.insert(0, str(ROOT))
 from homeassistant.bootstrap import async_from_config_dict
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.config_validation import custom_serializer
 from homeassistant import loader
 from voluptuous_serialize import convert
@@ -73,6 +75,36 @@ def device_ids(hass: HomeAssistant, entry_id: str) -> list[str]:
     return sorted({entry.device_id for entry in er.async_entries_for_config_entry(
         er.async_get(hass), entry_id
     ) if entry.device_id is not None})
+
+
+def verify_appliance_device_links(hass: HomeAssistant, coordinator) -> None:
+    """Register actual appliance/orchestration device_info against real HA."""
+    from custom_components.load_optimizer.entity import registered_hub_link
+    from custom_components.load_optimizer.orchestration_entity import OrchestrationEntity
+    from custom_components.load_optimizer.sensor import LoadOptimizerLegacySensor
+
+    entry = coordinator.config_entry
+    registry = dr.async_get(hass)
+    hub = next(device for device in dr.async_entries_for_config_entry(registry, entry.entry_id)
+               if (DOMAIN, entry.entry_id) in device.identifiers)
+    assert registered_hub_link(hass, SimpleNamespace(entry_id="not_registered")) == {}
+    synthetic = SimpleNamespace(hass=hass, config_entry=entry, data={
+        "legacy_instances": {"1": {"name": "Synthetic dishwasher"}},
+        "legacy_entities": {},
+    })
+    entities = (LoadOptimizerLegacySensor(synthetic, "sensor.load_optimizer_1_total_runs"),
+                OrchestrationEntity(synthetic, "sensor", "acceptance", "Acceptance"))
+    created = []
+    try:
+        for entity in entities:
+            info = entity.device_info
+            device = registry.async_get_or_create(config_entry_id=entry.entry_id, **info)
+            assert device.via_device_id == hub.id, info
+            created.append(device.id)
+    finally:
+        for device_id in set(created):
+            registry.async_remove_device(device_id)
+    print("Real HA appliance/orchestration device registration passed")
 
 
 async def prepare_ui_fixture(hass: HomeAssistant) -> None:
@@ -217,6 +249,7 @@ async def run(config_dir: Path, phase: str, serve: bool = False) -> None:
                 assert plan["slot_energy_kwh"] == 1.8
             assert identities(hass, entry.entry_id) == before_ids
             assert device_ids(hass, entry.entry_id) == before_devices
+            verify_appliance_device_links(hass, hass.data[DOMAIN][entry.entry_id])
             print(f"EV {phase}: real HA flow/reload, advisory plan and stable identity passed")
             if serve:
                 await prepare_ui_fixture(hass)

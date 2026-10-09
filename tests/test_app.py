@@ -230,7 +230,7 @@ class VersionTests(unittest.TestCase):
         source = (root / "custom_components/load_optimizer/sensor.py").read_text()
         self.assertIn("if candidate_instance_id in legacy_instances", source)
 
-    def test_child_devices_use_registered_hub_device_id(self):
+    def test_child_devices_use_registered_hub_compatibility_helper(self):
         root = Path(__file__).resolve().parents[1]
         sensor = (root / "custom_components/load_optimizer/sensor.py").read_text()
         orchestration = (
@@ -238,9 +238,8 @@ class VersionTests(unittest.TestCase):
         ).read_text()
 
         for source in (sensor, orchestration):
-            self.assertIn('"via_device_id": hub.id', source)
-            self.assertIn("async_get_device_by_identifier", source)
-            self.assertIn("(DOMAIN, entry.entry_id), entry.entry_id", source)
+            self.assertIn("registered_hub_link(self.coordinator.hass, entry)", source)
+            self.assertNotIn("async_get_device_by_identifier", source)
             self.assertNotIn("via_device=(DOMAIN", source)
 
     def test_only_empty_integration_devices_can_be_removed(self):
