@@ -63,3 +63,16 @@ subsequently completed normally; the publication learning gate is now satisfied.
 The isolated acceptance and merge gates above are complete. Propagate the editor
 into the analysis/import branches without discarding their independently verified
 history stores; this remains separate from promoting analysis to stable.
+
+## Owner Beta Deployment (9 October 2026)
+
+Installed v1.7.0-beta.4 after the wash completed and fresh checks confirmed idle
+appliances, no queued request and zero active captures. After one restart, all
+222 registered entity/device identities and the dashboard configuration matched
+their pre-update snapshot. Learning totals remain 114 / 189 / 46, MixedLoad
+4 runs at 61%, and schema-2 tariff history retains 91 days with no storage error.
+All three appliance forecasts are ready and focused integration logs are clean.
+The real EV Configure API opens only EV and benchmark sections, serializes the
+form and supplies saved required defaults. It was cancelled without saving any
+production settings. EV entities remain advisory with no button or switch.
+Independent one-to-four-hour tariff-window arithmetic still matches.

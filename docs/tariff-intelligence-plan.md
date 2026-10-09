@@ -12,7 +12,7 @@ The accompanying detailed project brief remains the product specification. This
 document records the implementation sequence and release gates derived from a
 review of both repositories and the live Home Assistant installation.
 
-## Current Delivery Status (8 October 2026)
+## Current Delivery Status (9 October 2026)
 
 Completed and live-verified through v1.5.0-beta.6:
 
@@ -56,7 +56,8 @@ all one-to-four-hour windows matched independent arithmetic from live rates.
 Rollback to v1.5.0 and upgrade to v1.6.0-beta.3 succeeded with the same learning
 counts, a healthy retained tariff store and matching window calculations.
 Historical warm-up is now satisfied by the separately approved official backfill.
-Longer publication/appliance-cycle observation remains pending before promotion.
+Longer next-day publication/revision observation remains pending before promotion;
+the physical-cycle gate has now passed as recorded below.
 
 Implemented next-branch design defaults:
 
@@ -83,14 +84,27 @@ integration logs and dashboard references. The approved OpenAI AI Task action
 returned waiting without a provider call because tomorrow has only 46 periods.
 Actual provider testing and longer observation remain beta promotion gates.
 
-The independent v1.5.1 publication preparation adds truthful installation and
-dashboard guidance, corrects minimum HA to 2024.12, adds minimum-version import
-CI and guards the shared learned-appliance store against a second hub. HACS
-default-catalogue submission is planned for 9 October, not already completed.
-EV options editing is implemented in separate `beta/ev-options-v1.5.2` development
-([draft PR #7](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/7));
-174 local tests pass, with live acceptance still outstanding. Cap-adjusted
-history and the beta analysis dashboard remain subsequent work.
+Stable v1.5.6 is published after all main checks passed: 209 unit tests, actual
+minimum-HA appliance/orchestration device registration, EV options/reload/restart,
+imports and dashboard templates, HACS and hassfest. The EV editor's isolated
+browser and downgrade/re-upgrade checks passed. Expanded minimum-HA acceptance
+found and fixed a newer-only registered-hub API before public submission.
+The owner will submit HACS personally using `docs/hacs-submission.md`; no
+upstream application has been opened.
+
+The owner's physical MixedLoad wash completed on 9 October at 13:36 BST:
+dishwasher learning is now 114 total and MixedLoad 4 runs at 61% confidence;
+washing machine / vacuum remain 189 / 46. This passes the physical-cycle gate.
+v1.7.0-beta.4 carries the stable editor and compatibility fix into the owner's
+tariff branch; 259 combined unit tests and all beta CI checks passed. Installed
+and restarted once after fresh idle/queue/capture checks: all 222 entity/device
+identities and the exact dashboard configuration are unchanged, all 91 history
+days remain, appliance forecasts and independent tariff-window arithmetic pass,
+the real EV form has saved defaults, and focused integration logs are clean.
+No production EV settings were saved or appliance/charger commands sent.
+Next-day publication/revision observation and the optional AI provider test
+remain incomplete: latest check has no tomorrow data and 46 of today's 48 slots.
+Cap-adjusted history and the beta analysis dashboard remain subsequent work.
 
 ### Outstanding Versus Implemented
 
@@ -99,13 +113,13 @@ history and the beta analysis dashboard remain subsequent work.
 | Stable appliance migration/orchestration | Released; legacy packaging retired | Community compatibility testing and guided appliance setup |
 | Ofgem benchmark and 24/48-hour chart | Stable; regional, cached, tariff-local, benchmark/Now lines | Historical cap rebasing is separate, not implemented |
 | Lab dashboard | Retired; capabilities retained at the bottom | No further Lab content requested |
-| History and deterministic analysis | v1.6/v1.7 beta; warm-up satisfied | Full publication/revision and appliance-cycle observation |
+| History and deterministic analysis | v1.7.0-beta.4; warm-up and physical wash passed | Full next-day publication/revision observation |
 | Official history backfill | 90 complete days verified | No further legacy-cache import; retain source/provenance isolation |
-| Optional AI narrative | Implemented, disabled unless manually requested | Actual provider test when tomorrow is complete; currently 46/48 slots |
-| EV options editor | Separate v1.5.2 beta slice implemented | Live form, reload/restart and downgrade checks; not in stable |
+| Optional AI narrative | Implemented, disabled unless manually requested | Actual provider test when tomorrow is complete; latest tomorrow data unpublished |
+| EV options editor | Stable v1.5.6 and owner's beta.4; acceptance passed | No outstanding editor release gate |
 | New analysis dashboard | Not consolidated into stable | Bounded chart/entity presentation, mobile/travel/DST validation |
 | Octopus Intelligence retirement | Not done; old cache/app preserved | Demonstrate accepted replacement parity first |
-| HACS default catalogue | Repository prepared; no submission yet | Owner submission on 9 October, maintainer acceptance and scan |
+| HACS default catalogue | Stable release and owner application prepared | Owner chooses submission time; maintainer acceptance and scan |
 
 Later work includes optional solar/storage context, greener-window tradeoffs,
 missing-entity repair guidance and compatibility-engine decomposition. Inferred

@@ -62,6 +62,13 @@ Use the current [official inclusion instructions](https://www.hacs.xyz/docs/publ
 and [integration requirements](https://www.hacs.xyz/docs/publish/integration/).
 The maintainers currently warn that new submissions can take months.
 
+The owner now runs v1.7.0-beta.4, which carries the stable editor and registry
+fix without removing beta history/import. Live restart acceptance preserved all
+222 entity/device identities, the exact dashboard configuration, learning totals
+114 / 189 / 46, MixedLoad 4 runs / 61%, and 91 history days. Forecasts, EV form
+defaults and focused logs passed. This does not promote experimental analysis
+into the stable v1.5.6 submission.
+
 Until acceptance, users can install through HACS Custom repositories,
 category Integration, using the existing repository URL. This is distinct from
 default-catalogue inclusion; do not announce that listing has already happened.

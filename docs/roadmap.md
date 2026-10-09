@@ -11,13 +11,10 @@ implementation architecture in `docs/architecture.md`.
   pull request is created by this work. Custom-repository installation is not
   catalogue acceptance.
 - finish the real optional AI provider test after complete tomorrow rates arrive;
-  the approved manual request correctly waited on the current 46-of-48-slot feed
+  the approved manual request correctly waited on incomplete data. Latest check:
+  tomorrow unpublished, current day 46 of 48 slots; no provider call made
 - observe the v1.6/v1.7 beta through complete next-day publication, revisions and
   appliance cycles before stable promotion; imported history now satisfies warm-up
-- carry the merged EV options editor from main into the owner's v1.7
-  tariff-intelligence beta without removing history/import features, then verify
-  the live upgrade. Isolated minimum-HA UI, options/reload, restart and stable
-  rollback checks passed, and the queued dishwasher wash has completed.
 - implement effective-dated price-cap references and additive historical rebasing;
   retain raw comparisons and disclose missing references rather than guessing
 - add a public Tariff Intelligence dashboard section for the new beta entities,
@@ -40,6 +37,12 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Installed v1.7.0-beta.4 with the stable EV editor and minimum-HA compatibility
+  fix after fresh idle/no-queue/no-capture checks. One restart; all 222 entity and
+  device identities and the exact dashboard configuration are unchanged.
+  Learning remains 114 / 189 / 46, MixedLoad 4 / 61%, history 91 days, and all
+  appliance cost statuses are ready. Live EV form/menu/defaults pass without
+  saving production settings; integration logs are clean. 259 beta tests pass.
 - Published stable v1.5.5's EV editor and follow-up v1.5.6 compatibility fix.
   Expanded real minimum-HA acceptance found and fixed a newer-only device-link
   API in appliances/orchestration; 209 stable unit tests and all main CI checks
