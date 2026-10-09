@@ -6,8 +6,8 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- prepare the validated stable v1.5.5 line for the owner's HACS catalogue
-  submission. The owner explicitly chose to submit it themselves; no catalogue
+- submit the prepared stable v1.5.6 application to HACS (owner action).
+  The owner explicitly chose to submit it themselves; no catalogue
   pull request is created by this work. Custom-repository installation is not
   catalogue acceptance.
 - finish the real optional AI provider test after complete tomorrow rates arrive;
@@ -40,6 +40,11 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Published stable v1.5.5's EV editor and follow-up v1.5.6 compatibility fix.
+  Expanded real minimum-HA acceptance found and fixed a newer-only device-link
+  API in appliances/orchestration; 209 stable unit tests and all main CI checks
+  pass. The prepared owner-led HACS application has exact v1.5.6 release and
+  validation links in `docs/hacs-submission.md`; no upstream PR was opened.
 - Passed the final real-wash publication gate on 9 October: MixedLoad completed
   at 13:36 BST, dishwasher learning increased 113 to 114, and MixedLoad increased
   3 to 4 runs with 61% confidence. The request cleared, completion was confirmed,
