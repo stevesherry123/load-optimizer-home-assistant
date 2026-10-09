@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
@@ -12,6 +13,9 @@ from zoneinfo import ZoneInfo
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "custom_components/load_optimizer/orchestration.py"
+sys.path.insert(0, str(SOURCE.parent))
+from legacy.costing import recommend_cycle
+
 tree = ast.parse(SOURCE.read_text())
 tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
 namespace = {
@@ -233,6 +237,102 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         decision = self.scheduler._automatic_decision(Clock.current)
         self.assertEqual(decision["request_mode"], "negative_price")
         self.assertEqual(decision["program"], "Super60")
+
+    async def test_real_planner_drives_repeated_free_runs_with_limits_and_no_door_reload(self):
+        start = datetime(2026, 10, 10, 8, 30, tzinfo=timezone.utc)
+        Clock.current = start + timedelta(seconds=54, microseconds=183546)
+        self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=True,
+                                    door_opened_since_last_cycle=False)
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="dishwasher")
+        models = [
+            {"program": "Quick45", "expected_runtime_minutes": 28.4, "expected_energy_kwh": 0.7},
+            {"program": "MachineCare", "expected_runtime_minutes": 35.5, "expected_energy_kwh": 0.6},
+            {"program": "NormalOnly", "expected_runtime_minutes": 10, "expected_energy_kwh": 5},
+        ]
+        for model in models:
+            model.update(representative_profile_w=[100, 100], confidence=90, recent_cycles=[],
+                         last_seen=(start - timedelta(minutes=10)).isoformat())
+        policies = [{"program": m["program"], "enabled": True,
+                     "allow_normal_recommendation": True, "allow_negative_price_run": m["program"] != "NormalOnly",
+                     "minimum_hours_between_runs": 96, "maximum_runs_per_window": 2 if m["program"] == "MachineCare" else 1,
+                     "preference_rank": 50, "negative_price_priority": 50} for m in models]
+        periods = [
+            {"start": start, "end": start + timedelta(hours=1), "price_p_per_kwh": -1},
+            {"start": start + timedelta(hours=1), "end": start + timedelta(hours=2), "price_p_per_kwh": 0},
+            {"start": start + timedelta(hours=2), "end": start + timedelta(hours=3), "price_p_per_kwh": 20},
+            {"start": start + timedelta(hours=3), "end": start + timedelta(hours=4, minutes=30), "price_p_per_kwh": -2},
+            {"start": start + timedelta(hours=4, minutes=30), "end": start + timedelta(hours=6), "price_p_per_kwh": 20},
+        ]
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.Quick45",
+                 options=["Dishcare.Dishwasher.Program." + m["program"] for m in models])
+
+        async def mock_appliance(domain, service, data, **kwargs):
+            if domain == "button" and service == "press":
+                self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+                self.put("sensor.load_optimizer_1_cycle_state", "running")
+
+        self.hass.services.async_call.side_effect = mock_appliance
+        runs = []
+        with patch.object(asyncio, "sleep", new=AsyncMock()):
+            for _ in range(300):
+                result = recommend_cycle(models, policies, periods, reference_utc=Clock.current,
+                    search_hours=5, candidate_interval_minutes=5, forecast_hours=0)
+                recommendation = result.get("negative_price_recommendation", {"status": "not_ready"})
+                self.put("sensor.load_optimizer_1_negative_price_recommendation",
+                         recommendation.get("program", "not_ready"), **recommendation)
+                self.assertIsNone(self.scheduler.state["request"])
+                attempt = Clock.current
+                await self.scheduler.async_evaluate()
+                await asyncio.gather(*self.tasks)
+                if self.scheduler.state["last_attempt"] == attempt.isoformat():
+                    self.assertEqual(self.scheduler.state["last_result"], "confirmed")
+                    program = self.scheduler.state["last_program"]
+                    runs.append((attempt, program))
+                    model = next(m for m in models if m["program"] == program)
+                    Clock.current += timedelta(minutes=model["expected_runtime_minutes"])
+                    model["last_seen"] = Clock.current.isoformat()
+                    model["recent_cycles"].append({"finish": Clock.current.isoformat(),
+                        "runtime_minutes": model["expected_runtime_minutes"]})
+                    self.put("sensor.operation", "BSH.Common.EnumType.OperationState.Finished")
+                    self.put("sensor.load_optimizer_1_cycle_state", "idle")
+                    self.put("sensor.load_optimizer_1_last_finish", Clock.current.isoformat())
+                    await self.scheduler._async_record_cycle_end(attempt)
+                    self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+                else:
+                    self.assertIsNone(self.scheduler.state["request"])
+                Clock.current += timedelta(minutes=1)
+                if Clock.current >= start + timedelta(hours=5):
+                    break
+        self.assertEqual([program for _, program in runs],
+                         ["Quick45", "MachineCare", "MachineCare", "Quick45", "MachineCare"])
+        self.assertTrue(all((time < start + timedelta(hours=2) or
+                             start + timedelta(hours=3) <= time < start + timedelta(hours=4, minutes=30))
+                            for time, _ in runs))
+        self.assertTrue(all(b[0] - a[0] >= timedelta(minutes=30) for a, b in zip(runs, runs[1:])))
+        starts = [call for call in self.hass.services.async_call.await_args_list
+                  if call.args[:2] == ("button", "press")]
+        self.assertEqual(len(starts), 5)
+
+    async def test_negative_runs_still_require_opt_in_and_physical_safety(self):
+        self.scheduler.state.update(auto_mode_enabled=False, door_opened_since_last_cycle=False)
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "Quick45",
+                 status="ready", program="Quick45", ready_to_start=True, confidence=90,
+                 power_hungry_window_fits_negative_price=True)
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.scheduler.state["auto_negative_price_enabled"] = True
+        for sensor, state, reason in (
+            ("binary_sensor.door", "on", "door_open"),
+            ("binary_sensor.remote_start", "off", "remote_start_disabled"),
+            ("binary_sensor.connected", "off", "dishwasher_not_connected"),
+            ("sensor.operation", namespace["RUNNING_OPERATION"], "appliance_already_running"),
+        ):
+            with self.subTest(reason=reason):
+                previous = self.values[sensor]
+                self.put(sensor, state)
+                self.assertEqual(self.scheduler._safety_block("negative_price", "Quick45"), reason)
+                self.values[sensor] = previous
+        self.hass.services.async_call.assert_not_awaited()
 
     async def test_live_programmes_replace_the_stale_migration_dropdown(self):
         self.scheduler.program_options = ["engine", "Quick45", "QuickD"]
