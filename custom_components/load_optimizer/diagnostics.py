@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -9,7 +10,25 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 
 
-TO_REDACT = {"tariff_entity", "battery_entity", "battery_capacity_entity", "target_percent_entity"}
+# Only known non-identifying settings are safe to include in a shared download.
+SAFE_BOOLEAN_SETTINGS = {
+    "publish_diagnostics", "publish_profile_data", "publish_cost_forecast",
+}
+SAFE_NUMBER_SETTINGS = {
+    "scan_interval", "cost_search_hours", "cost_forecast_hours",
+    "cost_forecast_interval", "cost_candidate_interval",
+    "schedule_preference_weight_pence", "slot_minutes",
+}
+SAFE_ENUM_SETTINGS = {
+    "load_type": {"learned_appliance", "ev_charging"},
+    "tariff_price_unit": {"gbp_per_kwh", "p_per_kwh", "auto"},
+}
+SAFE_STATUSES = {
+    "ready", "not_ready", "configuration_required", "not_configured", "unavailable",
+    "stale", "error", "idle", "queued", "commanding", "confirmed", "completed",
+    "blocked", "failed", "expired", "cancelled", "prepared", "not_prepared",
+    "active", "shadow", "clean", "action_required",
+}
 RETIRED_ARTIFACT_ENTITIES = (
     "automation.load_optimizer_recovery_watchdog",
     "input_boolean.load_optimizer_recovery_enabled",
@@ -25,21 +44,21 @@ RETIRED_ARTIFACT_ENTITIES = (
 
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    coordinator = hass.data[DOMAIN].get(entry.entry_id)
-    redacted_data = {
-        key: ("REDACTED" if key in TO_REDACT else value)
-        for key, value in entry.data.items()
-    }
-    coordinator_data = dict(coordinator.data) if coordinator else None
-    if coordinator_data and "legacy_entities" in coordinator_data:
-        entities = coordinator_data.pop("legacy_entities")
-        coordinator_data["legacy_entity_summary"] = {
-            entity_id: {
-                "state": payload.get("state"),
-                "attribute_keys": sorted(payload.get("attributes", {})),
-            }
-            for entity_id, payload in entities.items()
-        }
+    coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    raw = coordinator.data if coordinator and isinstance(coordinator.data, dict) else {}
+    coordinator_data: dict[str, Any] = {}
+    for key in ("status", "instance_count", "published_entity_count", "tariff_period_count"):
+        value = raw.get(key)
+        if key == "status":
+            coordinator_data[key] = _status(value)
+        elif isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            coordinator_data[key] = value
+    for section in ("orchestration", "orchestration_migration", "price_cap", "plan", "tariff_intelligence"):
+        payload = raw.get(section)
+        if isinstance(payload, dict):
+            coordinator_data[section] = {"status": _status(payload.get("status"))}
+    if coordinator is not None:
+        coordinator_data["last_update_success"] = bool(coordinator.last_update_success)
     retired_entities = [
         entity_id
         for entity_id in RETIRED_ARTIFACT_ENTITIES
@@ -47,9 +66,9 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
     ]
     return {
         "entry": {
-            "title": entry.title,
-            "data": redacted_data,
-            "options": dict(entry.options),
+            "title": "REDACTED",
+            "data": _configuration(entry.data),
+            "options": _configuration(entry.options),
         },
         "coordinator_data": coordinator_data,
         "legacy_cleanup": {
@@ -62,3 +81,21 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
             ),
         },
     }
+
+
+def _status(value: Any) -> str:
+    """Do not copy unexpected error text or household data into diagnostics."""
+    return value if isinstance(value, str) and value in SAFE_STATUSES else "unknown"
+
+
+def _configuration(values: dict[str, Any]) -> dict[str, Any]:
+    """Allowlist fields rather than trying to enumerate every possible secret."""
+    result: dict[str, Any] = {}
+    for key, value in values.items():
+        if key in SAFE_BOOLEAN_SETTINGS and isinstance(value, bool):
+            result[key] = value
+        elif key in SAFE_NUMBER_SETTINGS and type(value) in (int, float) and math.isfinite(value):
+            result[key] = value
+        elif key in SAFE_ENUM_SETTINGS and isinstance(value, str) and value in SAFE_ENUM_SETTINGS[key]:
+            result[key] = value
+    return result

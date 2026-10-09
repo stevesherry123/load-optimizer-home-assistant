@@ -4,19 +4,25 @@ from __future__ import annotations
 
 import logging
 import re
+import json
+from functools import partial
+from datetime import datetime, timezone
 
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, SupportsResponse
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import ServiceValidationError, Unauthorized, UnknownUser
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, PLATFORMS
 from .coordinator import LoadOptimizerCoordinator
+from .optimizer.legacy_history import adapt_agile_buddy
+from .optimizer.state_import import MAX_STATE_BYTES
 
 LOGGER = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -126,6 +132,15 @@ def _async_remove_obsolete_control_entities(
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up Load Optimizer services."""
 
+    async def async_check_admin(call):
+        # HA's registration helper cannot return responses on the minimum core.
+        if call.context.user_id:
+            user = await hass.auth.async_get_user(call.context.user_id)
+            if user is None:
+                raise UnknownUser(context=call.context)
+            if not user.is_admin:
+                raise Unauthorized(context=call.context)
+
     def tariff_coordinator(entry_id):
         coordinator = hass.data.get(DOMAIN, {}).get(entry_id)
         if coordinator is None:
@@ -133,17 +148,73 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         return coordinator
 
     async def async_analyse_tariffs(call):
+        await async_check_admin(call)
         await tariff_coordinator(call.data["entry_id"]).async_request_refresh()
 
     async def async_export_tariff_history(call):
+        await async_check_admin(call)
         coordinator = tariff_coordinator(call.data["entry_id"])
         return await coordinator.tariff_intelligence.async_export(call.data["retention_days"])
+
+    async def async_import_tariff_history(call):
+        await async_check_admin(call)
+        coordinator = tariff_coordinator(call.data["entry_id"])
+        try:
+            payload = await hass.async_add_executor_job(json.loads, call.data["history_json"])
+            conversion = None
+            if call.data["format"] == "agile_buddy":
+                manager = coordinator.tariff_intelligence
+                codes = set()
+                for entity_id in manager.entity_ids:
+                    state = hass.states.get(entity_id)
+                    codes.add(state.attributes.get("tariff_code") if state else None)
+                if len(codes) != 1 or None in codes:
+                    raise ValueError("Destination tariff must be available and unambiguous")
+                payload, conversion = await hass.async_add_executor_job(partial(
+                    adapt_agile_buddy, payload, history_tariff_code=call.data.get("history_tariff_code"),
+                    target_tariff_code=next(iter(codes)), source_id=manager.source_id,
+                    now=datetime.now(timezone.utc), timezone_name=manager.timezone_name,
+                    retention_days=call.data["retention_days"]))
+            result = await coordinator.tariff_intelligence.async_import(
+                payload, dry_run=call.data["dry_run"], overwrite_live=call.data["overwrite_live"],
+                retention_days=call.data["retention_days"])
+            if conversion is not None:
+                result["conversion"] = conversion
+        except (ValueError, TypeError, KeyError, AttributeError, RecursionError, OverflowError) as error:
+            raise ServiceValidationError("Invalid tariff-history import; no data changed") from error
+        if not call.data["dry_run"]:
+            await coordinator.async_request_refresh()
+        return result
+
+    async def async_generate_tariff_summary(call):
+        await async_check_admin(call)
+        coordinator = tariff_coordinator(call.data["entry_id"])
+        analysis = coordinator.data.get("tariff_intelligence", {})
+        task = hass.async_create_task(coordinator.narrative.async_generate(analysis, call.data["ai_task_entity"]))
+        await task
+        current = coordinator.data.get("tariff_intelligence", {})
+        current["narrative"] = coordinator.narrative.snapshot(current)
+        coordinator.async_update_listeners()
+        return current["narrative"]
 
     hass.services.async_register(DOMAIN, "analyse_tariffs", async_analyse_tariffs,
         schema=vol.Schema({vol.Required("entry_id"): str}))
     hass.services.async_register(DOMAIN, "export_tariff_history", async_export_tariff_history,
         schema=vol.Schema({vol.Required("entry_id"): str,
                            vol.Optional("retention_days", default=90): vol.All(vol.Coerce(int), vol.Range(min=1, max=365))}),
+        supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(DOMAIN, "import_tariff_history", async_import_tariff_history,
+        schema=vol.Schema({vol.Required("entry_id"): str,
+                           vol.Required("history_json"): vol.All(str, vol.Length(max=16 * 1024 * 1024)),
+                           vol.Optional("format", default="portable"): vol.In(["portable", "agile_buddy"]),
+                           vol.Optional("history_tariff_code"): str,
+                           vol.Optional("dry_run", default=True): bool,
+                           vol.Optional("overwrite_live", default=False): bool,
+                           vol.Optional("retention_days", default=90): vol.All(vol.Coerce(int), vol.Range(min=1, max=365))}),
+        supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(DOMAIN, "generate_tariff_summary", async_generate_tariff_summary,
+        schema=vol.Schema({vol.Required("entry_id"): str,
+                           vol.Required("ai_task_entity"): vol.Match(r"^ai_task\.[a-z0-9_]+$")}),
         supports_response=SupportsResponse.ONLY)
 
     async def async_import_legacy_state(call) -> None:
@@ -152,7 +223,12 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             runtime = getattr(coordinator, "legacy_runtime", None)
             if runtime is None:
                 continue
-            result = await runtime.async_import_state(payload)
+            if coordinator.orchestrator and coordinator.orchestrator.state.get("request"):
+                raise ServiceValidationError("Cancel pending appliance requests before importing memory")
+            try:
+                result = await runtime.async_import_state(payload)
+            except ValueError as error:
+                raise ServiceValidationError(str(error)) from error
             await coordinator.async_request_refresh()
             hass.states.async_set(
                 "sensor.load_optimizer_migration_status",
@@ -268,29 +344,34 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def async_deactivate_native_orchestration(call) -> None:
         await async_set_native_orchestration(False)
 
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_IMPORT_LEGACY_STATE,
         async_import_legacy_state,
-        schema=vol.Schema({vol.Required(CONF_LEGACY_STATE_JSON): str}),
+        schema=vol.Schema({vol.Required(CONF_LEGACY_STATE_JSON): vol.All(str, vol.Length(max=MAX_STATE_BYTES))}),
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_MOTHBALL_LEGACY_ADDON,
         async_mothball_legacy_addon,
     )
-    hass.services.async_register(DOMAIN, SERVICE_RECOVER, async_recover)
-    hass.services.async_register(
+    async_register_admin_service(hass, DOMAIN, SERVICE_RECOVER, async_recover)
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_PREPARE_ORCHESTRATION_MIGRATION,
         async_prepare_orchestration_migration,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_ACTIVATE_NATIVE_ORCHESTRATION,
         async_activate_native_orchestration,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_DEACTIVATE_NATIVE_ORCHESTRATION,
         async_deactivate_native_orchestration,

@@ -14,25 +14,68 @@ concurrency:
   group: validate-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  security:
+    name: Security and credential scan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Scan integration Python
+        run: |
+          pip install "bandit==1.8.6"
+          bandit -r custom_components/load_optimizer
+      - name: Scan repository history for credentials
+        run: |
+          curl --fail --location --proto '=https' --tlsv1.2 --output "$RUNNER_TEMP/gitleaks.tar.gz" https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          printf '%s  %s\n' 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb "$RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact --log-opts=--all .
+
   tests:
     name: Python tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Run tests
         run: python -m unittest discover -s tests
 
+  minimum_ha:
+    name: Minimum Home Assistant imports
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Install declared minimum Home Assistant
+        run: pip install "homeassistant==2024.12.0" "home-assistant-frontend==20241127.4" "pyotp==2.8.0" "PyQRCode==1.2.1"
+      - name: Import all integration platforms and config flow
+        run: python tests/ha_import_smoke.py
+      - name: Verify dashboard price colours with Home Assistant templates
+        run: python tests/ha_dashboard_smoke.py
+      - name: Verify real EV configuration, reload and restart persistence
+        run: python tests/ha_ev_lifecycle_smoke.py
+      - name: Verify permissions, diagnostic privacy, safe imports and HTTP boundaries
+        run: python tests/ha_security_smoke.py
+
   hacs:
     name: HACS validation
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Validate HACS repository
-        uses: hacs/action@main
+        uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main, reviewed 2026-10-09
         with:
           category: integration
 
@@ -40,6 +83,6 @@ jobs:
     name: Home Assistant hassfest
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Run hassfest
-        uses: home-assistant/actions/hassfest@master
+        uses: home-assistant/actions/hassfest@06749dd8c0b54f350bc69c8752456cee498808a3 # master, reviewed 2026-10-09

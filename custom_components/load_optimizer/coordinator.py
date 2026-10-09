@@ -41,6 +41,7 @@ from .optimizer.ev_charging import connection_is_available, deadline_from_ready_
 from .optimizer.tariffs import tariff_periods_from_entity
 from .price_cap import PriceCapManager
 from .tariff_intelligence import get_service
+from .narrative import OptionalNarrative
 
 LOGGER = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.config_entry = entry
         self.price_cap_manager = PriceCapManager(hass, entry)
         self.tariff_intelligence = get_service(hass, data)
+        self.narrative = OptionalNarrative(hass, self.async_publish_narrative)
         self.legacy_runtime = LegacyRuntime(hass) if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE else None
         self.orchestration_migration = (
             OrchestrationMigration(hass, entry)
@@ -91,10 +93,10 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             now_utc=now,
         )
         intelligence = await self.tariff_intelligence.async_status(price_cap, now)
+        intelligence["narrative"] = self.narrative.snapshot(intelligence)
         if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
-            assert self.legacy_runtime is not None
-            assert self.orchestration_migration is not None
-            assert self.orchestrator is not None
+            if self.legacy_runtime is None or self.orchestration_migration is None or self.orchestrator is None:
+                raise RuntimeError("Learned-appliance runtime was not initialized")
             await self.orchestration_migration.async_load()
             await self.orchestrator.async_load()
             result = await self.legacy_runtime.async_scan(data)
@@ -193,3 +195,10 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
         self.data["orchestration"] = status
         self.async_update_listeners()
+
+    def async_publish_narrative(self):
+        """Publish AI lifecycle changes independently of scheduled analysis."""
+        if self.data:
+            analysis = self.data.get("tariff_intelligence", {})
+            analysis["narrative"] = self.narrative.snapshot(analysis)
+            self.async_update_listeners()

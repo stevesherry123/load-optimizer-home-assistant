@@ -1,9 +1,14 @@
 {
   "config": {
+    "error": {
+      "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
+      "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
+      "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes."
+    },
     "step": {
       "user": {
         "title": "Set up Load Optimizer",
-        "description": "Create an optimizer for a flexible electrical load. Use learned_appliance to migrate the existing add-on runtime, or ev_charging for EV planning.",
+        "description": "Choose learned_appliance for appliance learning and scheduling, or ev_charging for an advisory charging plan.",
         "data": {
           "name": "Name",
           "load_type": "Load type"
@@ -30,8 +35,8 @@
         }
       },
       "learned_appliance": {
-        "title": "Migrate learned appliances",
-        "description": "Paste the same add-on options first. After setup, call load_optimizer.import_legacy_state with the contents of /data/load_optimizer.json from the old add-on.",
+        "title": "Set up learned appliances",
+        "description": "Enter your appliance definitions and tariff settings. Existing add-on users can import their saved learning database after setup; new installations learn from completed cycles.",
         "data": {
           "instances_yaml": "Instances YAML",
           "scan_interval": "Scan interval",
@@ -53,14 +58,23 @@
           "price_cap_payment_method": "Price-cap payment method"
         }
       }
+    },
+    "abort": {
+      "learned_appliance_already_configured": "A learned-appliance hub is already configured. Add appliances to its Appliances and tariff settings instead."
     }
   },
   "options": {
+    "error": {
+      "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
+      "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
+      "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes."
+    },
     "step": {
       "init": {
         "title": "Load Optimizer settings",
         "description": "Choose the part of Load Optimizer you want to change. Saving one section preserves every other setting.",
         "menu_options": {
+          "ev": "EV charging settings",
           "appliances_tariff": "Appliances and tariff",
           "optimisation": "Cost optimisation",
           "publishing": "Published data",
@@ -68,6 +82,7 @@
           "dishwasher_control": "Dishwasher control (optional)"
         },
         "menu_option_descriptions": {
+          "ev": "Tariff, battery references, charging power, efficiency, target and deadline.",
           "appliances_tariff": "Appliance definitions, refresh timing, tariff entities and calendar windows.",
           "optimisation": "Search horizon, forecast resolution and schedule preference weighting.",
           "publishing": "Choose whether detailed profiles, forecasts and diagnostics are exposed.",
@@ -87,6 +102,24 @@
           "tariff_price_unit": "Tariff price unit",
           "green_window_entity": "Preferred green-window calendar",
           "blocked_window_entity": "Blocked-window calendar"
+        }
+      },
+      "ev": {
+        "title": "EV charging settings",
+        "description": "Changes update the advisory plan and retain existing entities. This does not enable charger control.",
+        "data": {
+          "tariff_entity": "Tariff entity",
+          "tariff_timezone": "Tariff timezone",
+          "tariff_price_unit": "Tariff price unit",
+          "battery_entity": "Battery percentage entity",
+          "battery_capacity_entity": "Battery capacity entity",
+          "target_percent_entity": "Target percentage entity (optional)",
+          "connection_status_entity": "Charging connection status entity (optional)",
+          "charge_power_kw": "Charge power (kW)",
+          "target_percent": "Fallback target percentage",
+          "charger_efficiency": "Charger efficiency",
+          "slot_minutes": "Slot length (minutes)",
+          "ready_by": "Ready by (local HH:MM, optional)"
         }
       },
       "optimisation": {

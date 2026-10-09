@@ -15,14 +15,13 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, MANUFACTURER
 from .coordinator import LoadOptimizerCoordinator
-from .entity import LoadOptimizerEntity
+from .entity import LoadOptimizerEntity, registered_hub_link
 from .orchestration_entity import OrchestrationEntity
 
 PENCE = "p"
@@ -77,6 +76,12 @@ SENSOR_DESCRIPTIONS = (
 
 NATIVE_STATUS_SENSORS = (
     (
+        "automation_explanation",
+        "load_optimizer_1_automation_explanation",
+        "Automatic Scheduling Explanation",
+        "mdi:text-box-check-outline",
+    ),
+    (
         "overnight_readiness",
         "load_optimizer_1_overnight_readiness",
         "Overnight Readiness",
@@ -130,6 +135,7 @@ async def async_setup_entry(
             ("evening_peak", "Evening Peak", None),
             ("data_quality", "Data Quality", None),
             ("summary", "Daily Summary", None),
+            ("ai_summary_status", "Optional Summary Status", None),
             *((f"window_{hours}", f"Cheapest {hours} Hour Start", None) for hours in range(1, 5)),
         )
     ])
@@ -173,17 +179,16 @@ class LoadOptimizerIntelligenceSensor(LoadOptimizerEntity, SensorEntity):
     @property
     def device_info(self):
         entry = self.coordinator.config_entry
-        hub = dr.async_get(self.coordinator.hass).async_get_device_by_identifier(
-            (DOMAIN, entry.entry_id), entry.entry_id
-        )
         return DeviceInfo(identifiers={(DOMAIN, f"{entry.entry_id}_tariff_intelligence")},
                           manufacturer=MANUFACTURER, name=f"{entry.title} Tariff Intelligence",
                           model="Deterministic tariff analysis",
-                          **({"via_device_id": hub.id} if hub else {}))
+                          **registered_hub_link(self.coordinator.hass, entry))
 
     @property
     def native_value(self):
         result = self.coordinator.data.get("tariff_intelligence", {})
+        if self.key == "ai_summary_status":
+            return result.get("narrative", {}).get("status", "disabled")
         if self.key.startswith("window_"):
             value = result.get("windows", {}).get(self.key[-1])
             return datetime.fromisoformat(value["start"]) if value else None
@@ -194,6 +199,8 @@ class LoadOptimizerIntelligenceSensor(LoadOptimizerEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         result = self.coordinator.data.get("tariff_intelligence", {})
+        if self.key == "ai_summary_status":
+            return result.get("narrative", {})
         if self.key.startswith("window_"):
             return result.get("windows", {}).get(self.key[-1])
         if self.key == "status":
@@ -207,7 +214,8 @@ class LoadOptimizerSensor(LoadOptimizerEntity, SensorEntity):
     entity_description: SensorEntityDescription
 
     def __init__(self, coordinator: LoadOptimizerCoordinator, description: SensorEntityDescription) -> None:
-        super().__init__(coordinator, description.key, description.name or description.key.replace("_", " ").title())
+        name = description.name if isinstance(description.name, str) else description.key.replace("_", " ").title()
+        super().__init__(coordinator, description.key, name)
         self.entity_description = description
 
     @property
@@ -452,13 +460,10 @@ class LoadOptimizerLegacySensor(CoordinatorEntity[LoadOptimizerCoordinator], Sen
                 model="Learned appliance optimizer",
             )
         metadata = self.coordinator.data.get("legacy_instances", {}).get(self._instance_id, {})
-        hub = dr.async_get(self.coordinator.hass).async_get_device_by_identifier(
-            (DOMAIN, entry.entry_id), entry.entry_id
-        )
         return DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_instance_{self._instance_id}")},
             manufacturer=MANUFACTURER,
             name=metadata.get("name") or f"Load Optimizer {self._instance_id}",
             model="Learned appliance optimizer",
-            **({"via_device_id": hub.id} if hub else {}),
+            **registered_hub_link(self.coordinator.hass, entry),
         )

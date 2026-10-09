@@ -6,15 +6,28 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- observe the v1.6 Tariff Intelligence beta through next-day publication and
-  appliance cycles before promoting it; historical comparisons need 14 days
-- validate the isolated v1.7 import/narrative branch with an actual legacy export
-  and the owner's preferred AI Task entity before deployment
-- complete HACS default-catalogue submission independently of beta development
+- observe actual repeated automatic free/negative-price runs on beta.6 before
+  separately approved stable promotion. Installation/restart acceptance and
+  isolated repeated-run tests pass; retain programme opt-ins, per-window limits,
+  learning and queued requests. See `docs/negative-price-beta.md`.
+- await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
+  for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
+  checks passed; respond to requested changes without duplicate requests or
+  routine comments. Submission is not catalogue acceptance.
+- finish the real optional AI provider test after complete tomorrow rates arrive;
+  the approved manual request correctly waited on incomplete data. Latest check:
+  tomorrow unpublished, current day 46 of 48 slots; no provider call made
+- observe the v1.6/v1.7 beta through complete next-day publication, revisions and
+  appliance cycles before stable promotion; imported history now satisfies warm-up
+- implement effective-dated price-cap references and additive historical rebasing;
+  retain raw comparisons and disclose missing references rather than guessing
+- add a public Tariff Intelligence dashboard section for the new beta entities,
+  with travel-timezone/mobile/DST tests before it enters stable
+- retire Octopus Intelligence only after the accepted replacement features and
+  provider tests pass; its mismatching cache and running app are still preserved
 - continue decomposing the embedded compatibility engine behind stable native
   integration entities without changing migrated learning data
 - add appliance-cycle load entries alongside the v1.0 EV charging load type
-- add options-flow editing for EV charging settings after initial setup
 - add integration diagnostics and repairs for missing tariff or vehicle entities
 - improve profile-weighted tariff cost estimation across half-hour slots
 - extend helper-driven deadline support for calendar and travel-aware scheduling
@@ -28,13 +41,57 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Published and installed v1.7.0-beta.6 after 285 unit tests, isolated minimum-HA
+  lifecycle/dashboard/security checks and all GitHub validation jobs passed.
+  The planner no longer perpetually defers off-grid scans or ignores an active
+  opportunity in favour of a cheaper future one. One restart preserved entity
+  identities, dashboards, profiles, controls, policies, tariff history and the
+  saved overnight request. Live diagnostics and appliance readiness passed;
+  actual negative-window appliance execution is still to be observed. Main and
+  stable v1.5.7 are unchanged.
+- Installed v1.7.0-beta.4 with the stable EV editor and minimum-HA compatibility
+  fix after fresh idle/no-queue/no-capture checks. One restart; all 222 entity and
+  device identities and the exact dashboard configuration are unchanged.
+  Learning remains 114 / 189 / 46, MixedLoad 4 / 61%, history 91 days, and all
+  appliance cost statuses are ready. Live EV form/menu/defaults pass without
+  saving production settings; integration logs are clean. 259 beta tests pass.
+- Published stable v1.5.5's EV editor and follow-up v1.5.6 compatibility fix.
+  Expanded real minimum-HA acceptance found and fixed a newer-only device-link
+  API in appliances/orchestration; 209 stable unit tests and all main CI checks
+  pass. The prepared owner-led HACS application has exact v1.5.6 release and
+  validation links in `docs/hacs-submission.md`; no upstream PR was opened.
+- Passed the final real-wash publication gate on 9 October: MixedLoad completed
+  at 13:36 BST, dishwasher learning increased 113 to 114, and MixedLoad increased
+  3 to 4 runs with 61% confidence. The request cleared, completion was confirmed,
+  no active captures remained and integration diagnostics were clean.
+- Verified the EV options editor in isolated Home Assistant 2024.12 using synthetic
+  sources: real browser form/save/error display, independent settings, clearable
+  references, reload and persisted restart. Fixed deadline form serialization
+  and unset-description EV labels; 204 unit tests pass. No production restart or
+  dishwasher/charger command was used for this work.
+- Published v1.5.4 and deployed the same scheduling/startup fixes in
+  v1.7.0-beta.3 (245 tests). Live forecasts and MixedLoad selection restored;
+  dishwasher / washing machine / vacuum learning totals remain 113 / 189 / 46,
+  MixedLoad remains 3 runs at 51%, and all 91 tariff-history days are preserved.
+  No wash was started by deployment verification. The subsequent physical wash
+  passed the publication gate as recorded above; these are the earlier totals.
 - Published v1.5.0 with a configurable regional Ofgem benchmark, tariff-local
   24/48-hour chart, visible benchmark and Now lines, and bottom-of-page capabilities.
 - Implemented v1.6 beta source-shared tariff history and deterministic analysis,
   native entities, event refresh, explicit warm-up/incomplete-data states,
   manual re-analysis and portable history export; live rollback/upgrade tested.
-- Implemented dry-run import and optional manual AI Task narrative on the separate
-  v1.7 development branch, with 199 passing combined tests and no live AI calls.
+- Deployed v1.7.0-beta.1 on the owner's instance; 212 combined tests passed.
+  Approved official backfill imported 90 complete days / 4,320 exact-tariff prices,
+  not the mismatching old cache. Read-back, disk provenance, restart and actual
+  downgrade/re-upgrade passed with unchanged 113 / 189 / 46 learning totals.
+- Matched the owner's Ofgem benchmark to live tariff region D (Merseyside and
+  Northern Wales), not the separately named North Western England region G.
+- Prepared v1.5.1 publication documentation, corrected minimum HA compatibility
+  and added a single learned-hub guard. This is independent of beta promotion.
+- Implemented a separate EV options editor with retained entry/entity identity,
+  independent benchmark settings, clearable references and local-HH:MM deadline
+  validation. Isolated options/reload/restart/rollback acceptance is recorded in
+  `docs/ev-options-beta.md`; tariff beta promotion remains independent.
 - Added the Lab dashboard's Automation Capabilities summary to the supported
   full and public dashboards.
 - Added a configurable, daily cached regional Ofgem default-tariff benchmark as
@@ -56,6 +113,10 @@ implementation architecture in `docs/architecture.md`.
   persistence-safe opt-ins, and missed/successful start notifications.
 
 ## Scheduling And Cost Estimation
+
+The following sections retain longer-term design ideas. Already released
+strategies, cost components, helper constraints and capture-status improvements
+above are not outstanding work merely because their original proposal is below.
 
 Load Optimizer should remain device-agnostic while improving the user-facing
 experience around tariff windows and run recommendations. Community Agile-window
@@ -124,7 +185,7 @@ Assistant. Washing machines connected only through a smart plug are a good
 example: the app can see power and energy, but not whether the user selected a
 short spin, rinse, cotton wash, eco wash, or maintenance cycle.
 
-Future versions should infer a probable cycle class from the learned power
+An optional future classifier could infer a probable cycle class from the learned power
 signature. Useful signals include:
 
 - total runtime
@@ -135,7 +196,9 @@ signature. Useful signals include:
 - idle gaps or soak periods
 - energy distribution across the cycle
 
-The first implementation should stay conservative. A dumb washing machine can
+This must be an explicit opt-in, not automatic fragmentation of existing washing
+machine learning. The owner has requested that the current learning settings be
+preserved. A future implementation should stay conservative. A dumb washing machine can
 initially learn under `Default`, then later split learned runs into inferred
 classes such as `ShortSpin`, `Wash`, `EcoWash`, `Rinse`, or `Maintenance` once
 there is enough evidence. Inferred classes should be visible to the user and

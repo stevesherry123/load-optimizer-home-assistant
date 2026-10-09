@@ -40,3 +40,20 @@ class ObservabilityTests(unittest.TestCase):
         events = engine.snapshot()["recent_events"]
         self.assertEqual(len(events), 10)
         self.assertEqual(events[0]["context"]["index"], 5)
+
+    def test_credentials_in_messages_and_exception_values_are_redacted(self):
+        credentials = ["Bearer " + "test-credential-value", "eyJ" + "fake.fake.signature",
+                       "https://user:" + "test-secret@host/path", "token=" + "test-secret",
+                       "sk-proj-" + "x" * 32, "ghp_" + "x" * 32]
+        for credential in credentials:
+            with self.subTest(credential=credential):
+                with self.assertLogs("test_observability", logging.ERROR) as captured:
+                    self.engine.error("LO-REDACTION", credential, error=credential)
+                self.assertNotIn(credential, str(captured.output))
+                self.assertNotIn(credential, str(self.engine.snapshot()["last_error"]))
+
+    def test_recursive_context_is_bounded(self):
+        value = {}
+        value["self"] = value
+        self.engine.info("LO-BOUNDED", "Recursive input", details=value)
+        self.assertIn("<truncated>", str(self.engine.snapshot()))

@@ -4,20 +4,21 @@
 
 This plan brings the useful ideas from Octopus Intelligence into Load Optimizer
 without reintroducing a second runtime or making the integration depend on one
-energy supplier. v1.5.0 is now the stable publication
-baseline. Analysis development takes place on `beta/tariff-analysis-v1.6`, is released
+energy supplier. v1.5.x is the stable publication
+line. Analysis development takes place on `beta/tariff-analysis-v1.6`, is released
 as a prerelease, and reaches `main` only after the acceptance checks below pass.
 
 The accompanying detailed project brief remains the product specification. This
 document records the implementation sequence and release gates derived from a
 review of both repositories and the live Home Assistant installation.
 
-## Current Delivery Status (8 October 2026)
+## Current Delivery Status (9 October 2026)
 
 Completed and live-verified through v1.5.0-beta.6:
 
 - Regional Ofgem lookup, daily caching, effective dates and freshness diagnostics.
-- North Western England / direct debit configured for the owner's installation.
+- Region configurable; owner now uses live tariff region D / direct debit
+  (Merseyside and Northern Wales), after the approved 8 October correction.
 - Native benchmark sensor and visible horizontal benchmark line.
 - Main tariff chart: today only (24 hours), or today and tomorrow (48 hours)
   when next-day data exists. This supersedes the rolling-chart proposal below.
@@ -54,11 +55,14 @@ history captured; incomplete 46-slot next-day feed correctly reported as limited
 all one-to-four-hour windows matched independent arithmetic from live rates.
 Rollback to v1.5.0 and upgrade to v1.6.0-beta.3 succeeded with the same learning
 counts, a healthy retained tariff store and matching window calculations.
-Longer observation and historical warm-up remain pending before v1.6 promotion.
+Historical warm-up is now satisfied by the separately approved official backfill.
+Longer next-day publication/revision observation remains pending before promotion;
+the physical-cycle gate has now passed as recorded below.
 
-Next-branch design defaults (awaiting any owner-specific format preferences):
+Implemented next-branch design defaults:
 
-- Portable JSON import with explicit schema, timezone and p/kWh unit metadata.
+- Portable JSON import with explicit schema, matching tariff-source identifier,
+  timezone and p/kWh unit metadata.
 - Default 90 completed days, dry-run first, all-or-nothing validation and an
   explicit override before replacing any live-captured day.
 - No silent external history download or assumed redistribution rights.
@@ -68,9 +72,84 @@ Next-branch design defaults (awaiting any owner-specific format preferences):
 
 Implemented on `beta/tariff-import-narrative-v1.7`: portable import, provenance
 protection, atomic validation, independent narrative lifecycle and privacy/failure
-tests. This branch is not installed or merged into main. An actual legacy export
-is still needed for its adapter and the preferred AI Task entity for live testing.
-All branch checks pass; 199 tests cover the combined development implementation.
+tests. Initially installed as v1.7.0-beta.1 for controlled testing and now
+updated to beta.4, it is not merged into main or promoted to stable.
+Review fixes require matching tariff-source metadata and isolate provenance-aware
+history in schema-2 storage so older rollback writers cannot erase import origins.
+Schema-1 history is copied without modifying the original. Rollback analysis uses
+the old store; see the import documentation for the deliberate isolation limits.
+The legacy dt/r adapter now checks a verified historical tariff code against all
+live destination rate entities and runs conversion off the event loop. Tests
+cover period-end normalization, DST, gaps, malformed data and the service path.
+The original combined implementation passed 212 tests; the current beta passes
+259 after the subsequent appliance, EV and compatibility fixes.
+
+The 8 October live preflight found tariff `E-1R-AGILE-24-10-01-D`. With owner approval, the
+learned-appliance Ofgem benchmark was changed to Merseyside and Northern Wales
+(27.86 p/kWh). The local North Western England file ends in June 2026 and must
+not be imported: it has no recent 90-day data or verified matching tariff.
+The old Octopus Intelligence add-on remains installed/running. Its private
+cache was exported, but all 4,320 recent normalized prices differed from the
+official live-tariff API; no legacy cache data was imported. With separate owner
+approval, 90 complete official tariff days were backfilled instead. Preview,
+full export read-back and on-disk provenance verification passed. Storage has
+91 days at import and the 14-day baseline is ready; appliance totals were
+unchanged by import. Post-import restart and actual v1.7-to-v1.6.0-beta.3 rollback checks
+passed, including independent disk verification of all imported prices and
+provenance while the older beta was running. Reinstalled v1.7.0-beta.1 and
+restarted: all 91 days returned with healthy storage, unchanged learning totals
+and optional AI disabled as designed. Independent one-to-four-hour window
+calculations matched; dashboard references and integration logs were clean.
+The available `ai_task.openai_ai_task_2` is approved for one manual test after
+complete next-day rates arrive; the readiness gate returned waiting without a
+provider call because the upstream API has only 46 periods. No automatic or
+incomplete-data provider calls are approved. Observation and actual provider
+testing remain release gates before stable promotion; the live rollback and
+re-upgrade gate has passed. The v1.7.0-beta.2 update carries stable v1.5.3's
+scheduling explanations, rejected-capture fix and manual programme selection
+without promoting tariff-intelligence functionality into stable.
+
+Stable v1.5.6 is published after all main checks passed: 209 unit tests, actual
+minimum-HA appliance/orchestration device registration, EV options/reload/restart,
+imports and dashboard templates, HACS and hassfest. The EV editor's isolated
+browser and downgrade/re-upgrade checks passed. Expanded minimum-HA acceptance
+found and fixed a newer-only registered-hub API before public submission.
+The owner will submit HACS personally using `docs/hacs-submission.md`; no
+upstream application has been opened.
+
+The owner's physical MixedLoad wash completed on 9 October at 13:36 BST:
+dishwasher learning is now 114 total and MixedLoad 4 runs at 61% confidence;
+washing machine / vacuum remain 189 / 46. This passes the physical-cycle gate.
+v1.7.0-beta.4 carries the stable editor and compatibility fix into the owner's
+tariff branch; 259 combined unit tests and all beta CI checks passed. Installed
+and restarted once after fresh idle/queue/capture checks: all 222 entity/device
+identities and the exact dashboard configuration are unchanged, all 91 history
+days remain, appliance forecasts and independent tariff-window arithmetic pass,
+the real EV form has saved defaults, and focused integration logs are clean.
+No production EV settings were saved or appliance/charger commands sent.
+Next-day publication/revision observation and the optional AI provider test
+remain incomplete: latest check has no tomorrow data and 46 of today's 48 slots.
+Cap-adjusted history and the beta analysis dashboard remain subsequent work.
+
+### Outstanding Versus Implemented
+
+| Area | Current status | Remaining gate/work |
+|---|---|---|
+| Stable appliance migration/orchestration | Released; legacy packaging retired | Community compatibility testing and guided appliance setup |
+| Ofgem benchmark and 24/48-hour chart | Stable; regional, cached, tariff-local, benchmark/Now lines | Historical cap rebasing is separate, not implemented |
+| Lab dashboard | Retired; capabilities retained at the bottom | No further Lab content requested |
+| History and deterministic analysis | v1.7.0-beta.4; warm-up and physical wash passed | Full next-day publication/revision observation |
+| Official history backfill | 90 complete days verified | No further legacy-cache import; retain source/provenance isolation |
+| Optional AI narrative | Implemented, disabled unless manually requested | Actual provider test when tomorrow is complete; latest tomorrow data unpublished |
+| EV options editor | Stable v1.5.6 and owner's beta.4; acceptance passed | No outstanding editor release gate |
+| New analysis dashboard | Not consolidated into stable | Bounded chart/entity presentation, mobile/travel/DST validation |
+| Octopus Intelligence retirement | Not done; old cache/app preserved | Demonstrate accepted replacement parity first |
+| HACS default catalogue | Stable release and owner application prepared | Owner chooses submission time; maintainer acceptance and scan |
+
+Later work includes optional solar/storage context, greener-window tradeoffs,
+missing-entity repair guidance and compatibility-engine decomposition. Inferred
+washing-machine class splitting is not enabled or required; preserve the owner's
+current learning behavior unless a future opt-in is explicitly approved.
 
 Longer observation is a release gate for new analysis, not a claim that can be
 established by a short test run. Do not advertise history-dependent outputs as

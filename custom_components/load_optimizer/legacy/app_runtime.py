@@ -6,18 +6,12 @@ import json
 import logging
 import math
 import os
-import signal
 import textwrap
-import threading
 import time
-import uuid
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, urlencode
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
@@ -27,7 +21,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.6.0-beta.3"
+APP_VERSION = "1.7.0-beta.6"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -37,7 +31,6 @@ LAST_SCAN_STARTED_AT: datetime | None = None
 LAST_SCAN_COMPLETED_AT: datetime | None = None
 SCAN_HEALTH_TIMEOUT_SECONDS = 210
 MAX_PUBLISHED_COST_BREAKDOWN_ROWS = 24
-API_BASE_URL = "http://supervisor/core/api"
 DATA_PATH = Path("/data/load_optimizer.json")
 OPTIONS_PATH = Path("/data/options.json")
 STATUS_ENTITY = "sensor.load_optimizer_status"
@@ -63,9 +56,7 @@ PROGRAM_CLASSIFICATIONS = {
 
 LOGGER = logging.getLogger("load_optimizer")
 EVENTS = EventEngine(LOGGER)
-STOP_EVENT = threading.Event()
 PUBLISHED_ENTITY_CACHE: dict[str, str] = {}
-API_WARNING_CACHE: dict[str, float] = {}
 
 
 def refresh_publish_cache(now_monotonic: float | None = None) -> bool:
@@ -171,26 +162,8 @@ def load_options(path: Path = OPTIONS_PATH) -> dict:
 
 
 def api_request(token: str, path: str, payload: dict | None = None) -> dict | None:
-    data = json.dumps(payload).encode("utf-8") if payload is not None else None
-    request = Request(
-        f"{API_BASE_URL}{path}",
-        data=data,
-        method="POST" if payload is not None else "GET",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
-    )
-    try:
-        with urlopen(request, timeout=10) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError) as error:
-        warning_key = f"{path}:{type(error).__name__}:{error}"
-        now = time.monotonic()
-        if now - API_WARNING_CACHE.get(warning_key, 0) >= 300:
-            API_WARNING_CACHE[warning_key] = now
-            LOGGER.warning("Home Assistant API request failed for %s: %s", path, error)
-        return None
+    """Fail closed unless the integration has installed its in-process adapter."""
+    raise RuntimeError("Load Optimizer requires the Home Assistant integration adapter")
 
 
 def render_template(token: str, template: str) -> object | None:
@@ -2676,95 +2649,3 @@ def publish_logging_diagnostics(token: str) -> None:
         "version": APP_VERSION,
         **snapshot,
     })
-
-
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
-        if self.path != "/health":
-            self.send_error(404)
-            return
-        healthy, payload = runtime_health()
-        self.send_response(200 if healthy else 503)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps(payload).encode("utf-8"))
-
-    def log_message(self, _format: str, *_args: object) -> None:
-        return
-
-
-def run_health_server() -> ThreadingHTTPServer:
-    server = ThreadingHTTPServer(("0.0.0.0", 8099), HealthHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server
-
-
-def stop(_signum: int, _frame: object) -> None:
-    STOP_EVENT.set()
-
-
-def main() -> None:
-    global LAST_SCAN_COMPLETED_AT, LAST_SCAN_STARTED_AT, RUNTIME_STARTED_AT
-    global SCAN_HEALTH_TIMEOUT_SECONDS
-
-    configure_logging()
-    token = os.getenv("SUPERVISOR_TOKEN")
-    if not token:
-        EVENTS.error("LO-STARTUP-TOKEN", "Home Assistant did not provide the Supervisor token", action="Restart the app; if this repeats, include this event code in a support request")
-        raise RuntimeError("SUPERVISOR_TOKEN was not provided by Home Assistant")
-
-    interval = max(10, int(os.getenv("LOAD_OPTIMIZER_SCAN_INTERVAL", "60")))
-    SCAN_HEALTH_TIMEOUT_SECONDS = max(180, (interval * 3) + 30)
-    RUNTIME_STARTED_AT = datetime.now(timezone.utc)
-    options = load_options()
-    state = load_state()
-    state_cache = state_signature(state)
-    reset_configured_instances(state, options)
-    configs = instance_configs(options)
-    bootstrap_program_models(state)
-    repair_learning_quality(state, configs)
-    startup_running = running_instances(state, configs)
-    mark_interrupted_captures(state, startup_running)
-    state_cache = save_state_if_changed(state, state_cache)
-    health_server = run_health_server()
-
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
-    EVENTS.info("LO-STARTUP-OK", "Load Optimizer started", version=APP_VERSION, scan_interval_seconds=interval, instance_count=len(configs), configured_instances=[{"id": item["instance_id"], "name": item["name"], "configured": bool(item.get("power_sensor"))} for item in configs])
-    publish_restart_warning(token, startup_running)
-    publish_restart_safety(token, startup_running)
-
-    try:
-        while not STOP_EVENT.is_set():
-            LAST_SCAN_STARTED_AT = datetime.now(timezone.utc)
-            scan_id = uuid.uuid4().hex[:8]
-            scan_started = time.monotonic()
-            if refresh_publish_cache():
-                EVENTS.info("LO-PUBLISH-REFRESH", "Refreshing all Home Assistant entities", scan_id=scan_id)
-            failed_instances = []
-            for config in configs:
-                try:
-                    update_instance(token, state, config)
-                except Exception as error:  # Keep healthy instances running and make the failure explainable.
-                    failed_instances.append(str(config.get("instance_id")))
-                    EVENTS.exception("LO-INSTANCE-FAILED", "Instance update failed; other instances will continue", scan_id=scan_id, instance_id=config.get("instance_id"), instance_name=config.get("name"), error_type=type(error).__name__, error=str(error), action="Enable debug logging and include this event code when requesting support")
-            state_cache = save_state_if_changed(state, state_cache)
-            active_captures = running_instances(state, configs)
-            publish_status(
-                token,
-                len(configs),
-                active_captures,
-                reset_request_status(state, options),
-            )
-            publish_restart_safety(token, active_captures)
-            publish_logging_diagnostics(token)
-            LAST_SCAN_COMPLETED_AT = datetime.now(timezone.utc)
-            EVENTS.debug("LO-SCAN-COMPLETE", "Scan completed", scan_id=scan_id, duration_ms=round((time.monotonic() - scan_started) * 1000), instances=len(configs), failed_instances=failed_instances, active_captures=len(active_captures))
-            STOP_EVENT.wait(interval)
-    finally:
-        health_server.shutdown()
-        EVENTS.info("LO-SHUTDOWN", "Load Optimizer stopped")
-
-
-if __name__ == "__main__":
-    main()

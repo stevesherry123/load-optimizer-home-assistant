@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import math
+import re
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import voluptuous as vol
 
@@ -96,6 +99,95 @@ def _price_cap_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
     }
 
 
+def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
+    """Share setup/edit fields; optional references are suggestions, not defaults."""
+    existing = existing or {}
+    schema: dict[Any, Any] = {}
+    for key, required, domain in (
+        (CONF_TARIFF_ENTITY, True, None),
+        (CONF_BATTERY_ENTITY, True, "sensor"),
+        (CONF_BATTERY_CAPACITY_ENTITY, True, "sensor"),
+        (CONF_TARGET_PERCENT_ENTITY, False, "sensor"),
+        (CONF_CONNECTION_STATUS_ENTITY, False, "sensor"),
+    ):
+        value = existing.get(key)
+        kwargs = {}
+        if value:
+            kwargs = (
+                {"default": value} if required
+                else {"description": {"suggested_value": value}}
+            )
+        marker = vol.Required if required else vol.Optional
+        config = (
+            selector.EntitySelectorConfig(domain=domain)
+            if domain else selector.EntitySelectorConfig()
+        )
+        schema[marker(key, **kwargs)] = selector.EntitySelector(config)
+    power_default = (
+        {"default": existing[CONF_CHARGE_POWER_KW]}
+        if CONF_CHARGE_POWER_KW in existing else {}
+    )
+    schema.update(
+        {
+            vol.Optional(
+                CONF_TARIFF_TIMEZONE,
+                default=existing.get(CONF_TARIFF_TIMEZONE, DEFAULT_TARIFF_TIMEZONE),
+            ): str,
+            vol.Optional(
+                CONF_TARIFF_PRICE_UNIT,
+                default=existing.get(CONF_TARIFF_PRICE_UNIT, DEFAULT_TARIFF_PRICE_UNIT),
+            ): selector.SelectSelector(selector.SelectSelectorConfig(
+                options=PRICE_UNITS, mode=selector.SelectSelectorMode.DROPDOWN,
+            )),
+            vol.Required(CONF_CHARGE_POWER_KW, **power_default):
+                vol.All(vol.Coerce(float), vol.Range(min=0.1, max=50)),
+            vol.Optional(
+                CONF_TARGET_PERCENT,
+                default=existing.get(CONF_TARGET_PERCENT, DEFAULT_TARGET_PERCENT),
+            ): vol.All(vol.Coerce(float), vol.Range(min=1, max=100)),
+            vol.Optional(
+                CONF_CHARGER_EFFICIENCY,
+                default=existing.get(CONF_CHARGER_EFFICIENCY, DEFAULT_CHARGER_EFFICIENCY),
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=1)),
+            vol.Optional(
+                CONF_SLOT_MINUTES,
+                default=existing.get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES),
+            ): vol.All(vol.Coerce(float), vol.Range(min=5, max=120)),
+            vol.Optional(
+                CONF_READY_BY,
+                description={"suggested_value": existing[CONF_READY_BY]}
+                if existing.get(CONF_READY_BY) else {},
+            ): str,
+        }
+    )
+    return schema
+
+
+def _ev_input_errors(values: dict[str, Any]) -> dict[str, str]:
+    """Validate values that cannot be expressed in HA's serializable form schema."""
+    errors = {}
+    ready_by = values.get(CONF_READY_BY)
+    if ready_by and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", str(ready_by)) is None:
+        errors[CONF_READY_BY] = "invalid_ready_by"
+    try:
+        ZoneInfo(values.get(CONF_TARIFF_TIMEZONE, DEFAULT_TARIFF_TIMEZONE))
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        errors[CONF_TARIFF_TIMEZONE] = "invalid_timezone"
+    for key in (CONF_CHARGE_POWER_KW, CONF_TARGET_PERCENT, CONF_CHARGER_EFFICIENCY,
+                CONF_SLOT_MINUTES):
+        if key not in values:
+            continue
+        try:
+            number = float(values[key])
+            if not math.isfinite(number) or isinstance(values[key], bool):
+                raise ValueError
+            if key == CONF_SLOT_MINUTES and not number.is_integer():
+                raise ValueError
+        except (ValueError, TypeError, OverflowError):
+            errors[key] = "invalid_number"
+    return errors
+
+
 class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a Load Optimizer config flow."""
 
@@ -132,7 +224,9 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_ev(self, user_input: dict[str, Any] | None = None):
         """Create a new EV optimizer load."""
-        if user_input is not None:
+        errors = _ev_input_errors(user_input) if user_input is not None else {}
+        if user_input is not None and not errors:
+            user_input[CONF_SLOT_MINUTES] = int(user_input.get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES))
             user_input[CONF_NAME] = self._name
             user_input[CONF_LOAD_TYPE] = LOAD_TYPE_EV
             await self.async_set_unique_id(f"{LOAD_TYPE_EV}_{str(self._name).lower()}")
@@ -141,36 +235,10 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="ev",
+            errors=errors,
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_TARIFF_ENTITY): selector.EntitySelector(selector.EntitySelectorConfig()),
-                    vol.Optional(CONF_TARIFF_TIMEZONE, default=DEFAULT_TARIFF_TIMEZONE): str,
-                    vol.Optional(CONF_TARIFF_PRICE_UNIT, default=DEFAULT_TARIFF_PRICE_UNIT): selector.SelectSelector(
-                        selector.SelectSelectorConfig(options=PRICE_UNITS, mode=selector.SelectSelectorMode.DROPDOWN)
-                    ),
-                    vol.Required(CONF_BATTERY_ENTITY): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
-                    ),
-                    vol.Required(CONF_BATTERY_CAPACITY_ENTITY): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
-                    ),
-                    vol.Optional(CONF_TARGET_PERCENT_ENTITY): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
-                    ),
-                    vol.Optional(CONF_CONNECTION_STATUS_ENTITY): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
-                    ),
-                    vol.Required(CONF_CHARGE_POWER_KW): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=50)),
-                    vol.Optional(CONF_TARGET_PERCENT, default=DEFAULT_TARGET_PERCENT): vol.All(
-                        vol.Coerce(float), vol.Range(min=1, max=100)
-                    ),
-                    vol.Optional(CONF_CHARGER_EFFICIENCY, default=DEFAULT_CHARGER_EFFICIENCY): vol.All(
-                        vol.Coerce(float), vol.Range(min=0.1, max=1)
-                    ),
-                    vol.Optional(CONF_SLOT_MINUTES, default=DEFAULT_SLOT_MINUTES): vol.All(
-                        vol.Coerce(int), vol.Range(min=5, max=120)
-                    ),
-                    vol.Optional(CONF_READY_BY): str,
+                    **_ev_schema(),
                     **_price_cap_schema(),
                 }
             ),
@@ -180,12 +248,15 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ):
         """Create the learned-appliance runtime."""
+        if any(
+            entry.data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE
+            for entry in self._async_current_entries()
+        ):
+            return self.async_abort(reason="learned_appliance_already_configured")
         if user_input is not None:
             user_input[CONF_NAME] = self._name
             user_input[CONF_LOAD_TYPE] = LOAD_TYPE_LEARNED_APPLIANCE
-            await self.async_set_unique_id(
-                f"{LOAD_TYPE_LEARNED_APPLIANCE}_{str(self._name).lower()}"
-            )
+            await self.async_set_unique_id(LOAD_TYPE_LEARNED_APPLIANCE)
             self._abort_if_unique_id_configured()
             return self.async_create_entry(title=self._name, data=user_input)
 
@@ -243,11 +314,14 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
-    """Edit learned-appliance settings without exposing one giant form."""
+    """Edit load settings without exposing one giant form."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Route to the options supported by this load type."""
-        if self.config_entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
+        load_type = self.config_entry.data.get(CONF_LOAD_TYPE)
+        if load_type == LOAD_TYPE_EV:
+            return self.async_show_menu(step_id="init", menu_options=["ev", "price_cap"])
+        if load_type != LOAD_TYPE_LEARNED_APPLIANCE:
             return self.async_abort(reason="not_supported")
 
         return self.async_show_menu(
@@ -271,6 +345,22 @@ class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
         return self.async_create_entry(
             title="",
             data={**self.config_entry.options, **user_input},
+        )
+
+    async def async_step_ev(self, user_input: dict[str, Any] | None = None):
+        """Edit EV inputs without replacing its config entry or opt-ins."""
+        errors = _ev_input_errors(user_input) if user_input is not None else {}
+        if user_input is not None and not errors:
+            updates = dict(user_input)
+            if CONF_SLOT_MINUTES in updates:
+                updates[CONF_SLOT_MINUTES] = int(updates[CONF_SLOT_MINUTES])
+            for field in (CONF_TARGET_PERCENT_ENTITY, CONF_CONNECTION_STATUS_ENTITY, CONF_READY_BY):
+                updates.setdefault(field, "")
+            return self._save_section(updates)
+        return self.async_show_form(
+            step_id="ev",
+            errors=errors,
+            data_schema=vol.Schema(_ev_schema(self._existing)),
         )
 
     async def async_step_appliances_tariff(

@@ -1,5 +1,65 @@
 # Changelog
 
+## 1.7.0-beta.6
+
+- Fix automatic free/negative-price starts between five-minute candidate
+  boundaries. An eligible start now takes precedence over a better later slot,
+  allowing additional permitted runs after each confirmed completion.
+- Retain Negative programme opt-ins, per-programme/per-window run limits,
+  normal-mode cooldowns, pricing coverage, deadlines and physical safety checks.
+- Exercise the real planner and native controller together across negative,
+  zero-price and positive windows with isolated appliance commands.
+
+## 1.7.0-beta.5
+
+- Carry all stable v1.5.7 security/privacy, storage and control-boundary fixes
+  without promoting beta features or changing learning/history storage formats.
+- Require an administrator for tariff re-analysis, history import/export and
+  optional paid AI generation, including response-bearing actions on minimum HA.
+- Extend real HA permission checks to all ten actions using synthetic providers;
+  reject deeply nested history JSON without exposing request details.
+
+## 1.7.0-beta.4
+
+- Carry the validated stable v1.5.5 EV editor, retained settings, validation and
+  entity labels into the history/import beta without changing either store.
+- Extend real minimum-HA EV options/reload/restart acceptance to include the
+  beta's additional read-only tariff-analysis entities and devices.
+- Support registered hub links on both minimum and current Home Assistant for
+  tariff-analysis devices as well as appliances. Stable submission uses v1.5.6;
+  tariff history/import/AI are not promoted.
+
+## 1.7.0-beta.3
+
+- Carry the v1.5.4 unavailable-confidence startup fix into the tariff beta.
+  Learning and tariff-history stores are unchanged.
+
+## 1.7.0-beta.2
+
+- Carry the stable v1.5.3 scheduling diagnostics and MixedLoad/manual cooldown
+  fixes into the tariff-intelligence beta without removing history, import or AI
+  functionality. Preserve learned profiles, tariff history and selected controls.
+
+## 1.7.0-beta.1
+
+- Add portable JSON history import with atomic validation, dry-run default,
+  90-day default retention and explicit protection for live-captured history.
+- Add optional manually requested Home Assistant AI Task narrative summaries.
+  Only compact analysis is sent; stale text is hidden and provider failures
+  cannot change deterministic analysis or scheduling.
+- Installed on the owner's Home Assistant for controlled beta testing; stable
+  users remain on v1.5.0. The approved exact-tariff backfill is independently
+  verified; the mismatching legacy cache was preserved and not imported.
+- Verified a post-import restart and live downgrade/re-upgrade with all 90
+  imported days, their provenance and appliance learning counts preserved.
+  Actual AI provider testing remains gated on complete next-day prices.
+- Require matching tariff-source metadata for imports; reject unverified or
+  mismatched exports even when overwrite is requested.
+- Isolate provenance-aware history in schema-2 storage, copy existing history
+  without changing the old store, and preserve imported history across rollback.
+- Add an explicit legacy dt/r cache adapter, gated by verified tariff identity
+  matching the live rate entities, with off-thread parsing and gap/DST checks.
+
 ## 1.6.0-beta.3
 
 - Use the midpoint median for equally weighted even-length tariff datasets.
@@ -19,6 +79,94 @@
   remains explicitly waiting rather than producing a definitive classification.
 - Recalculate on rate publication as well as the normal coordinator interval.
 - Appliance profile costing and learning data are unchanged.
+## 1.5.7
+
+- Restrict learning import, recovery and orchestration handover actions to Home
+  Assistant administrators. Trusted system automations retain HA's normal access.
+- Replace diagnostic configuration dumps with allowlisted health summaries;
+  omit names, raw YAML, entity/device identifiers, schedules and arbitrary text.
+- Bound and validate imported learning JSON, reject non-finite/deep/malformed
+  data, serialize imports with scans, and preserve memory if storage fails.
+  Active captures and queued requests must finish or be cancelled first.
+- Redact common credentials embedded in event messages and exception values.
+- Remove the retired add-on web server, standalone runner and HTTP fallback.
+- Bound external Ofgem lookups, allow only trusted HTTPS source hosts and
+  redirects, retain TLS verification, and limit decompressed response size.
+- Reject unsafe planner intervals, excessive search horizons and invalid prices.
+  Bound EV candidate generation and reject non-finite vehicle inputs.
+- Block starts when the door state is unknown; cancel in-flight native commands
+  and queued requests before returning ownership to legacy automations.
+- Pin validation actions, grant only read access, and add mandatory security,
+  credential-history and real Home Assistant permission/privacy checks.
+- Document security reporting, data handling and the static review scope.
+
+## 1.5.6
+
+- Support both older identifier-based and current scoped device registries when
+  linking appliance/orchestration devices to an already registered hub.
+- Verify actual appliance device registration on minimum Home Assistant, not
+  only module imports or EV entries. Preserve identifiers and registered IDs.
+
+## 1.5.5
+
+- Add EV options editing for tariff and battery references, charge power,
+  efficiency, target, slot length and deadline, plus regional benchmark settings.
+- Preserve the config entry and entity identities and unrelated options; support
+  clearing optional references. Charger control remains advisory and opt-in.
+- Keep this independently tested EV slice separate from the unpromoted tariff
+  history/analysis/import/AI betas.
+- Fix Home Assistant form serialization for the optional deadline and report
+  invalid local times, timezones, non-finite numbers and fractional slot lengths
+  without changing saved options.
+- Correct EV sensor names when Home Assistant's description name is unset;
+  existing registered entity IDs are retained.
+- Add real minimum-Home-Assistant setup, form serialization, options, reload and
+  persisted restart acceptance to CI, alongside the existing unit suite.
+- Include benchmark-aware current-price tile colours and the empty-forecast
+  dashboard guard from main.
+- Acceptance used isolated minimum-version Home Assistant, actual browser save
+  and validation, and stable rollback/re-upgrade with unchanged EV identities.
+
+## 1.5.5-beta.1
+
+- Publish the separately validated EV options slice before stable promotion.
+
+## 1.5.4
+
+- Handle missing, null and invalid confidence thresholds while tariff/appliance
+  entities are still starting. Scheduling diagnostics must not prevent setup,
+  future scans or live programme discovery.
+- Exercise startup with unavailable inputs followed by live capability recovery.
+
+## 1.5.3
+
+- Keep a pending overnight wash when a manufacturer firmware update produces a
+  short, rejected power capture; do not mark that capture as a completed wash.
+- Reset the loaded-door flag on a reported Bosch wash start, not any power spike.
+- Explain automatic scheduling separately from recommendations, including an
+  already-reserved night, confidence, safety checks and next eligibility.
+- Retain a bounded scheduling-event history across restarts, and add an
+  Automatic Scheduling explanation to both supported dashboard templates.
+- Refresh the manual programme dropdown from the appliance instead of the old
+  migration snapshot, including MixedLoad and programmes added by firmware.
+- Keep automatic cooldowns intact while explicit manual starts use their own
+  programme duration, not an unrelated or delayed recommendation's finish time.
+- Allow explicitly selected manual starts without a ready recommendation;
+  retain physical safety checks, including an already-running appliance.
+- Expose selected-programme buttons in the public dashboard and correct the
+  rich dashboard's engine buttons to call the native button service.
+- A real post-upgrade wash remains the final live cycle/learning acceptance
+  check; regression tests exercise appliance commands with isolated mocks.
+
+## 1.5.1
+
+- Prepare the stable publication line without promoting the tariff-intelligence
+  development branches.
+- Correct minimum Home Assistant to 2024.12 and add real minimum-version import CI.
+- Prevent multiple learned-appliance hubs from sharing and overwriting one store;
+  existing entries and entity IDs are not migrated or renamed.
+- Add a new-installation guide, honest dashboard limitations, contribution rules
+  and a HACS catalogue submission checklist.
 
 ## 1.5.0
 
