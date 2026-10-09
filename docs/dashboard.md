@@ -76,6 +76,22 @@ when available, without automatic cooldown filtering. Normal connection, closed
 door, remote-start and already-running checks still apply. The automatic engine
 retains its existing cooldowns; manual requests do not silently re-arm automation.
 
+## Current Price Colours
+
+The current import-price tile optionally uses
+[card-mod](https://github.com/thomasloven/lovelace-card-mod), installed through
+HACS as a dashboard resource. Its background is light green below the regional
+Ofgem benchmark, light yellow when equal, and red above it. Comparisons use
+two decimal places in p/kWh so visually equal prices are not marked higher or
+lower because of hidden precision. Missing, unavailable or non-finite values
+keep the normal neutral background. Both source entities are watched, so a
+tariff update or a new benchmark changes the colour without a reload.
+
+The Ofgem tile remains neutral. Without card-mod, both tiles remain usable
+standard Home Assistant tiles, but comparison colouring is not applied. This
+optional styling does not affect scheduling, learning or the daily benchmark
+lookup, and does not require a Home Assistant restart.
+
 The richer example dashboards under `homeassistant/dashboards/` use
 `apexcharts-card`. Their future-price axes are formatted in the tariff timezone
 published by Load Optimizer, not the viewing browser's timezone. This keeps the
