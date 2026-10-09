@@ -6,6 +6,10 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- validate the free/negative-price repeated-run fix on the owner's beta before
+  stable promotion. Off-grid scan times must not perpetually defer starts;
+  active opportunities must remain usable even when later rates are cheaper.
+  Preserve programme opt-ins, per-window limits, learning and queued requests.
 - await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
   for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
   checks passed; respond to requested changes without duplicate requests or

@@ -23,3 +23,31 @@ the same private configuration from the captured helper values.
 The integration deliberately cannot mark the package removable in the capture
 phase. This prevents a partial migration from silently removing Bosch safety,
 request scheduling, or cycle outcome handling.
+
+## Free And Negative-Price Runs
+
+With native control active and automatic negative-price mode enabled, only
+enabled programmes whose policy allows negative-price runs can be selected.
+Prices at or below zero count, including an explicitly configured special-price
+overlay. A separate promotional calendar does not itself change tariff prices
+or subscribe the household to an offer.
+
+An eligible start at the actual scan time takes precedence over a later, cheaper
+slot. Within that group, programme priority and learned energy per minute retain
+their existing ranking. The dashboard's negative-price programme options use the
+same ordering as the controller's recommendation.
+
+After a confirmed cycle completes, the controller can choose another permitted
+programme without requiring the door to be reopened. Normal programme cooldowns
+do not prohibit these opportunistic runs. Each programme's
+`maximum_runs_per_window` still applies: `1` permits one run of that programme
+in a continuous free/negative window, while `0` means unlimited. A positive-price
+gap creates a separate window with its own allowance. The controller also keeps
+its minimum 30-minute interval between automatic negative-price requests.
+
+The learned high-power section must fit within one free/negative window. A
+low-power tail may finish later and incur positive-price electricity costs;
+the cost estimate includes this. Deadlines, blocked windows, complete pricing
+coverage and all physical safety checks remain in force. Pending requests are
+not silently replaced, and neither native control nor either automatic mode is
+enabled by this scheduling change.

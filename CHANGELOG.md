@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Fix automatic free/negative-price starts between five-minute candidate
+  boundaries. An eligible start now takes precedence over a better later slot,
+  allowing additional permitted runs after each confirmed completion.
+- Retain Negative programme opt-ins, per-programme/per-window run limits,
+  normal-mode cooldowns, pricing coverage, deadlines and physical safety checks.
+- Exercise the real planner and native controller together across negative,
+  zero-price and positive windows with isolated appliance commands.
+
 ## 1.5.7
 
 - Restrict learning import, recovery and orchestration handover actions to Home
