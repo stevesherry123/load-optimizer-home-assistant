@@ -26,15 +26,23 @@ refreshes programme selection with manual cooldown bypass. v1.5.4 fixes startup
 when live scheduling confidence is not yet available. The owner has these fixes
 in v1.7.0-beta.3, retaining the existing tariff-history features. Live checks
 confirmed restored forecasts and programme options with unchanged learning and
-91 history days. Observe the next real wash and learning increment before
-catalogue submission. Check the actual CI
+91 history days. The subsequent physical MixedLoad wash completed on 9 October
+at 13:36 BST: dishwasher learning increased to 114 total runs and MixedLoad to
+4 runs at 61% confidence. Completion was confirmed, the queue cleared and no
+active captures or integration errors remained. The real-wash gate is passed.
+The separate v1.5.5 EV editor passed isolated real minimum-HA browser/options,
+reload, persisted restart, stable downgrade and re-upgrade checks with unchanged
+entry, device and entity identities. Check the actual CI
 results and stable release immediately before submitting; this is not a claim
 of testing every supported Home Assistant or appliance combination.
 
-## Tomorrow's Submission
+## Owner Submission
+
+The owner chose to submit the integration personally. This work prepares the
+release and application evidence but does not open an upstream pull request.
 
 1. Confirm main's tests, minimum-version imports, HACS validation and hassfest
-   are green and a full stable v1.5.4 GitHub release exists after those checks.
+   are green and a full stable v1.5.5 GitHub release exists after those checks.
 2. Sign in as repository owner `stevesherry123` and fork `hacs/default`.
 3. Create a new branch from its `master` branch. Add
    `stevesherry123/load-optimizer-home-assistant` to the JSON `integration` list
@@ -48,7 +56,7 @@ Use the current [official inclusion instructions](https://www.hacs.xyz/docs/publ
 and [integration requirements](https://www.hacs.xyz/docs/publish/integration/).
 The maintainers currently warn that new submissions can take months.
 
-Until acceptance, users can install tomorrow through HACS Custom repositories,
+Until acceptance, users can install through HACS Custom repositories,
 category Integration, using the existing repository URL. This is distinct from
 default-catalogue inclusion; do not announce that listing has already happened.
 

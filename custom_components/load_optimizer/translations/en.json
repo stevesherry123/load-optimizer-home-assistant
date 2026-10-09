@@ -1,5 +1,10 @@
 {
   "config": {
+    "error": {
+      "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
+      "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
+      "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes."
+    },
     "step": {
       "user": {
         "title": "Set up Load Optimizer",
@@ -59,11 +64,17 @@
     }
   },
   "options": {
+    "error": {
+      "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
+      "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
+      "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes."
+    },
     "step": {
       "init": {
         "title": "Load Optimizer settings",
         "description": "Choose the part of Load Optimizer you want to change. Saving one section preserves every other setting.",
         "menu_options": {
+          "ev": "EV charging settings",
           "appliances_tariff": "Appliances and tariff",
           "optimisation": "Cost optimisation",
           "publishing": "Published data",
@@ -71,6 +82,7 @@
           "dishwasher_control": "Dishwasher control (optional)"
         },
         "menu_option_descriptions": {
+          "ev": "Tariff, battery references, charging power, efficiency, target and deadline.",
           "appliances_tariff": "Appliance definitions, refresh timing, tariff entities and calendar windows.",
           "optimisation": "Search horizon, forecast resolution and schedule preference weighting.",
           "publishing": "Choose whether detailed profiles, forecasts and diagnostics are exposed.",
@@ -90,6 +102,24 @@
           "tariff_price_unit": "Tariff price unit",
           "green_window_entity": "Preferred green-window calendar",
           "blocked_window_entity": "Blocked-window calendar"
+        }
+      },
+      "ev": {
+        "title": "EV charging settings",
+        "description": "Changes update the advisory plan and retain existing entities. This does not enable charger control.",
+        "data": {
+          "tariff_entity": "Tariff entity",
+          "tariff_timezone": "Tariff timezone",
+          "tariff_price_unit": "Tariff price unit",
+          "battery_entity": "Battery percentage entity",
+          "battery_capacity_entity": "Battery capacity entity",
+          "target_percent_entity": "Target percentage entity (optional)",
+          "connection_status_entity": "Charging connection status entity (optional)",
+          "charge_power_kw": "Charge power (kW)",
+          "target_percent": "Fallback target percentage",
+          "charger_efficiency": "Charger efficiency",
+          "slot_minutes": "Slot length (minutes)",
+          "ready_by": "Ready by (local HH:MM, optional)"
         }
       },
       "optimisation": {
