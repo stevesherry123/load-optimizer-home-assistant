@@ -6,6 +6,12 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- HACS publication gate: validate the overnight firmware-update regression fix
+  and scheduling explanations on `beta/overnight-diagnostics-v1.5.3` before
+  promoting it. On 8 October a 3.4-minute manufacturer-update power capture was
+  correctly rejected by learning but incorrectly cancelled the pending wash;
+  its request timestamp then suppressed another automatic request that night.
+  The diagnostic/fix branch leaves stable and the live v1.7 beta unchanged.
 - submit the prepared stable v1.5.1 line to HACS's default catalogue; no submission
   exists yet, and installation as a custom repository is not catalogue acceptance
 - finish the real optional AI provider test after complete tomorrow rates arrive;

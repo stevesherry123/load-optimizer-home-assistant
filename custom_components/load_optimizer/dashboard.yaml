@@ -57,6 +57,91 @@ views:
           - sensor.load_optimizer_1_recommended_start
           - sensor.load_optimizer_1_estimated_scheduled_cost
           - sensor.load_optimizer_1_good_to_start
+      - type: markdown
+        title: Automatic Scheduling
+        content: |-
+          {% set explanation = 'sensor.load_optimizer_1_automation_explanation' %}
+          {% set orchestration = 'sensor.load_optimizer_1_orchestration_status' %}
+          {% set request = state_attr(orchestration, 'request') or {} %}
+          {% set summary = state_attr(explanation, 'summary') %}
+          {% macro local_time(value) -%}
+          {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'None recorded' }}
+          {%- endmacro %}
+          {% if summary %}
+          **{{ summary }}**
+          {% elif request %}
+          **{{ request.get('program', 'Programme') }} is queued for a start-time safety check.**
+          {% elif states(orchestration) in ['unknown', 'unavailable'] %}
+          **Scheduling status is unavailable.**
+          {% else %}
+          **No wash is queued. A recommendation alone is not a scheduled start.**
+          {% endif %}
+
+          {% set action = state_attr(explanation, 'action_required') %}
+          {% if action %}{{ action }}{% endif %}
+
+          **Automatic modes:** overnight {{ states('switch.load_optimizer_1_auto_mode_enabled') }}, free / negative price {{ states('switch.load_optimizer_1_auto_negative_price_enabled') }}.
+          {% set rejected_at = as_timestamp(state_attr('sensor.load_optimizer_1_last_discarded_cycle', 'finish'), none) %}
+          {% set completed_at = as_timestamp(state_attr(orchestration, 'last_cycle_completed_at'), none) %}
+          {% set learned_at = as_timestamp(states('sensor.load_optimizer_1_last_finish'), none) %}
+          {% if rejected_at is not none and completed_at is not none and (completed_at - rejected_at) | abs < 120 and (learned_at is none or learned_at < rejected_at) %}
+          **Records need review:** The scheduler recorded completion for a rejected capture. It was not learned as a wash.
+          {% endif %}
+
+          {% set start = request.get('start') %}
+          {% if start %}
+          **Queued start:** {{ local_time(start) }}
+          {% else %}
+          **Recommendation (not queued):** {{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'program') or 'None' }},
+          {{ local_time(state_attr('sensor.load_optimizer_1_overnight_recommendation', 'start')) }}
+          {% endif %}
+
+          | Record | Home time |
+          |---|---|
+          | Last automatic request | {{ local_time(state_attr(orchestration, 'last_auto_normal_request')) }} |
+          | Last start attempt | {{ local_time(state_attr(orchestration, 'last_attempt')) }} |
+          {% set eligible = state_attr(explanation, 'automatic_eligible_after') %}
+          {% if eligible %}| Next automatic eligibility | {{ local_time(eligible) }} |{% endif %}
+
+          {% set labels = {
+            'automatic_window_already_used': 'This overnight window has already been reserved',
+            'request_already_pending': 'A start request is already queued',
+            'automatic_mode_off': 'Automatic mode is off',
+            'door_not_opened_since_last_cycle': 'Door has not opened since the last wash',
+            'door_currently_open': 'Door is currently open',
+            'recommendation_not_ready': 'No fully priced eligible programme',
+            'confidence_below_threshold': 'Learning confidence below the required level',
+            'confidence_relaxed_for_cooldown_rotation': 'Lower confidence allowed during programme cooldown rotation',
+            'optimizer_not_ready': 'Optimizer is not ready',
+            'appliance_not_idle': 'A cycle capture is active',
+            'connected': 'Appliance is disconnected',
+            'remote_control': 'Remote control is disabled',
+            'remote_start': 'Remote start is disabled'
+          } %}
+          {% for code in (state_attr(explanation, 'blockers') or []) + (state_attr(explanation, 'warnings') or []) %}
+          - {{ labels.get(code, code | replace('_', ' ')) }}
+          {% endfor %}
+          {% set confidence = state_attr(explanation, 'confidence') %}
+          {% if confidence is not none %}**Learning confidence:** {{ confidence }}% (normal threshold {{ state_attr(explanation, 'confidence_threshold') }}%).{% endif %}
+
+
+          **Last scheduler result:** {{ (state_attr(orchestration, 'last_result') or 'None recorded') | replace('_', ' ') }}.
+          {{ state_attr(orchestration, 'last_message') or '' }}
+
+          {% set discarded = 'sensor.load_optimizer_1_last_discarded_cycle' %}
+          {% if state_attr(discarded, 'finish') %}
+          **Last ignored learning capture:** {{ local_time(state_attr(discarded, 'finish')) }},
+          {{ state_attr(discarded, 'runtime_minutes') }} min.
+          {{ (state_attr(discarded, 'exclusion_reason') or 'Not suitable for learning') | replace('_', ' ') }}.
+          {% endif %}
+
+          {% set events = state_attr(explanation, 'recent_events') or [] %}
+          {% if events %}
+          **Recent scheduling events**
+          {% for item in events[:5] %}
+          - {{ local_time(item.timestamp) }}: {{ item.event | replace('_', ' ') }}; {{ item.reason | replace('_', ' ') }}.
+          {% endfor %}
+          {% endif %}
       - type: entities
         title: Dishwasher scheduling
         show_header_toggle: false

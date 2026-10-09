@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.3-beta.1 (In Development)
+
+- Keep a pending overnight wash when a manufacturer firmware update produces a
+  short, rejected power capture; do not mark that capture as a completed wash.
+- Reset the loaded-door flag on a reported Bosch wash start, not any power spike.
+- Explain automatic scheduling separately from recommendations, including an
+  already-reserved night, confidence, safety checks and next eligibility.
+- Retain a bounded scheduling-event history across restarts, and add an
+  Automatic Scheduling explanation to both supported dashboard templates.
+- This branch is not installed on the owner's tariff-intelligence beta and has
+  not been promoted to stable. Live scheduling validation remains required.
+
 ## 1.5.1
 
 - Prepare the stable publication line without promoting the tariff-intelligence
