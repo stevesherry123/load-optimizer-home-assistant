@@ -64,8 +64,10 @@ Select a connection sensor when available. The planner publishes charge-now
 and ready-to-charge signals; it does not operate a charger or power plug.
 
 Keep any charger-control automation opt-in and subject to the charger's own
-safety checks. Stable EV settings currently require recreating the entry to
-change them; an options editor is in separate development.
+safety checks. From stable v1.5.5, use the EV entry's Configure cog to change
+source references, charging assumptions, deadline and benchmark settings. The
+editor preserves the entry and registered entity identities; do not delete and
+recreate the entry merely to edit its settings.
 
 ## Dashboard And Troubleshooting
 

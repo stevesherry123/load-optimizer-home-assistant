@@ -36,7 +36,8 @@ Delivery order now approved by the owner:
 3. After that implementation is validated, create a separate non-production
    branch for historical import and optional narrative summaries. Import defaults
    to dry-run and must never silently overwrite live history. AI remains optional.
-4. HACS default-catalogue submission remains separate and unconfirmed.
+4. HACS default-catalogue request #11744 was submitted after the v1.5.7 security
+   review; all catalogue checks passed and maintainer review is pending.
 
 The v1.6 implementation includes immutable slot/day models, fingerprints,
 source-shared storage, complete-day capture, 365-day retention, matching-local
@@ -89,8 +90,9 @@ minimum-HA appliance/orchestration device registration, EV options/reload/restar
 imports and dashboard templates, HACS and hassfest. The EV editor's isolated
 browser and downgrade/re-upgrade checks passed. Expanded minimum-HA acceptance
 found and fixed a newer-only registered-hub API before public submission.
-The owner will submit HACS personally using `docs/hacs-submission.md`; no
-upstream application has been opened.
+That prepare-only instruction was superseded on 9 October: stable v1.5.7 was
+reviewed and submitted on the owner's behalf. See `docs/hacs-submission.md` for
+the actual release, checks and pending catalogue request.
 
 The owner's physical MixedLoad wash completed on 9 October at 13:36 BST:
 dishwasher learning is now 114 total and MixedLoad 4 runs at 61% confidence;
@@ -119,7 +121,7 @@ Cap-adjusted history and the beta analysis dashboard remain subsequent work.
 | EV options editor | Stable v1.5.6 and owner's beta.4; acceptance passed | No outstanding editor release gate |
 | New analysis dashboard | Not consolidated into stable | Bounded chart/entity presentation, mobile/travel/DST validation |
 | Octopus Intelligence retirement | Not done; old cache/app preserved | Demonstrate accepted replacement parity first |
-| HACS default catalogue | Stable release and owner application prepared | Owner chooses submission time; maintainer acceptance and scan |
+| HACS default catalogue | v1.5.7 submitted as #11744; all catalogue checks passed | Maintainer acceptance and subsequent scan |
 
 Later work includes optional solar/storage context, greener-window tradeoffs,
 missing-entity repair guidance and compatibility-engine decomposition. Inferred

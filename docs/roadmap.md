@@ -37,6 +37,13 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Reviewed public documentation and HACS release behaviour. Corrected stale EV
+  editing/publication-gate claims, focused the README on released features and
+  documented release channels, notifications and honest statistics limits.
+  Removed 14 merged branches and archived one superseded prototype as a
+  non-release tag, retaining `main` and both active tariff betas with their gates
+  intact. See `docs/branch-cleanup-2026-10-09.md`. Documentation-only changes
+  do not replace existing release tags or change installed Home Assistant code.
 - Completed the static security/privacy review and merged v1.5.7 fixes: private
   diagnostic allowlisting, administrator-only maintenance, bounded atomic
   imports, planner/HTTP limits, safe command handover and removal of unused
