@@ -6,7 +6,14 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- submit the prepared stable v1.5.1 line to HACS's default catalogue; no submission
+- HACS publication gate: observe a real wash after the v1.5.3 scheduling fix
+  (also carried into the owner's tariff-intelligence beta). On 8 October a
+  3.4-minute manufacturer-update power capture was
+  correctly rejected by learning but incorrectly cancelled the pending wash;
+  its request timestamp then suppressed another automatic request that night.
+  Automated regressions cover request preservation and manual cooldown bypass;
+  installation checks do not substitute for the next real cycle/learning check.
+- submit the prepared stable v1.5.3 line to HACS's default catalogue; no submission
   exists yet, and installation as a custom repository is not catalogue acceptance
 - finish the real optional AI provider test after complete tomorrow rates arrive;
   the approved manual request correctly waited on the current 46-of-48-slot feed
