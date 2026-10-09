@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.7.0-beta.6
 
 - Fix automatic free/negative-price starts between five-minute candidate
   boundaries. An eligible start now takes precedence over a better later slot,
