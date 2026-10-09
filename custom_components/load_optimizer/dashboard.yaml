@@ -153,6 +153,12 @@ views:
           - switch.load_optimizer_1_auto_mode_enabled
           - switch.load_optimizer_1_auto_negative_price_enabled
           - select.load_optimizer_1_override_program
+          - entity: button.load_optimizer_1_request_now_override
+            name: Start Selected Program Now
+          - entity: button.load_optimizer_1_request_soon_override
+            name: Schedule Selected Program Soon
+          - entity: button.load_optimizer_1_request_overnight_override
+            name: Schedule Selected Program Overnight
           - button.load_optimizer_1_request_now
           - button.load_optimizer_1_request_soon
           - button.load_optimizer_1_request_overnight

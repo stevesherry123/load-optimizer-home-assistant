@@ -61,6 +61,19 @@ wash or cancel its pending overnight request. A real observed wash may still
 complete without entering learning, for example if its capture was interrupted.
 Live verification of this distinction is a publication gate for the fix branch.
 
+## Manual Programme Selection
+
+The override dropdown follows the configured dishwasher's live programme selector,
+with its last known options retained while the appliance is unavailable. It is
+not restricted by learning confidence or automatic programme cooldowns.
+
+Select a programme such as MixedLoad, then press **Start Selected Program Now**
+to request it immediately. Explicit manual starts work even without a ready cost
+recommendation. Scheduled selected-programme requests use manual candidate windows
+when available, without automatic cooldown filtering. Normal connection, closed
+door, remote-start and already-running checks still apply. The automatic engine
+retains its existing cooldowns; manual requests do not silently re-arm automation.
+
 The richer example dashboards under `homeassistant/dashboards/` use
 `apexcharts-card`. Their future-price axes are formatted in the tariff timezone
 published by Load Optimizer, not the viewing browser's timezone. This keeps the

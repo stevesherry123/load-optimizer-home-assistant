@@ -942,7 +942,7 @@ views:
                     icon: mdi:play-circle
                     tap_action:
                       action: call-service
-                      service: input_button.press
+                      service: button.press
                       target:
                         entity_id: button.load_optimizer_1_request_now
               - type: markdown
@@ -1028,7 +1028,7 @@ views:
                     icon: mdi:clock-fast
                     tap_action:
                       action: call-service
-                      service: input_button.press
+                      service: button.press
                       target:
                         entity_id: button.load_optimizer_1_request_soon
               - type: markdown
@@ -1115,7 +1115,7 @@ views:
                     icon: mdi:weather-night
                     tap_action:
                       action: call-service
-                      service: input_button.press
+                      service: button.press
                       target:
                         entity_id: button.load_optimizer_1_request_overnight
               - type: markdown

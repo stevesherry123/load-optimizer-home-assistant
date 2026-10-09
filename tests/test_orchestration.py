@@ -55,6 +55,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.scheduler.state = {**namespace["CONTROL_DEFAULTS"], "schedule_events": [], "run_history": []}
         self.scheduler.state.update(active=True, auto_mode_enabled=True, door_opened_since_last_cycle=True)
         self.scheduler.config = {
+            "bosch_program_select": "select.programmes",
             "bosch_operation_state_sensor": "sensor.operation",
             "bosch_door_sensor": "binary_sensor.door",
             "bosch_connected_sensor": "binary_sensor.connected",
@@ -204,3 +205,124 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         decision = self.scheduler._automatic_decision(Clock.current)
         self.assertEqual(decision["request_mode"], "negative_price")
         self.assertEqual(decision["program"], "Super60")
+
+    async def test_live_programmes_replace_the_stale_migration_dropdown(self):
+        self.scheduler.program_options = ["engine", "Quick45", "QuickD"]
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.Quick45", options=[
+            "Dishcare.Dishwasher.Program.Quick45", "Dishcare.Dishwasher.Program.MixedLoad",
+            "Dishcare.Dishwasher.Program.Auto2", "invalid", "Dishcare.Dishwasher.Program.MixedLoad"])
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.program_options, ["engine", "Quick45", "MixedLoad", "Auto2"])
+        self.assertEqual(self.scheduler.store.async_save.call_args.args[0]["program_options"],
+                         self.scheduler.program_options)
+
+    async def test_unavailable_or_empty_appliance_keeps_last_good_programmes(self):
+        self.scheduler.program_options = ["engine", "MixedLoad"]
+        for state, options in [("unavailable", []), ("unknown", []), ("ready", [])]:
+            self.put("select.programmes", state, options=options)
+            self.assertFalse(self.scheduler._refresh_program_options())
+            self.assertEqual(self.scheduler.program_options, ["engine", "MixedLoad"])
+
+    async def test_programme_refresh_preserves_the_selected_override(self):
+        self.scheduler.state["override_program"] = "MixedLoad"
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.Quick45", options=[
+            "Dishcare.Dishwasher.Program.Quick45", "Dishcare.Dishwasher.Program.MixedLoad"])
+        self.scheduler._refresh_program_options()
+        self.assertEqual(self.scheduler.state["override_program"], "MixedLoad")
+
+    async def test_explicit_mixedload_now_uses_manual_duration_despite_automatic_cooldown(self):
+        self.scheduler.state["override_program"] = "MixedLoad"
+        self.scheduler._async_execute = AsyncMock()
+        self.put("sensor.load_optimizer_1_now_recommendation", "Eco50", status="ready",
+            program="Eco50", start="2026-10-08T15:15:00+00:00", finish="2026-10-08T19:15:00+00:00",
+            program_options=[{"program": "MixedLoad", "start": "2026-10-08T21:00:00+00:00",
+                              "finish": "2026-10-08T22:47:00+00:00"}],
+            display_program_options=[{"program": "MixedLoad", "start": "2026-10-08T15:15:00+00:00",
+                "finish": "2026-10-08T17:02:00+00:00", "automatic_eligible": False}])
+        await self.scheduler.async_request("now", override=True)
+        await asyncio.gather(*self.tasks)
+        request = self.scheduler.state["request"]
+        self.assertEqual(request["program"], "MixedLoad")
+        self.assertEqual(request["start"], Clock.current.isoformat())
+        self.assertEqual(request["finish"], (Clock.current + timedelta(minutes=107)).isoformat())
+        self.assertTrue(request["explicit_program_override"])
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_unlearned_manual_now_never_borrows_another_programmes_finish(self):
+        self.scheduler.state["override_program"] = "NightWash"
+        self.scheduler._async_execute = AsyncMock()
+        self.put("sensor.load_optimizer_1_now_recommendation", "Eco50", status="ready",
+                 program="Eco50", finish="2026-10-08T19:15:00+00:00")
+        await self.scheduler.async_request("now", override=True)
+        await asyncio.gather(*self.tasks)
+        self.assertIsNone(self.scheduler.state["request"]["finish"])
+
+    async def test_override_without_a_plan_does_not_borrow_another_programmes_window(self):
+        self.scheduler.state["override_program"] = "MixedLoad"
+        await self.scheduler.async_request("overnight", override=True)
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_reason"], "selected_program_not_available_in_window")
+
+    async def test_manual_now_does_not_require_a_recommendation(self):
+        self.scheduler.state["override_program"] = "MixedLoad"
+        self.scheduler._async_execute = AsyncMock()
+        await self.scheduler.async_request("now", override=True)
+        await asyncio.gather(*self.tasks)
+        self.assertEqual(self.scheduler.state["request"]["program"], "MixedLoad")
+        self.assertEqual(self.scheduler.state["request"]["start"], Clock.current.isoformat())
+        self.assertIsNone(self.scheduler.state["request"]["finish"])
+
+    async def test_selected_scheduled_runs_use_manual_options_when_all_automatic_runs_are_on_cooldown(self):
+        self.scheduler.state["override_program"] = "MixedLoad"
+        for mode in ("soon", "overnight"):
+            with self.subTest(mode=mode):
+                self.put(f"sensor.load_optimizer_1_{mode}_recommendation", "not_ready",
+                    status="not_ready", program_options=[], display_program_options=[{
+                        "program": "MixedLoad", "start": "2026-10-08T22:00:00+00:00",
+                        "finish": "2026-10-08T23:47:00+00:00", "automatic_eligible": False}])
+                await self.scheduler.async_request(mode, override=True)
+                request = self.scheduler.state["request"]
+                self.assertEqual(request["program"], "MixedLoad")
+                self.assertEqual(request["start"], "2026-10-08T22:00:00+00:00")
+        self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"],
+                         "request_already_pending")
+
+    async def test_manual_override_still_respects_physical_safety(self):
+        self.assertIsNone(self.scheduler._safety_block("now", "MixedLoad", explicit_override=True))
+        self.put("binary_sensor.door", "on")
+        self.assertEqual(self.scheduler._safety_block("now", "MixedLoad", explicit_override=True), "door_open")
+        self.put("binary_sensor.door", "off")
+        self.put("binary_sensor.remote_start", "off")
+        self.assertEqual(self.scheduler._safety_block("now", "MixedLoad", explicit_override=True),
+                         "remote_start_disabled")
+        self.put("binary_sensor.remote_start", "on")
+        self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+        self.assertEqual(self.scheduler._safety_block("now", "MixedLoad", explicit_override=True),
+                         "appliance_already_running")
+
+    async def test_manual_options_do_not_enable_automatic_runs_during_cooldown(self):
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "not_ready",
+                 status="not_ready", display_program_options=[{"program": "MixedLoad",
+                     "automatic_eligible": False}])
+        self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"],
+                         "overnight_recommendation_not_ready")
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+
+    async def test_manual_mixedload_request_reaches_the_mocked_appliance_despite_recent_automatic_request(self):
+        self.scheduler.state.update(override_program="MixedLoad",
+                                   last_auto_normal_request=Clock.current.isoformat())
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="dishwasher")
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.Eco50",
+                 options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.scheduler._is_running = Mock(side_effect=[False, True, True, True])
+        with patch.object(asyncio, "sleep", new=AsyncMock()):
+            await self.scheduler.async_request("now", override=True)
+            await asyncio.gather(*self.tasks)
+        self.hass.services.async_call.assert_any_await("select", "select_option", {
+            "entity_id": "select.programmes", "option": "Dishcare.Dishwasher.Program.MixedLoad"},
+            blocking=True)
+        self.hass.services.async_call.assert_any_await("button", "press", {
+            "entity_id": "button.start"}, blocking=True)
+        self.assertEqual(self.scheduler.state["last_result"], "confirmed")
+        self.assertEqual(self.scheduler.state["last_auto_normal_request"], Clock.current.isoformat())

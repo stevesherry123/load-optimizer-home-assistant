@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.5.3-beta.1 (In Development)
+## 1.5.3
 
 - Keep a pending overnight wash when a manufacturer firmware update produces a
   short, rejected power capture; do not mark that capture as a completed wash.
@@ -9,8 +9,16 @@
   already-reserved night, confidence, safety checks and next eligibility.
 - Retain a bounded scheduling-event history across restarts, and add an
   Automatic Scheduling explanation to both supported dashboard templates.
-- This branch is not installed on the owner's tariff-intelligence beta and has
-  not been promoted to stable. Live scheduling validation remains required.
+- Refresh the manual programme dropdown from the appliance instead of the old
+  migration snapshot, including MixedLoad and programmes added by firmware.
+- Keep automatic cooldowns intact while explicit manual starts use their own
+  programme duration, not an unrelated or delayed recommendation's finish time.
+- Allow explicitly selected manual starts without a ready recommendation;
+  retain physical safety checks, including an already-running appliance.
+- Expose selected-programme buttons in the public dashboard and correct the
+  rich dashboard's engine buttons to call the native button service.
+- A real post-upgrade wash remains the final live cycle/learning acceptance
+  check; regression tests exercise appliance commands with isolated mocks.
 
 ## 1.5.1
 

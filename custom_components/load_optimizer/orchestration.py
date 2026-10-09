@@ -117,7 +117,28 @@ class NativeOrchestrator:
         for key in LEGACY_CONFIG_HELPERS:
             if configured.get(key):
                 self.config[key] = str(configured[key])
+        if self._refresh_program_options():
+            await self._async_save()
         self._loaded = True
+
+    def _refresh_program_options(self) -> bool:
+        """Use the appliance's current capabilities, retaining a last-good fallback."""
+        selector = self.hass.states.get(self.config.get("bosch_program_select", ""))
+        if not selector or selector.state in UNKNOWN_STATES:
+            return False
+        programmes = [
+            value.removeprefix(PROGRAM_PREFIX)
+            for value in selector.attributes.get("options", [])
+            if isinstance(value, str) and value.startswith(PROGRAM_PREFIX)
+            and value != PROGRAM_PREFIX
+        ]
+        if not programmes:
+            return False
+        options = list(dict.fromkeys(["engine", *programmes]))
+        if options == self.program_options:
+            return False
+        self.program_options = options
+        return True
 
     def _seed_from_migration(self) -> None:
         helpers = (self.migration.snapshot or {}).get("helpers", {})
@@ -211,6 +232,8 @@ class NativeOrchestrator:
             for key, entity_id in self.config.items()
             if key.endswith("sensor")
         )
+        if self.config.get("bosch_program_select"):
+            watched.add(self.config["bosch_program_select"])
         self._remove_listeners.append(
             async_track_state_change_event(
                 self.hass,
@@ -275,42 +298,54 @@ class NativeOrchestrator:
     async def async_request(self, mode: str, *, override: bool = False) -> None:
         """Capture a user request from a native button."""
         recommendation = self._recommendation(mode)
-        manual_now_override = (
+        selected_override = (
             override
-            and mode == "now"
             and self.state.get("override_program") not in {None, "", "engine"}
         )
-        if recommendation is None or (
-            recommendation.attributes.get("status") != "ready"
-            and not manual_now_override
-        ):
-            await self._async_outcome(
-                "blocked",
-                mode,
-                None,
-                "recommendation_not_ready",
-                f"No ready {mode} recommendation is available.",
-            )
-            return
+        manual_now_override = selected_override and mode == "now"
+        attributes = recommendation.attributes if recommendation else {}
         program = (
             self.state.get("override_program")
-            if override and self.state.get("override_program") != "engine"
-            else recommendation.attributes.get("program") or recommendation.state
+            if selected_override
+            else attributes.get("program") or (recommendation.state if recommendation else None)
         )
+        options = attributes.get(
+            "display_program_options" if override else "program_options", []
+        ) or attributes.get("program_options", [])
         option = next(
             (
                 item
-                for item in recommendation.attributes.get("program_options", [])
+                for item in options
                 if item.get("program") == program
             ),
             {},
         )
-        start = (
-            datetime.now(timezone.utc).isoformat()
-            if manual_now_override
-            else option.get("start") or recommendation.attributes.get("start")
-        )
-        finish = option.get("finish") or recommendation.attributes.get("finish")
+        if not manual_now_override and not (selected_override and option) and (
+            recommendation is None or attributes.get("status") != "ready"
+        ):
+            await self._async_outcome(
+                "blocked", mode, program, "recommendation_not_ready",
+                f"No ready {mode} recommendation is available.",
+            )
+            return
+        if mode == "now":
+            start_time = datetime.now(timezone.utc)
+            option_start = self._parse_datetime(option.get("start"))
+            option_finish = self._parse_datetime(option.get("finish"))
+            start = start_time.isoformat()
+            finish = (
+                (start_time + (option_finish - option_start)).isoformat()
+                if option_start and option_finish and option_finish > option_start else None
+            )
+        elif selected_override and not option:
+            await self._async_outcome(
+                "blocked", mode, program, "selected_program_not_available_in_window",
+                f"No {mode} plan is available for {program}; choose another window or an explicit start now.",
+            )
+            return
+        else:
+            start = option.get("start") or attributes.get("start")
+            finish = option.get("finish") or attributes.get("finish")
         self.state["request"] = {
             "mode": mode,
             "program": program,
@@ -398,9 +433,10 @@ class NativeOrchestrator:
     async def async_evaluate(self, now: datetime | None = None) -> None:
         """Evaluate shadow or active scheduling decisions."""
         now = now or datetime.now(timezone.utc)
+        options_changed = self._refresh_program_options()
         decision = self._automatic_decision(now)
         changed = decision != self.state.get("shadow_decision")
-        save_required = changed
+        save_required = changed or options_changed
         self.state["shadow_decision"] = decision
         if changed:
             self._record_schedule_event(
@@ -408,7 +444,7 @@ class NativeOrchestrator:
                 now=now, **{key: value for key, value in decision.items() if key != "reason"},
             )
         if not self.state.get("active"):
-            if changed:
+            if save_required:
                 await self._async_save()
             self._publish()
             return
@@ -608,6 +644,8 @@ class NativeOrchestrator:
     ) -> str | None:
         if not program or str(program).lower() in UNKNOWN_STATES:
             return "program_missing"
+        if self._is_running():
+            return "appliance_already_running"
         checks = {
             "dishwasher_not_connected": self.config.get("bosch_connected_sensor"),
             "remote_control_disabled": self.config.get("bosch_remote_control_sensor"),
