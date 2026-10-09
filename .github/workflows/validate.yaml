@@ -38,6 +38,8 @@ jobs:
         run: pip install "homeassistant==2024.12.0"
       - name: Import all integration platforms and config flow
         run: python tests/ha_import_smoke.py
+      - name: Verify dashboard price colours with Home Assistant templates
+        run: python tests/ha_dashboard_smoke.py
 
   hacs:
     name: HACS validation

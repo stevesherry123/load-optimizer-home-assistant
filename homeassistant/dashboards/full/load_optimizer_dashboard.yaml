@@ -13,6 +13,36 @@ views:
             entity: sensor.load_optimizer_1_current_energy_price
             name: Current import price
             icon: mdi:cash-clock
+            card_mod:
+              style: |
+                {% set price = states(config.entity) | float(none) %}
+                {% set benchmark = states('sensor.load_optimizer_ofgem_price_cap_benchmark') | float(none) %}
+                {% if is_number(price) and is_number(benchmark) %}
+                  {% set current = price | round(2) %}
+                  {% set cap = benchmark | round(2) %}
+                  {% if current < cap %}
+                    {% set background = '#d9f2df' %}
+                    {% set foreground = '#174629' %}
+                  {% elif current == cap %}
+                    {% set background = '#fff3cd' %}
+                    {% set foreground = '#4a3b00' %}
+                  {% else %}
+                    {% set background = '#ef5350' %}
+                    {% set foreground = '#260505' %}
+                  {% endif %}
+                {% else %}
+                  {% set background = 'var(--ha-card-background, var(--card-background-color))' %}
+                  {% set foreground = 'var(--primary-text-color)' %}
+                {% endif %}
+                ha-card {
+                  background: {{ background }};
+                  color: {{ foreground }};
+                  {% if is_number(price) and is_number(benchmark) %}
+                    --primary-text-color: {{ foreground }};
+                    --secondary-text-color: {{ foreground }};
+                    --tile-color: {{ foreground }};
+                  {% endif %}
+                }
           - type: tile
             entity: sensor.load_optimizer_ofgem_price_cap_benchmark
             name: Ofgem benchmark
