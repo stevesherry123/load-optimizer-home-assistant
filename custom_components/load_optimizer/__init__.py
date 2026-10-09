@@ -9,12 +9,15 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntry
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, PLATFORMS
 from .coordinator import LoadOptimizerCoordinator
+from .optimizer.state_import import MAX_STATE_BYTES
 
 LOGGER = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -130,7 +133,12 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             runtime = getattr(coordinator, "legacy_runtime", None)
             if runtime is None:
                 continue
-            result = await runtime.async_import_state(payload)
+            if coordinator.orchestrator and coordinator.orchestrator.state.get("request"):
+                raise ServiceValidationError("Cancel pending appliance requests before importing memory")
+            try:
+                result = await runtime.async_import_state(payload)
+            except ValueError as error:
+                raise ServiceValidationError(str(error)) from error
             await coordinator.async_request_refresh()
             hass.states.async_set(
                 "sensor.load_optimizer_migration_status",
@@ -246,29 +254,34 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def async_deactivate_native_orchestration(call) -> None:
         await async_set_native_orchestration(False)
 
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_IMPORT_LEGACY_STATE,
         async_import_legacy_state,
-        schema=vol.Schema({vol.Required(CONF_LEGACY_STATE_JSON): str}),
+        schema=vol.Schema({vol.Required(CONF_LEGACY_STATE_JSON): vol.All(str, vol.Length(max=MAX_STATE_BYTES))}),
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_MOTHBALL_LEGACY_ADDON,
         async_mothball_legacy_addon,
     )
-    hass.services.async_register(DOMAIN, SERVICE_RECOVER, async_recover)
-    hass.services.async_register(
+    async_register_admin_service(hass, DOMAIN, SERVICE_RECOVER, async_recover)
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_PREPARE_ORCHESTRATION_MIGRATION,
         async_prepare_orchestration_migration,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_ACTIVATE_NATIVE_ORCHESTRATION,
         async_activate_native_orchestration,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_DEACTIVATE_NATIVE_ORCHESTRATION,
         async_deactivate_native_orchestration,

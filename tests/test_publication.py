@@ -29,8 +29,10 @@ class PublicationTests(unittest.TestCase):
 
     def test_validation_has_no_ignored_hacs_checks(self):
         workflow = (ROOT / ".github/workflows/validate.yaml").read_text()
-        self.assertIn("hacs/action@main", workflow)
-        self.assertIn("home-assistant/actions/hassfest@master", workflow)
+        self.assertRegex(workflow, r"hacs/action@[a-f0-9]{40}")
+        self.assertRegex(workflow, r"home-assistant/actions/hassfest@[a-f0-9]{40}")
+        self.assertIn("contents: read", workflow)
+        self.assertIn("Security and credential scan", workflow)
         self.assertNotIn("ignore:", workflow)
         self.assertNotIn("continue-on-error", workflow)
         self.assertIn('homeassistant==2024.12.0', workflow)

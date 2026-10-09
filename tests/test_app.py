@@ -1161,6 +1161,9 @@ class ConfigurationTests(unittest.TestCase):
 
 class InstanceMonitoringTests(unittest.TestCase):
     def setUp(self):
+        adapter = patch("legacy.app_runtime.api_request", return_value=None)
+        adapter.start()
+        self.addCleanup(adapter.stop)
         self.config = {
             "instance_id": "1",
             "name": "Dishwasher 1",

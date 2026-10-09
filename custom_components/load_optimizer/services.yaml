@@ -1,6 +1,6 @@
 import_legacy_state:
   name: Import legacy state
-  description: Import the existing add-on /data/load_optimizer.json database into integration storage.
+  description: Administrator only. Import the existing add-on database (maximum 16 MiB). Finish captures and cancel pending requests first.
   fields:
     legacy_state_json:
       name: Legacy state JSON
@@ -12,20 +12,20 @@ import_legacy_state:
 
 mothball_legacy_addon:
   name: Mothball legacy add-on
-  description: Publish guidance that the legacy add-on can be stopped after validating integration parity.
+  description: Administrator only. Publish guidance that the legacy add-on can be stopped after validating integration parity.
 
 recover:
   name: Recover learned-appliance runtime
-  description: Reloads learned-appliance Load Optimizer entries without depending on the retired add-on.
+  description: Administrator only. Reloads learned-appliance entries without the retired add-on. Wait for active cycle captures to finish first.
 
 prepare_orchestration_migration:
   name: Prepare orchestration migration
-  description: Capture legacy dishwasher helper and automation state without changing or disabling the live package.
+  description: Administrator only. Capture legacy dishwasher helper and automation state without changing or disabling the live package.
 
 activate_native_orchestration:
   name: Activate native orchestration
-  description: Disable the captured package automations and give appliance command ownership to the integration.
+  description: Administrator only. Disable the captured package automations and give appliance command ownership to the integration.
 
 deactivate_native_orchestration:
   name: Deactivate native orchestration
-  description: Stop native command ownership and re-enable the captured package automations.
+  description: Administrator only. Cancel pending native commands, stop native ownership and re-enable the captured package automations. An already running wash is not stopped.

@@ -82,6 +82,34 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.values[entity_id] = SimpleNamespace(state=state, attributes=attributes,
                                                 last_changed=Clock.current)
 
+    async def test_deactivation_cancels_inflight_commands_and_pending_request(self):
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def command():
+            try:
+                started.set()
+                await asyncio.Event().wait()
+                await self.hass.services.async_call("button", "press", {})
+            finally:
+                cancelled.set()
+
+        self.scheduler._execution_task = asyncio.create_task(command())
+        await started.wait()
+        self.scheduler.state["request"] = {"program": "MixedLoad"}
+        await self.scheduler.async_deactivate()
+        self.assertTrue(cancelled.is_set())
+        self.assertTrue(self.scheduler._execution_task.cancelled())
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertFalse(self.scheduler.state["active"])
+        self.hass.services.async_call.assert_not_awaited()
+
+    def test_manual_override_cannot_bypass_unknown_door_state(self):
+        for value in ("unknown", "unavailable", "unexpected"):
+            self.put("binary_sensor.door", value)
+            self.assertEqual(self.scheduler._safety_block("now", "MixedLoad", explicit_override=True),
+                             "door_state_unavailable")
+
     async def test_firmware_update_does_not_cancel_overnight_request_or_claim_completion(self):
         await self.scheduler.async_evaluate(datetime(2026, 10, 8, 15, 0, 33, tzinfo=timezone.utc))
         queued = dict(self.scheduler.state["request"])
