@@ -1,6 +1,7 @@
 # EV Options Beta
 
-Branch: `beta/ev-options-v1.5.2`, updated from stable main for v1.5.5-beta.1.
+Branch: `beta/ev-options-v1.5.2`, updated from stable main for v1.5.5-beta.1
+acceptance and v1.5.5 stable promotion.
 It does not include or promote the v1.6/v1.7 tariff-intelligence branches.
 
 Implemented: the EV entry's Configure menu offers EV charging settings and
@@ -39,7 +40,8 @@ nonempty directories unless they contain its synthetic acceptance snapshot.
 
 The owner's v1.7 installation and queued dishwasher run were not reloaded or
 restarted for these tests. Production installation remains a separate operation
-after active/queued appliance work is complete.
+after active/queued appliance work is complete. The owner's queued MixedLoad wash
+subsequently completed normally; the publication learning gate is now satisfied.
 
 ## Live Acceptance Before Promotion
 
