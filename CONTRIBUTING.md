@@ -23,3 +23,17 @@ release created after successful checks. Development builds use prerelease
 versions and GitHub's prerelease flag. Never move or replace a published tag.
 Home Assistant installations do not run two channels of this same integration
 domain side by side; use separate installations for isolated beta testing.
+
+A push to `main` is not a stable release. Publish only from a validated exact
+commit after incrementing matching versions and updating the changelog. Do not
+publish an experimental branch as a full stable GitHub release: HACS follows
+release status, not the branch's name. Public betas are isolated from normal
+updates, not hidden from GitHub visitors. See [release channels](docs/release-channels.md).
+
+Delete completed feature/fix branches after their changes are merged. Retain the
+two stacked tariff beta branches while their separate promotion gates remain
+open. Preserve unique superseded work with an explicit archive tag if retiring
+its branch; an archive tag is not a GitHub release. The
+[9 October cleanup record](docs/branch-cleanup-2026-10-09.md) records retained
+branches and recoverable commits. Do not delete the HACS submission fork branch
+while the upstream request is open.
