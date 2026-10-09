@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.4
+
+- Handle missing, null and invalid confidence thresholds while tariff/appliance
+  entities are still starting. Scheduling diagnostics must not prevent setup,
+  future scans or live programme discovery.
+- Exercise startup with unavailable inputs followed by live capability recovery.
+
 ## 1.5.3
 
 - Keep a pending overnight wash when a manufacturer firmware update produces a

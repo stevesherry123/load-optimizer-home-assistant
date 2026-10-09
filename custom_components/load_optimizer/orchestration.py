@@ -807,11 +807,12 @@ class NativeOrchestrator:
 
     def _confidence_threshold(self) -> float:
         threshold_state = self.hass.states.get("sensor.load_optimizer_1_schedule_status")
-        return float(
-            threshold_state.attributes.get("confidence_threshold", 20)
-            if threshold_state
-            else 20
-        )
+        value = threshold_state.attributes.get("confidence_threshold") if threshold_state else None
+        try:
+            threshold = float(value)
+        except (TypeError, ValueError):
+            return 20.0
+        return threshold if 0 <= threshold <= 100 else 20.0
 
     def _cooldown_elapsed(self, key: str, minutes: int, now: datetime) -> bool:
         previous = self._parse_datetime(self.state.get(key))
