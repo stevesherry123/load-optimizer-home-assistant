@@ -1,8 +1,8 @@
 # History Import And Optional Narrative (Development Only)
 
-Branch: `beta/tariff-import-narrative-v1.7`, released as `v1.7.0-beta.1` and
-installed on the owner's Home Assistant for controlled testing. Stable remains
-v1.5.0. An explicitly approved 90-day official Octopus backfill has been imported;
+Branch: `beta/tariff-import-narrative-v1.7`, now released and installed as
+`v1.7.0-beta.4` for controlled owner testing. Stable is v1.5.6; analysis/import/AI
+remain unpromoted. An approved 90-day official Octopus backfill has been imported;
 no live AI provider has been called.
 
 ## Portable Import
@@ -125,3 +125,17 @@ the authoritative price or scheduling decision.
   Optional AI status reset to disabled as designed. One-to-four-hour cheapest
   windows matched independently calculated prices and start times; dashboard
   references and integration logs were clean. Stable remains v1.5.0.
+
+## Follow-Up Verification (9 October 2026)
+
+The physical MixedLoad wash completed normally: dishwasher learning is now 114
+total, MixedLoad 4 runs at 61%; washing machine / vacuum remain 189 / 46.
+Installed v1.7.0-beta.4 with stable EV editing and registered-hub compatibility
+after fresh idle/no-queue/no-capture checks. One restart preserved all 222
+entity/device identities, the exact dashboard configuration and 91 schema-2
+history days. All appliance forecasts are ready and integration logs are clean.
+The real EV form opens with retained defaults; production settings were not saved.
+259 combined unit tests and minimum-HA lifecycle/device-registration checks pass.
+The latest read-only audit still has no tomorrow prices and only 46 slots today;
+AI stays disabled until a complete next-day snapshot is available. Independent
+one-to-four-hour cheapest windows continue matching live tariff arithmetic.

@@ -56,7 +56,8 @@ all one-to-four-hour windows matched independent arithmetic from live rates.
 Rollback to v1.5.0 and upgrade to v1.6.0-beta.3 succeeded with the same learning
 counts, a healthy retained tariff store and matching window calculations.
 Historical warm-up is now satisfied by the separately approved official backfill.
-Longer publication/appliance-cycle observation remains pending before promotion.
+Longer next-day publication/revision observation remains pending before promotion;
+the physical-cycle gate has now passed as recorded below.
 
 Implemented next-branch design defaults:
 
@@ -71,8 +72,8 @@ Implemented next-branch design defaults:
 
 Implemented on `beta/tariff-import-narrative-v1.7`: portable import, provenance
 protection, atomic validation, independent narrative lifecycle and privacy/failure
-tests. This branch is installed as v1.7.0-beta.1 for controlled testing, but is
-not merged into main or promoted to stable.
+tests. Initially installed as v1.7.0-beta.1 for controlled testing and now
+updated to beta.4, it is not merged into main or promoted to stable.
 Review fixes require matching tariff-source metadata and isolate provenance-aware
 history in schema-2 storage so older rollback writers cannot erase import origins.
 Schema-1 history is copied without modifying the original. Rollback analysis uses
@@ -80,9 +81,10 @@ the old store; see the import documentation for the deliberate isolation limits.
 The legacy dt/r adapter now checks a verified historical tariff code against all
 live destination rate entities and runs conversion off the event loop. Tests
 cover period-end normalization, DST, gaps, malformed data and the service path.
-212 tests cover the combined development implementation.
+The original combined implementation passed 212 tests; the current beta passes
+259 after the subsequent appliance, EV and compatibility fixes.
 
-Live preflight found tariff `E-1R-AGILE-24-10-01-D`. With owner approval, the
+The 8 October live preflight found tariff `E-1R-AGILE-24-10-01-D`. With owner approval, the
 learned-appliance Ofgem benchmark was changed to Merseyside and Northern Wales
 (27.86 p/kWh). The local North Western England file ends in June 2026 and must
 not be imported: it has no recent 90-day data or verified matching tariff.
@@ -91,8 +93,8 @@ cache was exported, but all 4,320 recent normalized prices differed from the
 official live-tariff API; no legacy cache data was imported. With separate owner
 approval, 90 complete official tariff days were backfilled instead. Preview,
 full export read-back and on-disk provenance verification passed. Storage has
-91 days including today and the 14-day baseline is ready; appliance totals are
-unchanged. Post-import restart and actual v1.7-to-v1.6.0-beta.3 rollback checks
+91 days at import and the 14-day baseline is ready; appliance totals were
+unchanged by import. Post-import restart and actual v1.7-to-v1.6.0-beta.3 rollback checks
 passed, including independent disk verification of all imported prices and
 provenance while the older beta was running. Reinstalled v1.7.0-beta.1 and
 restarted: all 91 days returned with healthy storage, unchanged learning totals
@@ -107,18 +109,27 @@ re-upgrade gate has passed. The v1.7.0-beta.2 update carries stable v1.5.3's
 scheduling explanations, rejected-capture fix and manual programme selection
 without promoting tariff-intelligence functionality into stable.
 
-Stable v1.5.5 is published after all main checks passed, including 204 unit tests
-and actual minimum-HA EV configuration/reload/restart checks. Isolated browser,
-rollback and re-upgrade acceptance passed without renaming entries or entities.
+Stable v1.5.6 is published after all main checks passed: 209 unit tests, actual
+minimum-HA appliance/orchestration device registration, EV options/reload/restart,
+imports and dashboard templates, HACS and hassfest. The EV editor's isolated
+browser and downgrade/re-upgrade checks passed. Expanded minimum-HA acceptance
+found and fixed a newer-only registered-hub API before public submission.
+The owner will submit HACS personally using `docs/hacs-submission.md`; no
+upstream application has been opened.
+
 The owner's physical MixedLoad wash completed on 9 October at 13:36 BST:
 dishwasher learning is now 114 total and MixedLoad 4 runs at 61% confidence;
-washing machine / vacuum remain 189 / 46. All 91 tariff-history days remain.
-This completes the physical-cycle gate, not next-day publication observation or
-the optional provider test. v1.7.0-beta.4 carries the released EV editor into
-the owner's tariff branch; its CI and live installation are separate checks.
-The owner will submit HACS personally using `docs/hacs-submission.md`; no
-upstream application has been opened. Cap-adjusted history and the beta analysis
-dashboard remain subsequent work.
+washing machine / vacuum remain 189 / 46. This passes the physical-cycle gate.
+v1.7.0-beta.4 carries the stable editor and compatibility fix into the owner's
+tariff branch; 259 combined unit tests and all beta CI checks passed. Installed
+and restarted once after fresh idle/queue/capture checks: all 222 entity/device
+identities and the exact dashboard configuration are unchanged, all 91 history
+days remain, appliance forecasts and independent tariff-window arithmetic pass,
+the real EV form has saved defaults, and focused integration logs are clean.
+No production EV settings were saved or appliance/charger commands sent.
+Next-day publication/revision observation and the optional AI provider test
+remain incomplete: latest check has no tomorrow data and 46 of today's 48 slots.
+Cap-adjusted history and the beta analysis dashboard remain subsequent work.
 
 ### Outstanding Versus Implemented
 
@@ -127,10 +138,10 @@ dashboard remain subsequent work.
 | Stable appliance migration/orchestration | Released; legacy packaging retired | Community compatibility testing and guided appliance setup |
 | Ofgem benchmark and 24/48-hour chart | Stable; regional, cached, tariff-local, benchmark/Now lines | Historical cap rebasing is separate, not implemented |
 | Lab dashboard | Retired; capabilities retained at the bottom | No further Lab content requested |
-| History and deterministic analysis | v1.6/v1.7 beta; warm-up and physical wash passed | Full next-day publication/revision observation |
+| History and deterministic analysis | v1.7.0-beta.4; warm-up and physical wash passed | Full next-day publication/revision observation |
 | Official history backfill | 90 complete days verified | No further legacy-cache import; retain source/provenance isolation |
-| Optional AI narrative | Implemented, disabled unless manually requested | Actual provider test when tomorrow is complete; currently 46/48 slots |
-| EV options editor | Stable v1.5.5; real isolated lifecycle/rollback passed | Carry into owner's tariff beta and verify live installation |
+| Optional AI narrative | Implemented, disabled unless manually requested | Actual provider test when tomorrow is complete; latest tomorrow data unpublished |
+| EV options editor | Stable v1.5.6 and owner's beta.4; acceptance passed | No outstanding editor release gate |
 | New analysis dashboard | Not consolidated into stable | Bounded chart/entity presentation, mobile/travel/DST validation |
 | Octopus Intelligence retirement | Not done; old cache/app preserved | Demonstrate accepted replacement parity first |
 | HACS default catalogue | Stable release and owner application prepared | Owner chooses submission time; maintainer acceptance and scan |

@@ -3,6 +3,9 @@
 Branch: `beta/ev-options-v1.5.2`, updated from stable main for v1.5.5-beta.1
 acceptance and v1.5.5 stable promotion.
 It does not include or promote the v1.6/v1.7 tariff-intelligence branches.
+The editor is now merged and released in v1.5.5, retained in v1.5.6. The latter
+adds minimum-HA appliance device-link compatibility and expands actual registry
+acceptance; 209 stable unit tests pass. Use v1.5.6 for public installation.
 
 Implemented: the EV entry's Configure menu offers EV charging settings and
 Price-cap benchmark. Setup and editing share one schema. Saved options override
@@ -57,5 +60,19 @@ subsequently completed normally; the publication learning gate is now satisfied.
 6. Confirm learned-appliance options and stored learning are unchanged. Test a
    downgrade with the new options present; options must not enable control.
 
-Merge only after these checks and branch CI pass. Propagate the editor into the analysis/import
-branches without discarding their independently verified history stores.
+The isolated acceptance and merge gates above are complete. Propagate the editor
+into the analysis/import branches without discarding their independently verified
+history stores; this remains separate from promoting analysis to stable.
+
+## Owner Beta Deployment (9 October 2026)
+
+Installed v1.7.0-beta.4 after the wash completed and fresh checks confirmed idle
+appliances, no queued request and zero active captures. After one restart, all
+222 registered entity/device identities and the dashboard configuration matched
+their pre-update snapshot. Learning totals remain 114 / 189 / 46, MixedLoad
+4 runs at 61%, and schema-2 tariff history retains 91 days with no storage error.
+All three appliance forecasts are ready and focused integration logs are clean.
+The real EV Configure API opens only EV and benchmark sections, serializes the
+form and supplies saved required defaults. It was cancelled without saving any
+production settings. EV entities remain advisory with no button or switch.
+Independent one-to-four-hour tariff-window arithmetic still matches.

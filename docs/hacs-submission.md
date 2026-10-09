@@ -36,16 +36,16 @@ acceptance is a separate review.
 
 ## Links
 
-Link to current release: <https://github.com/stevesherry123/load-optimizer-home-assistant/releases/tag/v1.5.5>
-Link to successful HACS action (without the `ignore` key): <https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37934177792/job/113831975784>
-Link to successful hassfest action (if integration): <https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37934177792/job/113831976032>
+Link to current release: <https://github.com/stevesherry123/load-optimizer-home-assistant/releases/tag/v1.5.6>
+Link to successful HACS action (without the `ignore` key): <https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37935862607/job/113837625346>
+Link to successful hassfest action (if integration): <https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37935862607/job/113837625267>
 
 <!-- tid:73253df5-5376-4e68-8c16-b234da6a2de3 -->
 ```
 
 ## Release Scope And Evidence
 
-Stable v1.5.5 provides learned appliance profiles and profile-weighted scheduling,
+Stable v1.5.6 provides learned appliance profiles and profile-weighted scheduling,
 opt-in native appliance orchestration, advisory EV charging plans, a configurable
 regional Ofgem comparison benchmark, and optional dashboard templates. It does
 not introduce direct EV charger control. Appliance setup currently uses YAML
@@ -53,11 +53,13 @@ inside the configuration flow. The benchmark is GB-specific; `hacs.json`
 declares `country: GB`. Rich charts and tile colouring use optional frontend
 cards; core operation does not require them.
 
-The release commit is `4404037b01676aef4a89e545e0b32199f0a18012`.
-The [full validation run](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37934177792)
-checks 204 unit tests, actual minimum Home Assistant 2024.12 imports and forms,
-dashboard templates and real EV options/reload/restart persistence, as well as
-HACS and hassfest. Isolated downgrade/re-upgrade retained registered identities.
+The release commit is `d7b3962fafe18506036f50b50ab1866441697196`.
+The [full validation run](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37935862607)
+checks 209 unit tests, actual minimum Home Assistant 2024.12 imports and forms,
+dashboard templates, actual appliance/orchestration device registration and EV
+options/reload/restart persistence, as well as HACS and hassfest. v1.5.6 fixes a
+newer-only device-link API found by the expanded test and supersedes v1.5.5 for
+this submission. Isolated downgrade/re-upgrade retained registered identities.
 The owner's physical MixedLoad wash completed normally on 9 October, with its
 learning increment confirmed. These checks do not imply testing every appliance
 model or every Home Assistant version.

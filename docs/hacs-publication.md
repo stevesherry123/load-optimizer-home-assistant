@@ -32,7 +32,11 @@ at 13:36 BST: dishwasher learning increased to 114 total runs and MixedLoad to
 active captures or integration errors remained. The real-wash gate is passed.
 The separate v1.5.5 EV editor passed isolated real minimum-HA browser/options,
 reload, persisted restart, stable downgrade and re-upgrade checks with unchanged
-entry, device and entity identities. Check the actual CI
+entry, device and entity identities. Expanded minimum-HA testing then found a
+newer-only registry API in appliance/orchestration device linking. Stable v1.5.6
+corrects that compatibility issue; 209 unit tests and actual minimum-HA device
+registration now pass, alongside all four main CI jobs. v1.5.6 is the submission
+release, not v1.5.5. Check the actual CI
 results and stable release immediately before submitting; this is not a claim
 of testing every supported Home Assistant or appliance combination.
 
@@ -44,7 +48,7 @@ Use [the prepared submission](hacs-submission.md) for the owner steps, current
 upstream checklist and exact release/validation links.
 
 1. Confirm main's tests, minimum-version imports, HACS validation and hassfest
-   are green and a full stable v1.5.5 GitHub release exists after those checks.
+   are green and a full stable v1.5.6 GitHub release exists after those checks.
 2. Sign in as repository owner `stevesherry123` and fork `hacs/default`.
 3. Create a new branch from its `master` branch. Add
    `stevesherry123/load-optimizer-home-assistant` to the JSON `integration` list
@@ -57,6 +61,13 @@ upstream checklist and exact release/validation links.
 Use the current [official inclusion instructions](https://www.hacs.xyz/docs/publish/include/)
 and [integration requirements](https://www.hacs.xyz/docs/publish/integration/).
 The maintainers currently warn that new submissions can take months.
+
+The owner now runs v1.7.0-beta.4, which carries the stable editor and registry
+fix without removing beta history/import. Live restart acceptance preserved all
+222 entity/device identities, the exact dashboard configuration, learning totals
+114 / 189 / 46, MixedLoad 4 runs / 61%, and 91 history days. Forecasts, EV form
+defaults and focused logs passed. This does not promote experimental analysis
+into the stable v1.5.6 submission.
 
 Until acceptance, users can install through HACS Custom repositories,
 category Integration, using the existing repository URL. This is distinct from
