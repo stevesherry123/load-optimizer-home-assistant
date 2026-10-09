@@ -6,14 +6,14 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- HACS publication gate: observe a real wash after the v1.5.3 scheduling fix
+- HACS publication gate: observe a real wash after the v1.5.4 scheduling/startup fix
   (also carried into the owner's tariff-intelligence beta). On 8 October a
   3.4-minute manufacturer-update power capture was
   correctly rejected by learning but incorrectly cancelled the pending wash;
   its request timestamp then suppressed another automatic request that night.
   Automated regressions cover request preservation and manual cooldown bypass;
   installation checks do not substitute for the next real cycle/learning check.
-- submit the prepared stable v1.5.3 line to HACS's default catalogue; no submission
+- submit the prepared stable v1.5.4 line to HACS's default catalogue; no submission
   exists yet, and installation as a custom repository is not catalogue acceptance
 - finish the real optional AI provider test after complete tomorrow rates arrive;
   the approved manual request correctly waited on the current 46-of-48-slot feed
@@ -45,6 +45,12 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Published v1.5.4 and deployed the same scheduling/startup fixes in
+  v1.7.0-beta.3 (245 tests). Live forecasts and MixedLoad selection restored;
+  dishwasher / washing machine / vacuum learning totals remain 113 / 189 / 46,
+  MixedLoad remains 3 runs at 51%, and all 91 tariff-history days are preserved.
+  No wash was started by deployment verification. The next physical wash and
+  learning increment remain the publication acceptance gate.
 - Published v1.5.0 with a configurable regional Ofgem benchmark, tariff-local
   24/48-hour chart, visible benchmark and Now lines, and bottom-of-page capabilities.
 - Implemented v1.6 beta source-shared tariff history and deterministic analysis,
