@@ -89,9 +89,8 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             now_utc=now,
         )
         if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
-            assert self.legacy_runtime is not None
-            assert self.orchestration_migration is not None
-            assert self.orchestrator is not None
+            if self.legacy_runtime is None or self.orchestration_migration is None or self.orchestrator is None:
+                raise RuntimeError("Learned-appliance runtime was not initialized")
             await self.orchestration_migration.async_load()
             await self.orchestrator.async_load()
             result = await self.legacy_runtime.async_scan(data)

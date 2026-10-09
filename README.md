@@ -201,6 +201,11 @@ diagnostics in [GitHub Issues](https://github.com/stevesherry123/load-optimizer-
 Never post access tokens or a full private configuration. See the
 [contribution guide](CONTRIBUTING.md) for release-channel and testing rules.
 
+For a suspected vulnerability, use the private reporting route in
+[SECURITY.md](SECURITY.md), not a public issue. See
+[data handling and privacy](docs/privacy.md) before sharing logs, dashboard
+screenshots or older diagnostic downloads. The integration adds no telemetry.
+
 The [publication checklist](docs/hacs-publication.md) distinguishes custom
 repository installation from inclusion in HACS's default catalogue.
 
