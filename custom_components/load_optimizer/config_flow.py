@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import math
+import re
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import voluptuous as vol
 
@@ -149,15 +152,40 @@ def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
             vol.Optional(
                 CONF_SLOT_MINUTES,
                 default=existing.get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES),
-            ): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),
+            ): vol.All(vol.Coerce(float), vol.Range(min=5, max=120)),
             vol.Optional(
                 CONF_READY_BY,
                 description={"suggested_value": existing[CONF_READY_BY]}
                 if existing.get(CONF_READY_BY) else {},
-            ): vol.Any("", vol.Match(r"^(?:[01]\d|2[0-3]):[0-5]\d$")),
+            ): str,
         }
     )
     return schema
+
+
+def _ev_input_errors(values: dict[str, Any]) -> dict[str, str]:
+    """Validate values that cannot be expressed in HA's serializable form schema."""
+    errors = {}
+    ready_by = values.get(CONF_READY_BY)
+    if ready_by and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", str(ready_by)) is None:
+        errors[CONF_READY_BY] = "invalid_ready_by"
+    try:
+        ZoneInfo(values.get(CONF_TARIFF_TIMEZONE, DEFAULT_TARIFF_TIMEZONE))
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        errors[CONF_TARIFF_TIMEZONE] = "invalid_timezone"
+    for key in (CONF_CHARGE_POWER_KW, CONF_TARGET_PERCENT, CONF_CHARGER_EFFICIENCY,
+                CONF_SLOT_MINUTES):
+        if key not in values:
+            continue
+        try:
+            number = float(values[key])
+            if not math.isfinite(number) or isinstance(values[key], bool):
+                raise ValueError
+            if key == CONF_SLOT_MINUTES and not number.is_integer():
+                raise ValueError
+        except (ValueError, TypeError, OverflowError):
+            errors[key] = "invalid_number"
+    return errors
 
 
 class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -196,7 +224,9 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_ev(self, user_input: dict[str, Any] | None = None):
         """Create a new EV optimizer load."""
-        if user_input is not None:
+        errors = _ev_input_errors(user_input) if user_input is not None else {}
+        if user_input is not None and not errors:
+            user_input[CONF_SLOT_MINUTES] = int(user_input.get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES))
             user_input[CONF_NAME] = self._name
             user_input[CONF_LOAD_TYPE] = LOAD_TYPE_EV
             await self.async_set_unique_id(f"{LOAD_TYPE_EV}_{str(self._name).lower()}")
@@ -205,6 +235,7 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="ev",
+            errors=errors,
             data_schema=vol.Schema(
                 {
                     **_ev_schema(),
@@ -318,13 +349,17 @@ class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_ev(self, user_input: dict[str, Any] | None = None):
         """Edit EV inputs without replacing its config entry or opt-ins."""
-        if user_input is not None:
+        errors = _ev_input_errors(user_input) if user_input is not None else {}
+        if user_input is not None and not errors:
             updates = dict(user_input)
+            if CONF_SLOT_MINUTES in updates:
+                updates[CONF_SLOT_MINUTES] = int(updates[CONF_SLOT_MINUTES])
             for field in (CONF_TARGET_PERCENT_ENTITY, CONF_CONNECTION_STATUS_ENTITY, CONF_READY_BY):
                 updates.setdefault(field, "")
             return self._save_section(updates)
         return self.async_show_form(
             step_id="ev",
+            errors=errors,
             data_schema=vol.Schema(_ev_schema(self._existing)),
         )
 

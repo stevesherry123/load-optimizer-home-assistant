@@ -1,5 +1,10 @@
 {
   "config": {
+    "error": {
+      "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
+      "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
+      "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes."
+    },
     "step": {
       "user": {
         "title": "Set up Load Optimizer",
@@ -59,6 +64,11 @@
     }
   },
   "options": {
+    "error": {
+      "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
+      "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
+      "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes."
+    },
     "step": {
       "init": {
         "title": "Load Optimizer settings",

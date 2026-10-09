@@ -38,6 +38,7 @@ class EVOptionsTests(unittest.IsolatedAsyncioTestCase):
         namespace.update({"config_entries": SimpleNamespace(OptionsFlow=FlowBase),
                           "vol": SimpleNamespace(Schema=lambda value: value),
                           "_ev_schema": Mock(return_value={"ev": "schema"}),
+                          "_ev_input_errors": Mock(return_value={}),
                           "_price_cap_schema": Mock(return_value={"region": "schema"})})
         exec(compile(ast.Module(body=[cls], type_ignores=[]), "<ev-options>", "exec"), namespace)
         self.namespace = namespace
@@ -88,3 +89,10 @@ class EVOptionsTests(unittest.IsolatedAsyncioTestCase):
         result = await self.flow.async_step_price_cap({"price_cap_region": "North Western England"})
         self.assertEqual(result["data"]["target_percent"], 85)
         self.assertEqual(result["data"]["connection_status_entity"], "sensor.connected")
+
+    async def test_invalid_input_leaves_saved_options_unchanged(self):
+        self.namespace["_ev_input_errors"].return_value = {"ready_by": "invalid_ready_by"}
+        result = await self.flow.async_step_ev({"ready_by": "25:00"})
+        self.assertEqual(result["type"], "form")
+        self.assertEqual(result["errors"], {"ready_by": "invalid_ready_by"})
+        self.assertEqual(self.flow.config_entry.options, self.options)

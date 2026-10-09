@@ -43,7 +43,8 @@ class LoadOptimizerBinarySensor(LoadOptimizerEntity, BinarySensorEntity):
     entity_description: BinarySensorEntityDescription
 
     def __init__(self, coordinator: LoadOptimizerCoordinator, description: BinarySensorEntityDescription) -> None:
-        super().__init__(coordinator, description.key, description.name or description.key.replace("_", " ").title())
+        name = description.name if isinstance(description.name, str) else description.key.replace("_", " ").title()
+        super().__init__(coordinator, description.key, name)
         self.entity_description = description
 
     @property

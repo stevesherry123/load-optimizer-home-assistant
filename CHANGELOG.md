@@ -6,7 +6,15 @@
   efficiency, target, slot length and deadline, plus regional benchmark settings.
 - Preserve the config entry and entity identities and unrelated options; support
   clearing optional references. Charger control remains advisory and opt-in.
-- Keep this change in separate beta development pending live options verification.
+- Keep this independently tested EV slice separate from the unpromoted tariff
+  history/analysis/import/AI betas.
+- Fix Home Assistant form serialization for the optional deadline and report
+  invalid local times, timezones, non-finite numbers and fractional slot lengths
+  without changing saved options.
+- Correct EV sensor names when Home Assistant's description name is unset;
+  existing registered entity IDs are retained.
+- Add real minimum-Home-Assistant setup, form serialization, options, reload and
+  persisted restart acceptance to CI, alongside the existing unit suite.
 
 ## 1.5.4
 
