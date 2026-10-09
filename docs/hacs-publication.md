@@ -17,7 +17,8 @@ Intelligence reference app or promoting its unobserved replacement features.
 - HACS and hassfest checks have no ignored errors.
 - Stable runtime must match the release manifest; all new release checks must pass.
 - New-installation, migration, dashboard and contribution guidance is present.
-- A HACS catalogue submission has not yet been created.
+- The owner authorized HACS submission on 9 October, after security review and
+  the validated v1.5.7 release. Track its actual status in `hacs-submission.md`.
 
 The v1.5.1 preparation corrects the minimum version, prevents a second shared
 learned-appliance hub and updates public documentation. The v1.5.3 update fixes
@@ -35,20 +36,21 @@ reload, persisted restart, stable downgrade and re-upgrade checks with unchanged
 entry, device and entity identities. Expanded minimum-HA testing then found a
 newer-only registry API in appliance/orchestration device linking. Stable v1.5.6
 corrects that compatibility issue; 209 unit tests and actual minimum-HA device
-registration now pass, alongside all four main CI jobs. v1.5.6 is the submission
-release, not v1.5.5. Check the actual CI
+registration pass. v1.5.7 adds the completed static security review, private
+diagnostic allowlisting, administrator-only maintenance, bounded/atomic imports,
+control/HTTP safeguards and mandatory security scans. All five code-validation
+jobs and 221 unit tests pass. v1.5.7 is the submission release. Check the actual CI
 results and stable release immediately before submitting; this is not a claim
 of testing every supported Home Assistant or appliance combination.
 
-## Owner Submission
+## Catalogue Submission
 
-The owner chose to submit the integration personally. This work prepares the
-release and application evidence but does not open an upstream pull request.
-Use [the prepared submission](hacs-submission.md) for the owner steps, current
-upstream checklist and exact release/validation links.
+The owner now authorizes submission on their behalf. This supersedes the earlier
+prepare-only instruction. Use [the submission record](hacs-submission.md) for
+the current upstream checklist, exact release/check links and submission status.
 
 1. Confirm main's tests, minimum-version imports, HACS validation and hassfest
-   are green and a full stable v1.5.6 GitHub release exists after those checks.
+   are green and a full stable v1.5.7 GitHub release exists after those checks.
 2. Sign in as repository owner `stevesherry123` and fork `hacs/default`.
 3. Create a new branch from its `master` branch. Add
    `stevesherry123/load-optimizer-home-assistant` to the JSON `integration` list
@@ -67,7 +69,8 @@ fix without removing beta history/import. Live restart acceptance preserved all
 222 entity/device identities, the exact dashboard configuration, learning totals
 114 / 189 / 46, MixedLoad 4 runs / 61%, and 91 history days. Forecasts, EV form
 defaults and focused logs passed. This does not promote experimental analysis
-into the stable v1.5.6 submission.
+into the stable v1.5.7 submission. Security fixes also carry to v1.7.0-beta.5;
+publishing that prerelease does not automatically install it on the owner's HA.
 
 Until acceptance, users can install through HACS Custom repositories,
 category Integration, using the existing repository URL. This is distinct from

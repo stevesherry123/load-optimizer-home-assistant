@@ -6,9 +6,9 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- submit the prepared stable v1.5.6 application to HACS (owner action).
-  The owner explicitly chose to submit it themselves; no catalogue
-  pull request is created by this work. Custom-repository installation is not
+- submit the reviewed stable v1.5.7 application to HACS. On 9 October the owner
+  authorized submission on their behalf, superseding the prepare-only request.
+  Record the upstream PR and follow its checks; do not equate submission with
   catalogue acceptance.
 - finish the real optional AI provider test after complete tomorrow rates arrive;
   the approved manual request correctly waited on incomplete data. Latest check:
@@ -37,6 +37,13 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Completed the static security/privacy review and merged v1.5.7 fixes: private
+  diagnostic allowlisting, administrator-only maintenance, bounded atomic
+  imports, planner/HTTP limits, safe command handover and removal of unused
+  add-on networking. 221 unit tests, real-HA security/lifecycle checks and all
+  five main CI jobs pass. Added private vulnerability reporting and policies.
+  Beta carries the same fixes plus administrator-only history/AI actions in
+  v1.7.0-beta.5, with 271 unit tests; no live deployment is performed by this task.
 - Installed v1.7.0-beta.4 with the stable EV editor and minimum-HA compatibility
   fix after fresh idle/no-queue/no-capture checks. One restart; all 222 entity and
   device identities and the exact dashboard configuration are unchanged.
