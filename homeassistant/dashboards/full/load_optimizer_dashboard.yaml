@@ -340,7 +340,8 @@ views:
               {% set explanation = 'sensor.load_optimizer_1_automation_explanation' %}
               {% set orchestration = 'sensor.load_optimizer_1_orchestration_status' %}
               {% set request = state_attr(orchestration, 'request') or {} %}
-              {% set summary = state_attr(explanation, 'summary') %}
+              {% set available = has_value(explanation) %}
+              {% set summary = state_attr(explanation, 'summary') if available else none %}
               {% macro local_time(value) -%}
               {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'None recorded' }}
               {%- endmacro %}
@@ -354,7 +355,7 @@ views:
               **No wash is queued. A recommendation alone is not a scheduled start.**
               {% endif %}
 
-              {% set action = state_attr(explanation, 'action_required') %}
+              {% set action = state_attr(explanation, 'action_required') if available else none %}
               {% if action %}{{ action }}{% endif %}
 
               **Automatic modes:** overnight {{ states('switch.load_optimizer_1_auto_mode_enabled') }}, free / negative price {{ states('switch.load_optimizer_1_auto_negative_price_enabled') }}.
@@ -377,7 +378,7 @@ views:
               |---|---|
               | Last automatic request | {{ local_time(state_attr(orchestration, 'last_auto_normal_request')) }} |
               | Last start attempt | {{ local_time(state_attr(orchestration, 'last_attempt')) }} |
-              {% set eligible = state_attr(explanation, 'automatic_eligible_after') %}
+              {% set eligible = state_attr(explanation, 'automatic_eligible_after') if available else none %}
               {% if eligible %}| Next automatic eligibility | {{ local_time(eligible) }} |{% endif %}
 
               {% set labels = {
@@ -395,15 +396,15 @@ views:
                 'remote_control': 'Remote control is disabled',
                 'remote_start': 'Remote start is disabled'
               } %}
-              {% for code in (state_attr(explanation, 'blockers') or []) + (state_attr(explanation, 'warnings') or []) %}
+              {% for code in (((state_attr(explanation, 'blockers') or []) + (state_attr(explanation, 'warnings') or [])) if available else []) %}
               - {{ labels.get(code, code | replace('_', ' ')) }}
               {% endfor %}
-              {% set confidence = state_attr(explanation, 'confidence') %}
+              {% set confidence = state_attr(explanation, 'confidence') if available else none %}
               {% if confidence is not none %}**Learning confidence:** {{ confidence }}% (normal threshold {{ state_attr(explanation, 'confidence_threshold') }}%).{% endif %}
 
 
               **Last scheduler result:** {{ (state_attr(orchestration, 'last_result') or 'None recorded') | replace('_', ' ') }}.
-              {{ state_attr(orchestration, 'last_message') or '' }}
+              {{ (state_attr(orchestration, 'last_message') or '').split('; operation=')[0] }}
 
               {% set discarded = 'sensor.load_optimizer_1_last_discarded_cycle' %}
               {% if state_attr(discarded, 'finish') %}
@@ -412,7 +413,7 @@ views:
               {{ (state_attr(discarded, 'exclusion_reason') or 'Not suitable for learning') | replace('_', ' ') }}.
               {% endif %}
 
-              {% set events = state_attr(explanation, 'recent_events') or [] %}
+              {% set events = (state_attr(explanation, 'recent_events') or []) if available else [] %}
               {% if events %}
               **Recent scheduling events**
               {% for item in events[:5] %}
