@@ -6,10 +6,10 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- validate the free/negative-price repeated-run fix on the owner's beta before
-  stable promotion. Off-grid scan times must not perpetually defer starts;
-  active opportunities must remain usable even when later rates are cheaper.
-  Preserve programme opt-ins, per-window limits, learning and queued requests.
+- observe actual repeated automatic free/negative-price runs on beta.6 before
+  separately approved stable promotion. Installation/restart acceptance and
+  isolated repeated-run tests pass; retain programme opt-ins, per-window limits,
+  learning and queued requests. See `docs/negative-price-beta.md`.
 - await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
   for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
   checks passed; respond to requested changes without duplicate requests or
@@ -41,6 +41,14 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Published and installed v1.7.0-beta.6 after 285 unit tests, isolated minimum-HA
+  lifecycle/dashboard/security checks and all GitHub validation jobs passed.
+  The planner no longer perpetually defers off-grid scans or ignores an active
+  opportunity in favour of a cheaper future one. One restart preserved entity
+  identities, dashboards, profiles, controls, policies, tariff history and the
+  saved overnight request. Live diagnostics and appliance readiness passed;
+  actual negative-window appliance execution is still to be observed. Main and
+  stable v1.5.7 are unchanged.
 - Installed v1.7.0-beta.4 with the stable EV editor and minimum-HA compatibility
   fix after fresh idle/no-queue/no-capture checks. One restart; all 222 entity and
   device identities and the exact dashboard configuration are unchanged.

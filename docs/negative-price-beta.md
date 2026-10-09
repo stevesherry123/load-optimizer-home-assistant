@@ -46,6 +46,31 @@ one restart. Actual execution during a real negative-price window remains a
 follow-up observation; isolated tests are not a claim that tomorrow's cycles
 have already run.
 
+## Live Installation Acceptance
+
+The approved beta was published from validated commit `f689073` and installed
+through HACS on 9 October 2026. One Home Assistant restart was requested. The
+external connection recovered and the runtime reported `1.7.0-beta.6`, with a
+subsequent completed scan and no active learning capture.
+
+Read-back confirmed unchanged registered entity identities, per-device links,
+dashboard configuration, saved overnight request, control opt-ins, programme
+policies, learned profiles and tariff-history metadata. All three appliance
+cost statuses were ready; tariff periods and the regional benchmark loaded
+successfully. Integration diagnostics reported no error and the appliance
+remote-start preflight had no blockers. No physical test cycle was started.
+
+The exact-scan-time fix was also replayed against the installation's existing
+profiles, policies and published prices. It produced immediate eligibility
+inside both the early-morning and daytime opportunities, and no immediate
+negative recommendation after the daytime window ended. This replay did not
+simulate every subsequent real-world completion or change any live settings.
+
+Stable `v1.5.7` and `main` are unchanged. Actual automatic runs during the next
+negative-price opportunities remain the final observation before separately
+approved stable promotion. The release tag is not moved for this acceptance
+documentation.
+
 Free Octoplus calendar events are not automatically overlaid or subscribed to.
 The existing tariff sources or explicit special-price overlay must expose a
 zero/negative price for the planner to use a promotional session.
