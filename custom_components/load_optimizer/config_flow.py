@@ -69,6 +69,94 @@ from .const import (
     PRICE_CAP_PAYMENT_METHODS,
     PRICE_UNITS,
 )
+from .legacy.config_validation import (
+    ApplianceConfiguration,
+    ConfigurationError,
+    validate_appliance_options,
+)
+
+
+def _appliance_review(hass, config: ApplianceConfiguration) -> str:
+    """Describe a read-only snapshot; missing sources never prevent saving."""
+    lines = [f"Appliances: {len(config.instances)}.",
+             "Appliance IDs: " + ", ".join(item["instance_id"] for item in config.instances) + "."]
+    sources = {}
+    policy_count = 0
+    for item in config.instances:
+        policy_count += len(item["program_policies"])
+        if not item["program_policies"]:
+            lines.append(f"Appliance {item['instance_id']} has no programme policies; learning works but recommendations need an eligible policy.")
+        for key, unit in (("power_sensor", "W"), ("energy_sensor", "kWh"),
+                          ("program_sensor", None), ("state_sensor", None),
+                          ("schedule_earliest_start_entity", None), ("schedule_latest_finish_entity", None),
+                          ("green_window_entity", None), ("blocked_window_entity", None)):
+            if entity_id := item.get(key):
+                sources.setdefault(entity_id, set()).add(unit)
+    tariffs = config.options.get(CONF_TARIFF_ENTITIES, "")
+    tariffs = tariffs.split(",") if isinstance(tariffs, str) else tariffs
+    tariffs = {str(item).strip() for item in tariffs if str(item).strip()}
+    if primary := config.options.get(CONF_TARIFF_ENTITY):
+        tariffs.add(primary.strip())
+    for entity_id in tariffs:
+        sources.setdefault(entity_id, set()).add(None)
+    lines.append(f"Programme policies: {policy_count}. Tariff sources: {len(tariffs)}.")
+    if not tariffs:
+        lines.append("No tariff source: learning can continue, but priced recommendations will not be available.")
+    warnings = []
+    for entity_id, units in sorted(sources.items()):
+        state = hass.states.get(entity_id)
+        if state is None or state.state in {"unknown", "unavailable"}:
+            warnings.append(f"{entity_id}: not currently available; check the source integration.")
+            continue
+        for expected in sorted(unit for unit in units if unit):
+            actual = state.attributes.get("unit_of_measurement")
+            if actual != expected:
+                warnings.append(f"{entity_id}: verify the source reports {expected}; units are not converted automatically.")
+            try:
+                if not math.isfinite(float(state.state)):
+                    raise ValueError
+            except (TypeError, ValueError, OverflowError):
+                warnings.append(f"{entity_id}: the source is not currently a finite number.")
+    lines.extend(warnings[:20])
+    if len(warnings) > 20:
+        lines.append(f"{len(warnings) - 20} further source checks need attention.")
+    lines.append("This is a source snapshot, not a test of a complete future tariff or remote start. Saving does not enable control or automatic runs. Changes reload the runtime; wait until appliance captures have finished before saving.")
+    return "\n\n".join(lines)
+
+
+class _ApplianceValidationFlow:
+    """Share setup/edit validation without persisting anything before review."""
+
+    async def _async_prepare_appliances(self, values):
+        self._appliance_pending = None
+        self._appliance_summary = ""
+        self._validation_details = ""
+        try:
+            config = await self.hass.async_add_executor_job(validate_appliance_options, values)
+        except ConfigurationError as error:
+            self._validation_details = str(error)
+            field = error.field if error.field in values else CONF_INSTANCES_YAML
+            return {field: "invalid_appliance_configuration"}
+        self._appliance_summary = _appliance_review(self.hass, config)
+        return {}
+
+    async def async_step_appliance_review(self, user_input=None):
+        """Save only after the user has reviewed the read-only source snapshot."""
+        if not getattr(self, "_appliance_pending", None):
+            return self.async_abort(reason="no_pending_configuration")
+        errors = self._appliance_save_errors() if user_input is not None else {}
+        if user_input is not None and not errors:
+            pending = self._appliance_pending
+            self._appliance_pending = None
+            return await self._async_save_appliances(pending)
+        return self.async_show_form(
+            step_id="appliance_review", data_schema=vol.Schema({}), last_step=True,
+            errors=errors,
+            description_placeholders={"summary": self._appliance_summary},
+        )
+
+    def _appliance_save_errors(self):
+        return {}
 
 
 def _price_cap_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
@@ -188,7 +276,7 @@ def _ev_input_errors(values: dict[str, Any]) -> dict[str, str]:
     return errors
 
 
-class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class LoadOptimizerConfigFlow(_ApplianceValidationFlow, config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a Load Optimizer config flow."""
 
     VERSION = 1
@@ -253,67 +341,78 @@ class LoadOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for entry in self._async_current_entries()
         ):
             return self.async_abort(reason="learned_appliance_already_configured")
+        errors = {}
         if user_input is not None:
-            user_input[CONF_NAME] = self._name
-            user_input[CONF_LOAD_TYPE] = LOAD_TYPE_LEARNED_APPLIANCE
-            await self.async_set_unique_id(LOAD_TYPE_LEARNED_APPLIANCE)
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=self._name, data=user_input)
+            errors = await self._async_prepare_appliances(user_input)
+            if not errors:
+                self._appliance_pending = dict(user_input)
+                return await self.async_step_appliance_review()
 
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_INSTANCES_YAML): str,
+                vol.Optional(
+                    CONF_SCAN_INTERVAL,
+                    default=DEFAULT_LEGACY_SCAN_INTERVAL_SECONDS,
+                ): vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
+                vol.Optional(CONF_TARIFF_ENTITY): selector.EntitySelector(
+                    selector.EntitySelectorConfig()
+                ),
+                vol.Optional(CONF_TARIFF_ENTITIES): str,
+                vol.Optional(
+                    CONF_TARIFF_TIMEZONE,
+                    default=DEFAULT_TARIFF_TIMEZONE,
+                ): str,
+                vol.Optional(
+                    CONF_TARIFF_PRICE_UNIT,
+                    default=DEFAULT_TARIFF_PRICE_UNIT,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=PRICE_UNITS,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(CONF_GREEN_WINDOW_ENTITY): str,
+                vol.Optional(CONF_BLOCKED_WINDOW_ENTITY): str,
+                vol.Optional(CONF_COST_SEARCH_HOURS, default=24): vol.All(
+                    vol.Coerce(int), vol.Range(min=1, max=72)
+                ),
+                vol.Optional(CONF_COST_FORECAST_HOURS, default=12): vol.All(
+                    vol.Coerce(int), vol.Range(min=1, max=72)
+                ),
+                vol.Optional(CONF_COST_FORECAST_INTERVAL, default=30): vol.All(
+                    vol.Coerce(int), vol.Range(min=5, max=60)
+                ),
+                vol.Optional(CONF_COST_CANDIDATE_INTERVAL, default=5): vol.All(
+                    vol.Coerce(int), vol.Range(min=1, max=30)
+                ),
+                vol.Optional(
+                    CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
+                    default=0.1,
+                ): vol.All(vol.Coerce(float), vol.Range(min=0, max=10)),
+                vol.Optional(CONF_PUBLISH_DIAGNOSTICS, default=False): bool,
+                vol.Optional(CONF_PUBLISH_PROFILE_DATA, default=True): bool,
+                vol.Optional(CONF_PUBLISH_COST_FORECAST, default=True): bool,
+                **_price_cap_schema(),
+            }
+        )
         return self.async_show_form(
             step_id="learned_appliance",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_INSTANCES_YAML): str,
-                    vol.Optional(
-                        CONF_SCAN_INTERVAL,
-                        default=DEFAULT_LEGACY_SCAN_INTERVAL_SECONDS,
-                    ): vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
-                    vol.Optional(CONF_TARIFF_ENTITY): selector.EntitySelector(
-                        selector.EntitySelectorConfig()
-                    ),
-                    vol.Optional(CONF_TARIFF_ENTITIES): str,
-                    vol.Optional(
-                        CONF_TARIFF_TIMEZONE,
-                        default=DEFAULT_TARIFF_TIMEZONE,
-                    ): str,
-                    vol.Optional(
-                        CONF_TARIFF_PRICE_UNIT,
-                        default=DEFAULT_TARIFF_PRICE_UNIT,
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=PRICE_UNITS,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                    vol.Optional(CONF_GREEN_WINDOW_ENTITY): str,
-                    vol.Optional(CONF_BLOCKED_WINDOW_ENTITY): str,
-                    vol.Optional(CONF_COST_SEARCH_HOURS, default=24): vol.All(
-                        vol.Coerce(int), vol.Range(min=1, max=72)
-                    ),
-                    vol.Optional(CONF_COST_FORECAST_HOURS, default=12): vol.All(
-                        vol.Coerce(int), vol.Range(min=1, max=72)
-                    ),
-                    vol.Optional(CONF_COST_FORECAST_INTERVAL, default=30): vol.All(
-                        vol.Coerce(int), vol.Range(min=5, max=60)
-                    ),
-                    vol.Optional(CONF_COST_CANDIDATE_INTERVAL, default=5): vol.All(
-                        vol.Coerce(int), vol.Range(min=1, max=30)
-                    ),
-                    vol.Optional(
-                        CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
-                        default=0.1,
-                    ): vol.All(vol.Coerce(float), vol.Range(min=0, max=10)),
-                    vol.Optional(CONF_PUBLISH_DIAGNOSTICS, default=False): bool,
-                    vol.Optional(CONF_PUBLISH_PROFILE_DATA, default=True): bool,
-                    vol.Optional(CONF_PUBLISH_COST_FORECAST, default=True): bool,
-                    **_price_cap_schema(),
-                }
-            ),
+            errors=errors,
+            description_placeholders={"validation_details": getattr(self, "_validation_details", "")},
+            data_schema=self.add_suggested_values_to_schema(schema, user_input or {}),
         )
 
+    async def _async_save_appliances(self, values):
+        """Keep the single-hub guard at the final save, including racing flows."""
+        await self.async_set_unique_id(LOAD_TYPE_LEARNED_APPLIANCE)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(title=self._name, data={
+            **values, CONF_NAME: self._name, CONF_LOAD_TYPE: LOAD_TYPE_LEARNED_APPLIANCE,
+        })
 
-class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
+
+class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsFlow):
     """Edit load settings without exposing one giant form."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
@@ -367,12 +466,23 @@ class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ):
         """Edit appliance sources and tariff inputs."""
+        errors = {}
         if user_input is not None:
-            return self._save_section(user_input)
+            errors = await self._async_prepare_appliances({**self._existing, **user_input})
+            if not errors:
+                self._appliance_pending = dict(user_input)
+                return await self.async_step_appliance_review()
+            errors = {key if key in {
+                CONF_INSTANCES_YAML, CONF_SCAN_INTERVAL, CONF_TARIFF_ENTITY, CONF_TARIFF_ENTITIES,
+                CONF_TARIFF_TIMEZONE, CONF_TARIFF_PRICE_UNIT, CONF_GREEN_WINDOW_ENTITY,
+                CONF_BLOCKED_WINDOW_ENTITY,
+            } else CONF_INSTANCES_YAML: value for key, value in errors.items()}
 
-        existing = self._existing
+        existing = {**self._existing, **(user_input or {})}
         return self.async_show_form(
             step_id="appliances_tariff",
+            errors=errors,
+            description_placeholders={"validation_details": getattr(self, "_validation_details", "")},
             data_schema=vol.Schema(
                 {
                     vol.Optional(
@@ -424,6 +534,21 @@ class LoadOptimizerOptionsFlow(config_entries.OptionsFlow):
                 }
             ),
         )
+
+    async def _async_save_appliances(self, values):
+        return self._save_section(values)
+
+    def _appliance_save_errors(self):
+        """Do not reload appliance sources during a capture or queued start."""
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        if coordinator is None:
+            return {}
+        memory = coordinator.legacy_runtime.state or {}
+        if any(item.get("cycle_start") for item in memory.get("instances", {}).values()):
+            return {"base": "active_appliance_capture"}
+        if coordinator.orchestrator and coordinator.orchestrator.state.get("request"):
+            return {"base": "appliance_request_pending"}
+        return {}
 
     async def async_step_optimisation(
         self, user_input: dict[str, Any] | None = None

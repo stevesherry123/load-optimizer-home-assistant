@@ -36,6 +36,7 @@ class EVOptionsTests(unittest.IsolatedAsyncioTestCase):
                    and n.name == "LoadOptimizerOptionsFlow")
         namespace = {k: v for k, v in vars(constants).items() if k.isupper()}
         namespace.update({"config_entries": SimpleNamespace(OptionsFlow=FlowBase),
+                          "_ApplianceValidationFlow": type("ApplianceValidationFlow", (), {}),
                           "vol": SimpleNamespace(Schema=lambda value: value),
                           "_ev_schema": Mock(return_value={"ev": "schema"}),
                           "_ev_input_errors": Mock(return_value={}),

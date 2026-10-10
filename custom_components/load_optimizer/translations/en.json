@@ -3,7 +3,8 @@
     "error": {
       "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
       "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
-      "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes."
+      "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes.",
+      "invalid_appliance_configuration": "Correct the configuration using the details above."
     },
     "step": {
       "user": {
@@ -36,7 +37,7 @@
       },
       "learned_appliance": {
         "title": "Set up learned appliances",
-        "description": "Enter your appliance definitions and tariff settings. Existing add-on users can import their saved learning database after setup; new installations learn from completed cycles.",
+        "description": "Enter your appliance definitions and tariff settings. Review the source checks before saving. Existing add-on users can import their saved learning database after setup; new installations learn from completed cycles.\n\n{validation_details}",
         "data": {
           "instances_yaml": "Instances YAML",
           "scan_interval": "Scan interval",
@@ -57,17 +58,25 @@
           "price_cap_region": "Ofgem electricity region",
           "price_cap_payment_method": "Price-cap payment method"
         }
+      },
+      "appliance_review": {
+        "title": "Review appliance configuration",
+        "description": "{summary}\n\nSubmit to save these settings. Keep existing appliance IDs unchanged to retain their learning associations."
       }
     },
     "abort": {
-      "learned_appliance_already_configured": "A learned-appliance hub is already configured. Add appliances to its Appliances and tariff settings instead."
+      "learned_appliance_already_configured": "A learned-appliance hub is already configured. Add appliances to its Appliances and tariff settings instead.",
+      "no_pending_configuration": "Reopen setup to review the appliance settings before saving."
     }
   },
   "options": {
     "error": {
+      "active_appliance_capture": "An appliance cycle is being captured. Wait until it finishes before saving these settings.",
+      "appliance_request_pending": "An appliance start is queued. Wait for it to complete or explicitly cancel it before saving these settings.",
       "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
       "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
-      "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes."
+      "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes.",
+      "invalid_appliance_configuration": "Correct the configuration using the details above."
     },
     "step": {
       "init": {
@@ -92,7 +101,7 @@
       },
       "appliances_tariff": {
         "title": "Appliances and tariff",
-        "description": "These are the integration's main data sources. Existing values are retained unless you change and save them here.",
+        "description": "These are the integration's main data sources. Existing values are retained unless you change and save them here.\n\n{validation_details}",
         "data": {
           "instances_yaml": "Appliance definitions",
           "scan_interval": "Refresh interval (seconds)",
@@ -103,6 +112,10 @@
           "green_window_entity": "Preferred green-window calendar",
           "blocked_window_entity": "Blocked-window calendar"
         }
+      },
+      "appliance_review": {
+        "title": "Review appliance configuration",
+        "description": "{summary}\n\nSubmit to save these settings. Keep existing appliance IDs unchanged to retain their learning associations."
       },
       "ev": {
         "title": "EV charging settings",
@@ -169,7 +182,8 @@
       }
     },
     "abort": {
-      "not_supported": "This optimizer type has no editable orchestration options."
+      "not_supported": "This optimizer type has no editable orchestration options.",
+      "no_pending_configuration": "Reopen configuration to review the appliance settings before saving."
     }
   },
   "entity": {

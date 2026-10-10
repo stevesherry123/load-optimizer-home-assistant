@@ -41,7 +41,7 @@ On `docs/onboarding-clean-install`, against Home Assistant 2024.12.0:
   checks; disconnected and unavailable inputs do not produce charge-now signals.
 - Existing platform/config-flow import, dashboard-colour, EV lifecycle and
   security/permission acceptance checks pass. HTTP listeners are mocked for
-  the onboarding and EV lifecycle runs; no test login or real device is used.
+the onboarding and EV lifecycle runs; no test login or real device is used.
 
 These are local isolated results, not a live HA deployment, remote HACS/hassfest
 result or an unfamiliar-user/physical release-gate sign-off.
@@ -73,9 +73,29 @@ live appliance acceptance remain distinct from these isolated tests.
 
 ## Still Separate Work
 
-- Guided appliance editing, pre-save YAML/source validation and tariff preview.
+- Guided appliance editing and full tariff completeness/unit preview.
 - Programme-policy UI and configurable native controller target.
 - Installation-specific dashboard generation and desktop/mobile visual checks.
 - Privacy-safe screenshots, issue forms and a small community onboarding trial.
 
 None is implemented merely by documenting its current workaround.
+
+## Configuration Validation Slice: 10 October 2026
+
+Local development on `feature/onboarding-validation` adds executable parser and
+validation regressions, plus real minimum-HA failed/cancelled/confirmed edits.
+It covers malformed input, duplicate effective IDs, quoted false permissions,
+source-unavailable/unit warnings, unchanged memory before confirmation, learning
+and registered identity after saving, and continued off-by-default control.
+The pre-save parser and runtime parser are shared. See
+[the scoped plan and remaining gates](onboarding-development-plan.md).
+
+The earlier 230-test result describes the documentation commit, not this later
+runtime slice. Remote CI, browser/mobile inspection, representative migrated
+configuration and unfamiliar-user acceptance are still separate promotion gates.
+
+Final local results for the runtime slice: 248 unit tests; real minimum-HA
+fresh setup, source review, cancellation, active-capture/queued-request save
+guards, reload and persisted restart; EV lifecycle, platform imports, dashboard
+templates and security smoke checks all pass. Bandit reports no findings with
+no skipped checks. These results do not constitute live deployment or remote CI.

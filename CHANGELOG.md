@@ -8,7 +8,17 @@
   control-target limits, advisory EV inputs and common waiting states.
 - Add a small standard-card dashboard example and recommend custom copies outside
   HACS-managed files. Add isolated real-HA onboarding and persistence checks.
-- Documentation/test changes only: no runtime, version or automatic opt-in changes.
+- Add bounded shared YAML/JSON parsing and pre-save appliance validation;
+  reject duplicate identities/keys/policies, invalid numbers, ambiguous permission
+  flags and reset instructions in an ordinary appliance edit.
+- Make previously saved textual false/unknown programme permissions fail closed
+  at runtime rather than treating non-empty strings as an opt-in.
+- Add a read-only source review before saving, including missing-source and W/kWh
+  checks. Invalid or cancelled edits retain saved settings and learning. Preserve
+  legacy wrapped options, zero-prefixed IDs and unquoted overnight times.
+- Defer appliance-source saves during known active captures or queued starts;
+  never cancel a cycle or request just to apply an edit.
+- Unreleased development only; no version bump, deployment or new control opt-in.
 
 ## 1.5.7
 

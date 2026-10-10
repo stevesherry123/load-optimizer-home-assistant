@@ -7,6 +7,7 @@ Run separately from the dependency-free unittest suite.
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import logging
 from pathlib import Path
@@ -83,12 +84,96 @@ async def configure(hass, kind, name, values):
         flow["flow_id"], {"name": name, "load_type": kind}
     )
     convert(flow["data_schema"], custom_serializer=custom_serializer)
+    if kind == "learned_appliance":
+        invalid = {**values, "instances_yaml": "- id: [PRIVATE_INVALID_EXAMPLE"}
+        rejected = await hass.config_entries.flow.async_configure(flow["flow_id"], invalid)
+        assert rejected["type"] == "form", rejected
+        assert rejected["errors"] == {"instances_yaml": "invalid_appliance_configuration"}
+        assert "PRIVATE_INVALID_EXAMPLE" not in rejected["description_placeholders"]["validation_details"]
+        assert not hass.config_entries.async_entries(DOMAIN)
+        convert(rejected["data_schema"], custom_serializer=custom_serializer)
     result = await hass.config_entries.flow.async_configure(flow["flow_id"], values)
+    if kind == "learned_appliance":
+        assert result["type"] == "form" and result["step_id"] == "appliance_review", result
+        convert(result["data_schema"], custom_serializer=custom_serializer)
+        assert not hass.config_entries.async_entries(DOMAIN)
+        result = await hass.config_entries.flow.async_configure(flow["flow_id"], {})
     assert result["type"] == "create_entry", result
     await hass.async_block_till_done()
     entry = result["result"]
     assert entry.state.value == "loaded", entry.state
     return entry
+
+
+async def verify_appliance_editing(hass, entry, coordinator, example):
+    """Invalid/cancelled edits cannot reload the runtime or change learned memory."""
+    options_before = dict(entry.options)
+    memory_before = deepcopy(coordinator.legacy_runtime.state)
+    ids_before = identities(hass, entry.entry_id)
+    flow = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {"next_step_id": "appliances_tariff"}
+    )
+    for raw in ("- id: [INVALID_PRIVATE_DOCUMENT", example + "\n" + example,
+                example.replace("allow_negative_price_run: false", 'allow_negative_price_run: "false"')):
+        rejected = await hass.config_entries.options.async_configure(
+            flow["flow_id"], {"instances_yaml": raw}
+        )
+        assert rejected["type"] == "form" and rejected["errors"], rejected
+        assert "INVALID_PRIVATE_DOCUMENT" not in rejected["description_placeholders"]["validation_details"]
+        convert(rejected["data_schema"], custom_serializer=custom_serializer)
+        assert dict(entry.options) == options_before
+        assert hass.data[DOMAIN][entry.entry_id] is coordinator
+        assert coordinator.legacy_runtime.state == memory_before
+        assert identities(hass, entry.entry_id) == ids_before
+
+    appliance = yaml.safe_load(example)[0]
+    power = hass.states.get(appliance["power_sensor"])
+    energy = hass.states.get(appliance["energy_sensor"])
+    hass.states.async_set(power.entity_id, power.state, {"unit_of_measurement": "kW"})
+    hass.states.async_set(energy.entity_id, "unavailable")
+    result = await hass.config_entries.options.async_configure(flow["flow_id"], {"instances_yaml": example})
+    assert result["type"] == "form" and result["step_id"] == "appliance_review", result
+    summary = result["description_placeholders"]["summary"]
+    assert "reports W" in summary and "not currently available" in summary, summary
+    assert "does not enable control" in summary
+    assert dict(entry.options) == options_before
+    hass.config_entries.options.async_abort(flow["flow_id"])
+    hass.states.async_set(power.entity_id, power.state, dict(power.attributes))
+    hass.states.async_set(energy.entity_id, energy.state, dict(energy.attributes))
+    assert hass.data[DOMAIN][entry.entry_id] is coordinator
+    assert coordinator.legacy_runtime.state == memory_before
+
+    flow = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = await hass.config_entries.options.async_configure(flow["flow_id"], {"next_step_id": "appliances_tariff"})
+    result = await hass.config_entries.options.async_configure(flow["flow_id"], {"instances_yaml": example})
+    assert result["step_id"] == "appliance_review", result
+    instance = coordinator.legacy_runtime.state["instances"]["1"]
+    instance["cycle_start"] = Clock.current.isoformat()
+    rejected = await hass.config_entries.options.async_configure(flow["flow_id"], {})
+    assert rejected["errors"] == {"base": "active_appliance_capture"}, rejected
+    assert dict(entry.options) == options_before
+    assert instance["cycle_start"] == Clock.current.isoformat()
+    instance.pop("cycle_start")
+    coordinator.orchestrator.state["request"] = {"synthetic": "held-for-guard-test"}
+    rejected = await hass.config_entries.options.async_configure(flow["flow_id"], {})
+    assert rejected["errors"] == {"base": "appliance_request_pending"}, rejected
+    assert dict(entry.options) == options_before
+    assert hass.data[DOMAIN][entry.entry_id] is coordinator
+    assert coordinator.orchestrator.state["request"] == {"synthetic": "held-for-guard-test"}
+    coordinator.orchestrator.state["request"] = None
+    result = await hass.config_entries.options.async_configure(flow["flow_id"], {})
+    assert result["type"] == "create_entry", result
+    await hass.async_block_till_done()
+    current = hass.data[DOMAIN][entry.entry_id]
+    assert identities(hass, entry.entry_id) == ids_before
+    assert current.legacy_runtime.state["instances"]["1"]["runs"] == 1
+    assert current.legacy_runtime.state["instances"]["1"]["program_models"] == memory_before["instances"]["1"]["program_models"]
+    assert not current.orchestrator.state["auto_mode_enabled"]
+    assert not current.orchestrator.state["auto_negative_price_enabled"]
+    assert current.orchestrator.state["request"] is None
+    print("Appliance edits: rejection/cancellation preserve memory; explicit reviewed save preserves identities and permissions")
+    return current
 
 
 async def session(config_dir, example_name, snapshot=None):
@@ -193,6 +278,8 @@ async def session(config_dir, example_name, snapshot=None):
                 assert hass.states.get("sensor.load_optimizer_1_total_runs").state == "1", coordinator.legacy_runtime.state
                 assert hass.states.get("sensor.load_optimizer_1_cost_status").state == "ready"
                 assert hass.states.get("sensor.load_optimizer_1_recommended_program").state == programme
+                coordinator = await verify_appliance_editing(hass, entry, coordinator, example)
+                controller = coordinator.orchestrator
 
                 dashboard = yaml.safe_load((ROOT / "docs/examples/one-appliance-dashboard.yaml").read_text())
                 expected = set(entities_in(dashboard))

@@ -9,9 +9,16 @@ implementation architecture in `docs/architecture.md`.
 - review the documentation-first onboarding branch and its isolated acceptance
   results before merging; include the guides in a separately approved release,
   without changing existing stable tags or promoting the tariff beta
-- follow up separately with guided appliance/policy editing, pre-save validation,
+- follow up separately with guided appliance/policy editing,
   selectable control targets and generated dashboards; add privacy-safe screenshots,
   issue forms and an unfamiliar-user onboarding trial before broad promotion
+- first runtime onboarding slice is implemented locally on
+  `feature/onboarding-validation`: shared bounded parsing, pre-save validation and
+  a read-only source review. Guided editing and public/live acceptance remain
+  separate; see [the development plan](onboarding-development-plan.md).
+- keep `e6ba6ca`'s repeated free/negative-price scheduling fix on
+  `fix/negative-price-repeat-runs` visible as a separate stable-promotion priority;
+  do not merge it or the tariff betas incidentally with onboarding changes
 
 - await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
   for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream

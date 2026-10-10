@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
 import re
-import textwrap
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
@@ -34,33 +33,13 @@ from .const import (
     DOMAIN,
 )
 from .legacy import app_runtime
+from .legacy.config_validation import ConfigurationError, appliance_document
 from .optimizer.state_import import validate_import
 
 LOGGER = logging.getLogger(__name__)
 LEGACY_STORE_VERSION = 1
 LEGACY_STORE_KEY = f"{DOMAIN}_legacy_state"
 ADAPTER_MARKER = "__hass_adapter__"
-WRAPPED_OPTION_KEYS = {
-    CONF_BLOCKED_WINDOW_ENTITY,
-    CONF_COST_CANDIDATE_INTERVAL,
-    CONF_COST_FORECAST_HOURS,
-    CONF_COST_FORECAST_INTERVAL,
-    CONF_COST_SEARCH_HOURS,
-    CONF_GREEN_WINDOW_ENTITY,
-    CONF_INSTANCES_YAML,
-    CONF_PUBLISH_COST_FORECAST,
-    CONF_PUBLISH_DIAGNOSTICS,
-    CONF_PUBLISH_PROFILE_DATA,
-    CONF_SCAN_INTERVAL,
-    CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
-    CONF_TARIFF_ENTITIES,
-    CONF_TARIFF_ENTITY,
-    CONF_TARIFF_PRICE_UNIT,
-    CONF_TARIFF_TIMEZONE,
-    "log_history",
-    "log_level",
-    "reset_instance_ids",
-}
 RETIRED_GREEN_WINDOW_SUFFIX = "_greener_nights"
 LEGACY_SAVING_SESSIONS_SUFFIX = "_octoplus_saving_sessions"
 POWER_DOWN_SUFFIX = "_octoplus_power_down"
@@ -201,9 +180,6 @@ class LegacyRuntime:
         for key, value in wrapped.items():
             if key == CONF_INSTANCES_YAML or self._option_is_blank(normalised.get(key)):
                 normalised[key] = value
-        normalised[CONF_INSTANCES_YAML] = app_runtime.normalise_instances_yaml(
-            normalised.get(CONF_INSTANCES_YAML, "")
-        )
         self._normalise_calendar_entities(normalised)
         return normalised
 
@@ -221,36 +197,13 @@ class LegacyRuntime:
                 config[CONF_BLOCKED_WINDOW_ENTITY] = power_down
 
     def _parse_wrapped_options(self, raw: object) -> dict[str, Any]:
-        text = str(raw or "")
-        if "instances_yaml:" not in text:
+        if raw in (None, ""):
             return {}
-        options: dict[str, Any] = {}
-        lines = textwrap.dedent(text).splitlines()
-        index = 0
-        while index < len(lines):
-            line = lines[index]
-            stripped = line.strip()
-            index += 1
-            if not stripped or stripped.startswith("#") or ":" not in stripped:
-                continue
-            key, value = stripped.split(":", 1)
-            key = key.strip()
-            value = value.strip()
-            if key not in WRAPPED_OPTION_KEYS:
-                continue
-            if value in {"|", "|-", "|+", ">", ">-", ">+"}:
-                block = []
-                while index < len(lines):
-                    block_line = lines[index]
-                    if block_line.strip() and not block_line.startswith((" ", "\t")):
-                        break
-                    block.append(block_line)
-                    index += 1
-                parsed_block = textwrap.dedent("\n".join(block)).strip()
-                options[key] = " ".join(parsed_block.split()) if value.startswith(">") else parsed_block
-                continue
-            options[key] = app_runtime.parse_config_scalar(value)
-        return options
+        try:
+            _, wrapped = appliance_document(raw)
+            return wrapped
+        except ConfigurationError:
+            return {}
 
     @staticmethod
     def _option_is_blank(value: object) -> bool:

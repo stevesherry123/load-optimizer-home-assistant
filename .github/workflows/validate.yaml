@@ -48,7 +48,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run tests
-        run: python -m unittest discover -s tests
+        run: |
+          pip install "PyYAML==6.0.2"
+          python -m unittest discover -s tests
 
   minimum_ha:
     name: Minimum Home Assistant imports

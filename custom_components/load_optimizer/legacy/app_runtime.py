@@ -14,6 +14,8 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .config_validation import ConfigurationError, appliance_document
+
 try:
     from .costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from .observability import EventEngine, configure_logging as configure_event_logging
@@ -970,10 +972,10 @@ def normalise_program_policy(raw: dict) -> dict:
     policy.update({
         "configured": True,
         "classification": classification,
-        "enabled": bool(raw.get("enabled", policy["enabled"])),
+        "enabled": bool_option(raw.get("enabled", policy["enabled"])),
         "preference_rank": max(1, min(100, int(raw.get("preference_rank", policy["preference_rank"])))),
-        "allow_normal_recommendation": bool(raw.get("allow_normal_recommendation", policy["allow_normal_recommendation"])),
-        "allow_negative_price_run": bool(raw.get("allow_negative_price_run", policy["allow_negative_price_run"])),
+        "allow_normal_recommendation": bool_option(raw.get("allow_normal_recommendation", policy["allow_normal_recommendation"])),
+        "allow_negative_price_run": bool_option(raw.get("allow_negative_price_run", policy["allow_negative_price_run"])),
         "minimum_days_between_runs": max(0, int(raw.get("minimum_days_between_runs", policy["minimum_days_between_runs"]))),
         "minimum_hours_between_runs": max(0, int(raw.get(
             "minimum_hours_between_runs",
@@ -1218,68 +1220,14 @@ def normalise_instances_yaml(raw: object) -> str:
 
 
 def parse_instances_yaml(raw: object) -> list[dict]:
-    if isinstance(raw, list):
-        return [entry for entry in raw if isinstance(entry, dict)]
-    raw = normalise_instances_yaml(raw)
-    if not raw:
+    if raw in (None, ""):
         return []
     try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            parsed = parsed.get("instances", [])
-        if isinstance(parsed, list):
-            return [entry for entry in parsed if isinstance(entry, dict)]
-    except json.JSONDecodeError:
-        pass
-
-    lines = [line.rstrip() for line in raw.splitlines() if line.strip() and not line.lstrip().startswith("#")]
-    if lines and lines[0].strip() == "instances:":
-        lines = [line[2:] if line.startswith("  ") else line for line in lines[1:]]
-
-    instances = []
-    current = None
-    current_policy = None
-    in_policies = False
-    for line in lines:
-        indent = len(line) - len(line.lstrip(" "))
-        stripped = line.strip()
-        if indent == 0 and stripped.startswith("- "):
-            current = {}
-            instances.append(current)
-            current_policy = None
-            in_policies = False
-            item = stripped[2:].strip()
-            if item:
-                parsed = parse_key_value(item)
-                if parsed:
-                    current[parsed[0]] = parsed[1]
-            continue
-        if current is None:
-            continue
-        if stripped == "program_policies:":
-            current.setdefault("program_policies", [])
-            current_policy = None
-            in_policies = True
-            continue
-        if in_policies and stripped.startswith("- "):
-            current_policy = {}
-            current.setdefault("program_policies", []).append(current_policy)
-            item = stripped[2:].strip()
-            if item:
-                parsed = parse_key_value(item)
-                if parsed:
-                    current_policy[parsed[0]] = parsed[1]
-            continue
-        parsed = parse_key_value(stripped)
-        if not parsed:
-            continue
-        key, value = parsed
-        if in_policies and current_policy is not None and indent >= 4:
-            current_policy[key] = value
-        else:
-            in_policies = False
-            current[key] = value
-    return [entry for entry in instances if entry.get("id") or entry.get("name") or entry.get("power_sensor")]
+        instances, _ = appliance_document(raw)
+        return instances
+    except ConfigurationError:
+        LOGGER.warning("Invalid appliance configuration; correct it through the integration settings")
+        return []
 
 
 def entity_list(raw: object) -> list[str]:
@@ -1296,7 +1244,10 @@ def bool_option(value: object, default: bool = False) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
-        return bool(value)
+        try:
+            return math.isfinite(value) and bool(value)
+        except OverflowError:
+            return False
     return str(value).strip().lower() in {"1", "true", "yes", "on", "enable", "enabled"}
 
 

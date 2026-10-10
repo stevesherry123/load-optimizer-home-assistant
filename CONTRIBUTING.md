@@ -9,6 +9,8 @@ request. Tariff analysis (`beta/tariff-analysis-v1.6`) and import/AI
 (`beta/tariff-import-narrative-v1.7`) remain stacked development branches until
 their release gates pass. Do not merge them just to prepare a HACS submission.
 
+The standalone unit suite needs `PyYAML==6.0.2` (already supplied by the declared
+minimum Home Assistant); install it in your test environment if necessary.
 Run `python -m unittest discover -s tests`. CI must also pass HACS validation,
 hassfest and the declared-minimum Home Assistant import smoke test without
 ignored failures. The import smoke test is not a full fresh-install test.

@@ -4,6 +4,23 @@ Start with the affected device's entities and attributes in **Developer tools >
 States**. Installing through HACS does not configure sources or enable starting.
 Do not work around missing data by assuming a device is safe to run.
 
+## Configuration Review
+
+Malformed appliance YAML, duplicate IDs/keys/policies, non-finite numbers,
+invalid scheduling fields and ambiguous quoted permission flags are rejected
+before saving. The form keeps the submitted values; correct the indicated field
+and review again. Remove legacy `reset_instance_ids` instructions from an
+ordinary appliance setup/edit. An existing appliance's ID is its learning
+association, not a display label to rename.
+
+The review can warn about missing/unavailable entities or wrong W/kWh units
+without blocking setup. Fix the source integration or use correctly converted
+template sensors; the integration does not convert appliance units for you.
+Cancelling the review leaves the saved configuration unchanged. A known active
+capture or queued request blocks saving changed sources: wait for completion,
+or explicitly cancel only the request if that is your intent. No wash is stopped
+and no request is cancelled automatically by this form.
+
 ## Learning And Recommendations
 
 | Symptom / state | Meaning and next check |

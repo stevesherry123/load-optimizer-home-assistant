@@ -69,10 +69,19 @@ initially. Change them later through the Configure cog. Today's rates can be
 usable before tomorrow's arrive; a candidate needs complete prices through its
 finish time.
 
-The current appliance form accepts YAML without a full pre-save validation
-screen. Check indentation, distinct positive numeric IDs and exact entity IDs.
-Saving a form is not proof that every source is usable. For kW or Wh sources,
-supply correctly converted W/kWh sensors rather than relabeling their units.
+The appliance form checks YAML, distinct positive numeric IDs, entity-ID syntax,
+programme policies and numeric/scheduling settings before saving. A review screen
+shows source availability and W/kWh warnings; submit that review to save, or
+cancel to leave settings unchanged. Unavailable sources do not prevent setup.
+Quoted policy flags such as `"false"`, duplicate keys and YAML aliases are not
+accepted. Use `true`/`false` without quotes. Legacy wrapped options are still
+supported, but reset instructions must be removed from an ordinary setup/edit.
+
+The review is not proof of complete future prices or correct price-unit
+selection. For kW or Wh sources, supply correctly converted W/kWh sensors rather
+than relabeling their units. Saving changed options reloads the runtime: finish
+active appliance captures first. A known active capture or queued start blocks
+the save until it finishes or you explicitly cancel the request.
 See [troubleshooting](troubleshooting.md).
 
 ## Confirm Your First Result
