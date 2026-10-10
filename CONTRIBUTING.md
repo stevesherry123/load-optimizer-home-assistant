@@ -13,6 +13,11 @@ Run `python -m unittest discover -s tests`. CI must also pass HACS validation,
 hassfest and the declared-minimum Home Assistant import smoke test without
 ignored failures. The import smoke test is not a full fresh-install test.
 
+For onboarding changes, also run `python tests/ha_onboarding_smoke.py` in the
+minimum-HA environment. See [clean-install acceptance](docs/onboarding-acceptance.md)
+for isolated coverage and the remaining human/physical release gates. Keep the
+documented examples executable; do not base new-user acceptance on migrated data.
+
 Keep changes scoped and preserve entity IDs, learning data and opt-ins. Test
 reload/restart and upgrade/rollback for persistence changes; test desktop/mobile
 and tariff-local time for chart changes. New physical control must be explicitly

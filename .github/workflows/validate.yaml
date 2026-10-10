@@ -66,6 +66,8 @@ jobs:
         run: python tests/ha_dashboard_smoke.py
       - name: Verify real EV configuration, reload and restart persistence
         run: python tests/ha_ev_lifecycle_smoke.py
+      - name: Verify documented clean-install examples and safe control defaults
+        run: python tests/ha_onboarding_smoke.py
       - name: Verify permissions, diagnostic privacy, safe imports and HTTP boundaries
         run: python tests/ha_security_smoke.py
 

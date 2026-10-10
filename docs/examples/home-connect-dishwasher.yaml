@@ -1,0 +1,12 @@
+- id: "1"
+  name: Dishwasher
+  power_sensor: sensor.dishwasher_power
+  energy_sensor: sensor.dishwasher_energy
+  program_sensor: sensor.dishwasher_selected_program
+  state_sensor: sensor.dishwasher_operation_state
+  program_policies:
+    - program: Eco50
+      classification: preferred
+      enabled: true
+      allow_normal_recommendation: true
+      allow_negative_price_run: false

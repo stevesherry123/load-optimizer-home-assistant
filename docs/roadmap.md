@@ -6,6 +6,13 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- review the documentation-first onboarding branch and its isolated acceptance
+  results before merging; include the guides in a separately approved release,
+  without changing existing stable tags or promoting the tariff beta
+- follow up separately with guided appliance/policy editing, pre-save validation,
+  selectable control targets and generated dashboards; add privacy-safe screenshots,
+  issue forms and an unfamiliar-user onboarding trial before broad promotion
+
 - await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
   for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
   checks passed; respond to requested changes without duplicate requests or
@@ -36,6 +43,14 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Prepared documentation-first onboarding on `docs/onboarding-clean-install`:
+  explicit safe programme policies, separate Home Connect activation and advisory
+  EV guides, a standard-card starter dashboard, compatibility and troubleshooting.
+  Added executable examples and real minimum-HA fresh-install/reload/restart checks.
+  Runtime code, installed HA, main and release versions are unchanged. Guided
+  setup and human/physical acceptance remain separate; see
+  `docs/onboarding-acceptance.md`.
 
 - Reviewed public documentation and HACS release behaviour. Corrected stale EV
   editing/publication-gate claims, focused the README on released features and

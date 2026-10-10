@@ -10,7 +10,7 @@ cycle, compare running costs, and find suitable low-cost or negative-price windo
   retain learned programme profiles, and estimate costs across tariff periods.
 - **Scheduling recommendations:** compare programmes and start windows using
   configured deadlines, programme policies and automatic cooldowns.
-- **Optional dishwasher controls:** opt into compatible remote-start services
+- **Optional dishwasher controls:** opt into Home Connect / Bosch-style controls
   with connection, door and already-running safety checks. Manual programme
   requests bypass automatic cooldowns, not physical safety checks.
 - **EV charging plans:** use battery percentage, usable capacity, target, charge
@@ -45,10 +45,17 @@ Home Assistant **2024.12 or later** is required. The Ofgem benchmark is for
 Great Britain; other supplier integrations can supply compatible tariff data.
 No Octopus API token, separate app, or AI subscription is required.
 
-Start with the [setup guide](docs/getting-started.md). Configure one
+Start with the [setup guide](docs/getting-started.md) and
+[compatibility table](docs/compatibility.md). Configure one
 learned-appliance hub containing all your appliance instances; EV planning uses
 separate entries. Existing settings can be edited through the integration's
 **Configure** cog, including EV settings without recreating the entry.
+
+Your first milestone is a completed learned cycle and a priced recommendation,
+not an automatic start. The setup example includes the explicit programme policy
+needed to make a learned profile eligible. See the separate
+[Home Connect control](docs/dishwasher-control.md) and
+[advisory EV](docs/ev-charging.md) guides for their additional requirements.
 
 ## Add-on Migration
 
@@ -103,6 +110,9 @@ workflow, notification process and limitations of download/installation counts.
 - EV charging is advisory, not a built-in charger switch controller.
 - Appliance setup uses YAML definitions; a fully guided appliance editor is
   planned. Only one learned-appliance hub is supported.
+- Native dishwasher control currently targets appliance ID `1` and requires
+  Home Connect references plus explicit activation. Other appliance types do not
+  inherit a generic start controller from learning support.
 - The packaged dashboard is a standard-card template. The richer tariff-chart
   example requires ApexCharts Card and installation-specific entity edits.
 - Ofgem is a comparison benchmark, not a ceiling on Agile prices. Select the
@@ -132,7 +142,11 @@ README content; release notes describe each update, and the linked guides
 provide setup and troubleshooting detail.
 
 - [Installation and configuration](docs/getting-started.md)
+- [Compatibility and supported control targets](docs/compatibility.md)
+- [Optional Home Connect dishwasher control](docs/dishwasher-control.md)
+- [Advisory EV planning and input examples](docs/ev-charging.md)
 - [Dashboards, manual starts and scheduling explanations](docs/dashboard.md)
+- [Troubleshooting and support checklist](docs/troubleshooting.md)
 - [Migration from the retired add-on](docs/migration-addon-to-integration.md)
 - [Release channels, HACS acceptance and statistics](docs/release-channels.md)
 - [Changelog](CHANGELOG.md) and [GitHub releases](https://github.com/stevesherry123/load-optimizer-home-assistant/releases)

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Fix the new-install guide's missing recommendation policy and add executable
+  generic-appliance and Home Connect examples, with negative-price runs off.
+- Separate fresh Home Connect activation from legacy migration; document current
+  control-target limits, advisory EV inputs and common waiting states.
+- Add a small standard-card dashboard example and recommend custom copies outside
+  HACS-managed files. Add isolated real-HA onboarding and persistence checks.
+- Documentation/test changes only: no runtime, version or automatic opt-in changes.
+
 ## 1.5.7
 
 - Restrict learning import, recovery and orchestration handover actions to Home

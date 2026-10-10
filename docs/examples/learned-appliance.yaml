@@ -1,0 +1,10 @@
+- id: "1"
+  name: Washing Machine
+  power_sensor: sensor.washing_machine_power
+  energy_sensor: sensor.washing_machine_energy
+  program_policies:
+    - program: Default
+      classification: preferred
+      enabled: true
+      allow_normal_recommendation: true
+      allow_negative_price_run: false
