@@ -155,8 +155,12 @@ def _number(values, key, minimum, maximum, *, integer=False, field="instances_ya
         raise ConfigurationError(field, f"{label}{key}: use a {kind} from {minimum:g} to {maximum:g}.") from error
 
 
-def _entity(value, field, *, required=False, sensor=False):
+def _entity(value, field, *, required=False, sensor=False, multiple=False):
     if value in (None, "") and not required:
+        return
+    if multiple and isinstance(value, str):
+        for item in value.split(","):
+            _entity(item.strip(), field, required=True, sensor=sensor)
         return
     if not isinstance(value, str) or not ENTITY_ID.fullmatch(value.strip()):
         raise ConfigurationError(field, "Use complete entity IDs such as sensor.appliance_power.")
@@ -197,7 +201,7 @@ def validate_appliance_options(options: dict[str, Any]) -> ApplianceConfiguratio
     _number(options, "schedule_preference_weight_pence", 0, 10,
             field="schedule_preference_weight_pence")
     for key in ("tariff_entity", "green_window_entity", "blocked_window_entity"):
-        _entity(options.get(key), key)
+        _entity(options.get(key), key, multiple=key != "tariff_entity")
     tariffs = options.get("tariff_entities", "")
     if not isinstance(tariffs, (str, list)):
         raise ConfigurationError("tariff_entities", "Use comma-separated tariff entity IDs.")
@@ -221,7 +225,8 @@ def validate_appliance_options(options: dict[str, Any]) -> ApplianceConfiguratio
                     "schedule_earliest_start_entity", "schedule_latest_finish_entity",
                     "green_window_entity", "blocked_window_entity"):
             _entity(entry.get(key), "instances_yaml", required=key == "power_sensor",
-                    sensor=key in {"power_sensor", "energy_sensor"})
+                    sensor=key in {"power_sensor", "energy_sensor"},
+                    multiple=key in {"green_window_entity", "blocked_window_entity"})
         for key, (minimum, maximum, integer) in {
             "active_power_threshold": (0, 100_000, False), "finish_delay": (1, 3600, True),
             "learning_min_runtime_minutes": (0, 10_080, False), "learning_min_samples": (1, 10_000, True),

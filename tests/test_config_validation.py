@@ -33,6 +33,16 @@ class ConfigurationValidationTests(unittest.TestCase):
             options = {"instances_yaml": (ROOT / "docs/examples" / name).read_text()}
             self.assertEqual(validate_appliance_options(options).instances, instance_configs(options))
 
+    def test_existing_multiple_window_sources_remain_editable(self):
+        for key in ("green_window_entity", "blocked_window_entity"):
+            with self.subTest(key=key):
+                sources = "calendar.first,event.second"
+                self.assertEqual(self.check(**{key: sources}).instances[0][key], sources)
+                entry = {**self.appliance, key: sources}
+                self.assertEqual(self.check([entry]).instances[0][key], sources)
+                with self.assertRaises(ConfigurationError):
+                    self.check(**{key: "calendar.first,not-an-entity"})
+
     def test_validation_does_not_mutate_settings_or_enable_permissions(self):
         before = deepcopy(self.appliance)
         result = self.check()

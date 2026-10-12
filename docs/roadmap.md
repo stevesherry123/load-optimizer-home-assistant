@@ -6,14 +6,20 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- Review the repair-only `fix/runtime-data-safety` branch before any push, merge,
+  release or deployment. R1/R3 outage/no-run enforcement is implemented locally,
+  alongside the existing R2/R4 permission/configuration validation. Acceptance:
+  [runtime safety repairs](runtime-safety-repairs.md). Keep feature proposals and
+  R5's repeated negative-run beta promotion separately approved.
 - review the documentation-first onboarding branch and its isolated acceptance
   results before merging; include the guides in a separately approved release,
   without changing existing stable tags or promoting the tariff beta
 - follow up separately with guided appliance/policy editing,
   selectable control targets and generated dashboards; add privacy-safe screenshots,
   issue forms and an unfamiliar-user onboarding trial before broad promotion
-- first runtime onboarding slice is implemented locally on
-  `feature/onboarding-validation`: shared bounded parsing, pre-save validation and
+- first runtime onboarding slice was implemented on
+  `feature/onboarding-validation` and is retained in `fix/runtime-data-safety`:
+  shared bounded parsing, pre-save validation and
   a read-only source review. Guided editing and public/live acceptance remain
   separate; see [the development plan](onboarding-development-plan.md).
 - keep `e6ba6ca`'s repeated free/negative-price scheduling fix on
@@ -50,6 +56,13 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Implemented the approved runtime repairs locally, not in a published release:
+  missing power cannot finish/learn a capture; mandatory no-run source failures
+  block readiness and automatic execution, including saved plans and fallbacks.
+  Source recovery, multi-source editing, all-day calendar timezone, existing
+  learning and manual cooldown behavior have isolated regression coverage.
+  Main, versions and the live installation are unchanged.
 
 - Prepared documentation-first onboarding on `docs/onboarding-clean-install`:
   explicit safe programme policies, separate Home Connect activation and advisory

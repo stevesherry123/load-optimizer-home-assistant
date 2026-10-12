@@ -18,6 +18,15 @@
   legacy wrapped options, zero-prefixed IDs and unquoted overnight times.
 - Defer appliance-source saves during known active captures or queued starts;
   never cancel a cycle or request just to apply an edit.
+- Do not treat missing, invalid or non-finite power as a low-power completion.
+  Retain active captures without adding missing samples, expose source health,
+  and exclude incomplete profiles from learning after a genuine end signal.
+- Enforce configured no-run source availability in recommendation/readiness
+  signals and fresh automatic command-time checks, including fallback commands.
+  Distinguish valid empty feeds from failed reads and cover the full cycle.
+- Preserve multi-source window configuration through validation and interpret
+  all-day no-run calendars in Home Assistant's timezone. Manual cooldown
+  overrides and existing appliance thresholds are unchanged.
 - Unreleased development only; no version bump, deployment or new control opt-in.
 
 ## 1.5.7
