@@ -1,4 +1,25 @@
-# Optional dashboard
+# Optional Dashboard
+
+## Start With One Appliance
+
+For the [new-install guide](getting-started.md), start with
+[`examples/one-appliance-dashboard.yaml`](examples/one-appliance-dashboard.yaml).
+It contains only learning and recommendation sensors for appliance ID `1`:
+no Volvo entities, additional appliances, custom cards or physical-control buttons.
+Change the `load_optimizer_1_` prefix if using a different appliance ID.
+
+Create an empty dashboard in **Settings > Dashboards**, open it in edit mode,
+then use its **Raw configuration editor** to paste the example's contents. Use
+a new dashboard, not the raw editor of an existing dashboard you want to keep.
+The dashboard is stored in your HA configuration and HACS will not overwrite it.
+Its contents are YAML even though this is called a storage-mode dashboard.
+
+Before learning a complete cycle, cost and programme values can be unknown or
+waiting. That is different from an entity-not-found error. See
+[troubleshooting](troubleshooting.md). This small dashboard intentionally has no
+price graph; the richer chart example below is a separate optional installation.
+
+## Larger Dashboard Template
 
 The HACS package includes a standard Lovelace YAML dashboard at:
 
@@ -6,10 +27,14 @@ The HACS package includes a standard Lovelace YAML dashboard at:
 /config/custom_components/load_optimizer/dashboard.yaml
 ```
 
-Home Assistant does not let a custom integration register a user dashboard
-without changing the user's Lovelace configuration. The integration therefore
-ships and updates the dashboard file, while the user opts in by adding it to the
-`lovelace` section of `configuration.yaml`:
+The integration does not automatically add a sidebar dashboard. For a YAML-mode
+dashboard, first place your customised copy outside `custom_components/`, for
+example at `/config/dashboards/load_optimizer.yaml`. HACS replaces files under
+`custom_components/load_optimizer/` during updates; do not edit the packaged
+file in place. Create the destination directory if needed.
+
+Merge the following into the existing `lovelace:` section of `configuration.yaml`,
+without adding duplicate top-level keys or discarding other dashboard entries:
 
 ```yaml
 lovelace:
@@ -20,7 +45,7 @@ lovelace:
       title: Load Optimizer
       icon: mdi:home-lightning-bolt-outline
       show_in_sidebar: true
-      filename: custom_components/load_optimizer/dashboard.yaml
+      filename: dashboards/load_optimizer.yaml
 ```
 
 The dashboard is a template, not automatic entity discovery. It uses only
@@ -29,9 +54,11 @@ appliance IDs 1, 2 and 3 and a Volvo-titled EV entry. Remove views/cards for loa
 you do not have and replace EV entity IDs with those shown on your EV device.
 Optional diagnostic entities may be disabled or unpublished in your settings.
 
-For customisation, use your own copy outside `custom_components/` and change
-the `filename` above. HACS replaces the packaged template during updates. The
-integration never deletes or replaces your storage-mode dashboards.
+Check configuration before restarting HA to register a new YAML-mode dashboard.
+Alternatively, paste the template into a new storage-mode dashboard's raw editor
+as above. Neither method deletes or replaces your existing dashboards. Your copy
+does not automatically acquire later template improvements; review and adopt
+those separately rather than overwriting local customisations.
 
 ## Automatic Scheduling Explanation
 

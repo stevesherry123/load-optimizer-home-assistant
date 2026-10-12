@@ -1,10 +1,15 @@
 # Native orchestration migration
 
+This page is only for installations with the old dishwasher YAML package.
+For a fresh installation, use the [Home Connect control guide](dishwasher-control.md),
+including the explicit activation step. Do not install a retired package just
+to activate a new controller.
+
 The dishwasher YAML package must remain installed during the first migration
 phase. The integration captures its helper values and automation state before
 any native entity or controller takes ownership.
 
-1. Install a migration-capable prerelease.
+1. Install a supported release with native orchestration migration actions.
 2. Call `load_optimizer.prepare_orchestration_migration`.
 3. Confirm `sensor.load_optimizer_orchestration_migration` is `prepared`.
 4. Keep all legacy automations enabled while native orchestration reports

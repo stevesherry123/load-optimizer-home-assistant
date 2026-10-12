@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
@@ -93,6 +93,11 @@ class NativeOrchestrator:
         self._remove_listeners: list[Callable[[], None]] = []
         self._execution_task: asyncio.Task | None = None
         self._update_callback: Callable[[dict[str, Any]], None] | None = None
+        self._automatic_preflight: Callable[[dict[str, Any]], Awaitable[str | None]] | None = None
+
+    def set_automatic_preflight(self, check: Callable[[dict[str, Any]], Awaitable[str | None]]) -> None:
+        """Use the source adapter for fresh automatic command-time checks."""
+        self._automatic_preflight = check
 
     def set_update_callback(
         self,
@@ -352,6 +357,7 @@ class NativeOrchestrator:
             "start": start,
             "finish": finish,
             "explicit_program_override": override,
+            "automatic": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         self.state["execution_status"] = "queued"
@@ -465,6 +471,7 @@ class NativeOrchestrator:
                     "start": recommendation.attributes.get("start"),
                     "finish": recommendation.attributes.get("finish"),
                     "explicit_program_override": False,
+                    "automatic": True,
                     "created_at": now.isoformat(),
                 }
                 self.state["execution_status"] = "queued"
@@ -493,6 +500,8 @@ class NativeOrchestrator:
             return {"action": "wait", "reason": "request_already_pending"}
         if self._state("sensor.load_optimizer_1_cycle_state") != "idle":
             return {"action": "wait", "reason": "appliance_not_idle"}
+        if reason := self._automatic_source_block():
+            return {"action": "wait", "reason": reason}
         negative = self._recommendation("negative_price")
         if (
             self.state.get("auto_negative_price_enabled")
@@ -529,14 +538,7 @@ class NativeOrchestrator:
     async def _async_execute(self, request: dict[str, Any]) -> None:
         mode = request.get("mode")
         program = request.get("program")
-        reason = self._safety_block(
-            mode,
-            program,
-            explicit_override=bool(request.get("explicit_program_override")),
-        )
-        if reason:
-            self.state["request"] = None
-            await self._async_outcome("blocked", mode, program, reason, reason.replace("_", " "))
+        if not await self._async_start_allowed(request):
             return
         start = self._parse_datetime(request.get("start"))
         if start and datetime.now(timezone.utc) > start + timedelta(minutes=30):
@@ -576,6 +578,8 @@ class NativeOrchestrator:
                 ignore_error=True,
             )
             await asyncio.sleep(15)
+            if not await self._async_start_allowed(request, recheck=True):
+                return
             await self._async_call(
                 "select",
                 "select_option",
@@ -583,6 +587,8 @@ class NativeOrchestrator:
                 ignore_error=True,
             )
             await asyncio.sleep(5)
+            if not await self._async_start_allowed(request, recheck=True):
+                return
             await self._async_call(
                 "button",
                 "press",
@@ -591,6 +597,8 @@ class NativeOrchestrator:
             )
             await asyncio.sleep(20)
             if not self._is_running():
+                if not await self._async_start_allowed(request, recheck=True):
+                    return
                 await self._async_call(
                     "home_connect_alt",
                     "start_program",
@@ -603,6 +611,8 @@ class NativeOrchestrator:
                 )
             await asyncio.sleep(20)
             if not self._is_running():
+                if not await self._async_start_allowed(request, recheck=True):
+                    return
                 await self._async_call(
                     "home_connect",
                     "start_program",
@@ -642,6 +652,47 @@ class NativeOrchestrator:
                 "not_running_after_start",
                 f"Dishwasher program {program} did not enter a running state.",
             )
+
+    async def _async_start_allowed(self, request: dict[str, Any], *, recheck: bool = False) -> bool:
+        mode, program = request.get("mode"), request.get("program")
+        automatic = request.get("automatic")
+        if not isinstance(automatic, bool):
+            # Persisted pre-upgrade negative-price requests did not record origin.
+            automatic = mode in {"automatic", "negative_price"}
+        if recheck and not automatic:
+            return True
+        reason = self._safety_block(mode, program, explicit_override=bool(request.get("explicit_program_override")))
+        if not reason and automatic:
+            reason = self._automatic_source_block()
+            if not reason:
+                if self._automatic_preflight is None:
+                    reason = "automatic_preflight_unavailable"
+                else:
+                    try:
+                        reason = await self._automatic_preflight(request)
+                    except Exception as error:
+                        LOGGER.warning("Automatic source preflight failed (%s)", type(error).__name__)
+                        reason = "automatic_preflight_unavailable"
+            if not reason:
+                reason = self._safety_block(mode, program, explicit_override=False)
+        if reason:
+            self.state["request"] = None
+            await self._async_outcome("blocked", mode, program, reason, reason.replace("_", " "))
+            return False
+        return True
+
+    def _automatic_source_block(self) -> str | None:
+        status = self.hass.states.get("sensor.load_optimizer_1_status")
+        if status and status.state == "source_unavailable":
+            return "power_source_unavailable"
+        cost = self.hass.states.get("sensor.load_optimizer_1_cost_status")
+        attributes = cost.attributes if cost else {}
+        if attributes.get("blocked_window_source_ready") is False:
+            return "blocked_window_source_unavailable"
+        for entity in str(attributes.get("blocked_window_entity") or "").split(","):
+            if entity.strip() and self._state(entity.strip()).strip().casefold() in UNKNOWN_STATES:
+                return "blocked_window_source_unavailable"
+        return None
 
     def _safety_block(
         self,
@@ -921,6 +972,8 @@ class NativeOrchestrator:
         recommendation = self._recommendation(mode)
         blockers: list[str] = []
         warnings: list[str] = []
+        if reason := self._automatic_source_block():
+            blockers.append(reason)
         if self._state("sensor.load_optimizer_1_status") != "ready":
             blockers.append("optimizer_not_ready")
         if recommendation is None or recommendation.attributes.get("status") != "ready":
@@ -981,6 +1034,8 @@ class NativeOrchestrator:
         decision = self._automatic_decision(now)
         reason = decision.get("reason", "automatic_request_available")
         messages = {
+            "power_source_unavailable": "Automatic starts are paused until valid appliance power readings return.",
+            "blocked_window_source_unavailable": "Automatic starts are paused because a configured no-run source cannot be read. Restore the source or explicitly remove it from the configuration.",
             "automatic_overnight_mode_off": "Automatic overnight mode is off.",
             "door_not_opened_since_last_cycle": "Waiting for the dishwasher to be loaded: the door has not opened since the last wash.",
             "overnight_recommendation_not_ready": "Waiting for a fully priced, eligible overnight programme.",

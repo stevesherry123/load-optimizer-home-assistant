@@ -8,11 +8,13 @@ import math
 import os
 import textwrap
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from .config_validation import ConfigurationError, appliance_document
 
 try:
     from .costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
@@ -329,10 +331,11 @@ def _state_window_from_values(
     range_start: datetime,
     range_end: datetime,
     summary: object = None,
+    naive_timezone: str | timezone | ZoneInfo = timezone.utc,
 ) -> dict | None:
-    window_start = datetime_from_value(start_value)
-    window_end = datetime_from_value(end_value)
-    if not window_start or not window_end:
+    window_start = datetime_from_value(start_value, naive_timezone=naive_timezone)
+    window_end = datetime_from_value(end_value, naive_timezone=naive_timezone)
+    if not window_start or not window_end or window_end <= window_start:
         return None
     if window_end <= range_start or window_start >= range_end:
         return None
@@ -343,17 +346,27 @@ def _state_window_from_values(
     }
 
 
-def _state_windows_from_event_lists(attributes: dict, *, start: datetime, end: datetime) -> tuple[list[dict], dict]:
+def _state_windows_from_event_lists(attributes: dict, *, start: datetime, end: datetime,
+                                   naive_timezone: str | timezone | ZoneInfo = timezone.utc) -> tuple[list[dict], dict]:
     """Extract no-run or green windows from common event-list attributes."""
     windows = []
     list_counts = {}
+    invalid_events = 0
     for key in WINDOW_EVENT_KEYS:
         items = attributes.get(key)
         if not isinstance(items, list):
+            if key in attributes:
+                invalid_events += 1
             continue
         list_counts[key] = len(items)
         for item in items:
             if not isinstance(item, dict):
+                invalid_events += 1
+                continue
+            item_start = datetime_from_value(item.get("start") or item.get("start_time") or item.get("from"), naive_timezone=naive_timezone)
+            item_end = datetime_from_value(item.get("end") or item.get("end_time") or item.get("to"), naive_timezone=naive_timezone)
+            if not item_start or not item_end or item_end <= item_start:
+                invalid_events += 1
                 continue
             window = _state_window_from_values(
                 start_value=item.get("start") or item.get("start_time") or item.get("from"),
@@ -361,6 +374,7 @@ def _state_windows_from_event_lists(attributes: dict, *, start: datetime, end: d
                 range_start=start,
                 range_end=end,
                 summary=item.get("summary") or item.get("message") or item.get("name") or item.get("id"),
+                naive_timezone=naive_timezone,
             )
             if window:
                 metadata = {
@@ -378,7 +392,7 @@ def _state_windows_from_event_lists(attributes: dict, *, start: datetime, end: d
                 if metadata:
                     window["metadata"] = metadata
                 windows.append(window)
-    return windows, {"event_list_counts": list_counts}
+    return windows, {"event_list_counts": list_counts, "invalid_events": invalid_events}
 
 
 def _deduplicate_windows(windows: list[dict]) -> list[dict]:
@@ -399,6 +413,10 @@ def green_windows_from_entity(
     *,
     start: datetime,
     end: datetime,
+    strict: bool = False,
+    state_reader: Callable[[str], dict | None] | None = None,
+    calendar_reader: Callable[[str], list | None] | None = None,
+    naive_timezone: str | timezone | ZoneInfo = timezone.utc,
 ) -> tuple[list[dict], dict | None]:
     """Read provider-neutral green windows from a calendar or state entity."""
     if not entity_id:
@@ -408,7 +426,11 @@ def green_windows_from_entity(
         all_windows = []
         diagnostics = []
         for item_id in entity_ids:
-            windows, diagnostic = green_windows_from_entity(token, item_id, start=start, end=end)
+            windows, diagnostic = green_windows_from_entity(
+                token, item_id, start=start, end=end, strict=strict,
+                state_reader=state_reader, calendar_reader=calendar_reader,
+                naive_timezone=naive_timezone,
+            )
             all_windows.extend(windows)
             if diagnostic:
                 diagnostics.append(diagnostic)
@@ -420,7 +442,7 @@ def green_windows_from_entity(
             "entities": diagnostics,
             "windows": len(windows),
         }
-    entity = source_state(token, entity_id)
+    entity = state_reader(entity_id) if state_reader else source_state(token, entity_id)
     diagnostic = {
         "entity_id": entity_id,
         "readable": entity is not None,
@@ -430,6 +452,9 @@ def green_windows_from_entity(
     if entity is None:
         diagnostic["reason"] = "entity_unavailable"
         return [], diagnostic
+    if strict and str(entity.get("state") or "").strip().casefold() in {"", "none", "unknown", "unavailable"}:
+        diagnostic.update(readable=False, reason="entity_unavailable")
+        return [], diagnostic
 
     windows = []
     if str(entity_id).startswith("calendar."):
@@ -437,13 +462,20 @@ def green_windows_from_entity(
             "start": start.astimezone(timezone.utc).isoformat(),
             "end": end.astimezone(timezone.utc).isoformat(),
         })
-        events = api_request(token, f"/calendars/{quote(entity_id, safe='.')}?{query}")
+        events = (calendar_reader(entity_id) if calendar_reader else
+                  api_request(token, f"/calendars/{quote(entity_id, safe='.')}?{query}"))
         if isinstance(events, list):
             diagnostic["source"] = "calendar_events"
             diagnostic["events"] = len(events)
             for event in events:
-                event_start = datetime_from_value(event.get("start"))
-                event_end = datetime_from_value(event.get("end"))
+                if not isinstance(event, dict):
+                    diagnostic.update(readable=not strict, reason="invalid_calendar_event")
+                    continue
+                event_start = datetime_from_value(event.get("start"), naive_timezone=naive_timezone)
+                event_end = datetime_from_value(event.get("end"), naive_timezone=naive_timezone)
+                if not event_start or not event_end or event_end <= event_start:
+                    diagnostic.update(readable=not strict, reason="invalid_calendar_event")
+                    continue
                 if event_start and event_end and event_end > start and event_start < end:
                     windows.append({
                         "start": max(event_start, start),
@@ -452,10 +484,15 @@ def green_windows_from_entity(
                     })
         else:
             diagnostic["calendar_events_readable"] = False
+            if strict:
+                diagnostic.update(readable=False, reason="calendar_events_unavailable")
 
     attributes = entity.get("attributes", {})
-    state_start = datetime_from_value(attributes.get("start_time") or attributes.get("start") or attributes.get("from"))
-    state_end = datetime_from_value(attributes.get("end_time") or attributes.get("end") or attributes.get("to"))
+    if not isinstance(attributes, dict):
+        diagnostic.update(readable=False, reason="invalid_window_attributes")
+        return [], diagnostic
+    state_start = datetime_from_value(attributes.get("start_time") or attributes.get("start") or attributes.get("from"), naive_timezone=naive_timezone)
+    state_end = datetime_from_value(attributes.get("end_time") or attributes.get("end") or attributes.get("to"), naive_timezone=naive_timezone)
     if state_start and state_end and state_end > start and state_start < end:
         windows.append({
             "start": max(state_start, start),
@@ -463,9 +500,18 @@ def green_windows_from_entity(
             "summary": attributes.get("friendly_name") or entity_id,
         })
 
-    event_windows, event_diagnostic = _state_windows_from_event_lists(attributes, start=start, end=end)
+    event_windows, event_diagnostic = _state_windows_from_event_lists(attributes, start=start, end=end, naive_timezone=naive_timezone)
     windows.extend(event_windows)
     diagnostic.update(event_diagnostic)
+    if strict:
+        has_state_window = any(attributes.get(key) not in (None, "") for key in ("start_time", "start", "from", "end_time", "end", "to"))
+        valid_state_window = bool(state_start and state_end and state_end > state_start)
+        if event_diagnostic["invalid_events"] or has_state_window and not valid_state_window:
+            diagnostic.update(readable=False, reason="invalid_window_events")
+        elif not str(entity_id).startswith("calendar.") and not (
+            event_diagnostic["event_list_counts"] or valid_state_window
+        ):
+            diagnostic.update(readable=False, reason="window_events_missing")
 
     windows = _deduplicate_windows(windows)
     diagnostic["windows"] = len(windows)
@@ -479,9 +525,16 @@ def blocked_windows_from_entity(
     *,
     start: datetime,
     end: datetime,
+    state_reader: Callable[[str], dict | None] | None = None,
+    calendar_reader: Callable[[str], list | None] | None = None,
+    naive_timezone: str | timezone | ZoneInfo = timezone.utc,
 ) -> tuple[list[dict], dict | None]:
     """Read provider-neutral no-run windows from a calendar or state entity."""
-    return green_windows_from_entity(token, entity_id, start=start, end=end)
+    return green_windows_from_entity(
+        token, entity_id, start=start, end=end, strict=True,
+        state_reader=state_reader, calendar_reader=calendar_reader,
+        naive_timezone=naive_timezone,
+    )
 
 
 def tariff_state_from_entity(token: str, entity_id: str) -> dict | None:
@@ -535,8 +588,12 @@ def tariff_entity_diagnostic(state: dict | None) -> dict:
 
 def numeric_state(entity: dict | None) -> float | None:
     try:
-        return float(entity["state"]) if entity else None
-    except (KeyError, TypeError, ValueError):
+        value = entity["state"] if entity else None
+        if isinstance(value, bool):
+            return None
+        number = float(value)
+        return number if math.isfinite(number) else None
+    except (KeyError, TypeError, ValueError, OverflowError):
         return None
 
 
@@ -646,6 +703,8 @@ def stat_summary(model: dict, name: str, digits: int) -> tuple[float | None, flo
 
 
 def cycle_quality_issue(config: dict, cycle: dict) -> str | None:
+    if cycle.get("power_source_gap"):
+        return "power_source_gap_during_cycle"
     min_runtime = float(config.get("learning_min_runtime_minutes", 5))
     min_samples = int(config.get("learning_min_samples", 3))
     min_energy = float(config.get("learning_min_energy_kwh", 0.001))
@@ -786,6 +845,27 @@ def program_summary(program: str, model: dict) -> dict:
         "representative_profile_w": model.get("representative_profile_w", []),
         "recent_cycles": model.get("recent_cycles", []),
     }
+
+
+def planning_window_end(config: dict, instance: dict, now: datetime) -> datetime:
+    """Cover every candidate's finish without extending its allowed start range."""
+    reference = now.astimezone(timezone.utc)
+    horizons = [float(config.get("cost_search_hours", 24)),
+                float(config.get("cost_forecast_hours", 12))]
+    if any(not math.isfinite(hours) or not 0 <= hours <= 72 for hours in horizons):
+        raise ValueError("Planning horizon must be between 0 and 72 hours")
+    runtimes = [stat_summary(model, "runtime_minutes", 1)[0] or 0
+                for model in instance.get("program_models", {}).values()]
+    # A finishing capture can teach a longer model after calendars are fetched.
+    if started := datetime_from_value(instance.get("cycle_start")):
+        elapsed = max(0, (reference - started).total_seconds() / 60)
+        runtimes.append(math.ceil(elapsed * 10) / 10)
+    if any(not math.isfinite(runtime) or runtime < 0 for runtime in runtimes):
+        raise ValueError("Learned cycle duration must be finite and non-negative")
+    try:
+        return reference + timedelta(hours=max(horizons), minutes=max(runtimes, default=0))
+    except OverflowError as error:
+        raise ValueError("Learned cycle duration exceeds the planning date range") from error
 
 
 def bounded_cost_breakdown(rows: object) -> tuple[list[dict], int, bool]:
@@ -970,10 +1050,10 @@ def normalise_program_policy(raw: dict) -> dict:
     policy.update({
         "configured": True,
         "classification": classification,
-        "enabled": bool(raw.get("enabled", policy["enabled"])),
+        "enabled": bool_option(raw.get("enabled", policy["enabled"])),
         "preference_rank": max(1, min(100, int(raw.get("preference_rank", policy["preference_rank"])))),
-        "allow_normal_recommendation": bool(raw.get("allow_normal_recommendation", policy["allow_normal_recommendation"])),
-        "allow_negative_price_run": bool(raw.get("allow_negative_price_run", policy["allow_negative_price_run"])),
+        "allow_normal_recommendation": bool_option(raw.get("allow_normal_recommendation", policy["allow_normal_recommendation"])),
+        "allow_negative_price_run": bool_option(raw.get("allow_negative_price_run", policy["allow_negative_price_run"])),
         "minimum_days_between_runs": max(0, int(raw.get("minimum_days_between_runs", policy["minimum_days_between_runs"]))),
         "minimum_hours_between_runs": max(0, int(raw.get(
             "minimum_hours_between_runs",
@@ -1218,68 +1298,14 @@ def normalise_instances_yaml(raw: object) -> str:
 
 
 def parse_instances_yaml(raw: object) -> list[dict]:
-    if isinstance(raw, list):
-        return [entry for entry in raw if isinstance(entry, dict)]
-    raw = normalise_instances_yaml(raw)
-    if not raw:
+    if raw in (None, ""):
         return []
     try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            parsed = parsed.get("instances", [])
-        if isinstance(parsed, list):
-            return [entry for entry in parsed if isinstance(entry, dict)]
-    except json.JSONDecodeError:
-        pass
-
-    lines = [line.rstrip() for line in raw.splitlines() if line.strip() and not line.lstrip().startswith("#")]
-    if lines and lines[0].strip() == "instances:":
-        lines = [line[2:] if line.startswith("  ") else line for line in lines[1:]]
-
-    instances = []
-    current = None
-    current_policy = None
-    in_policies = False
-    for line in lines:
-        indent = len(line) - len(line.lstrip(" "))
-        stripped = line.strip()
-        if indent == 0 and stripped.startswith("- "):
-            current = {}
-            instances.append(current)
-            current_policy = None
-            in_policies = False
-            item = stripped[2:].strip()
-            if item:
-                parsed = parse_key_value(item)
-                if parsed:
-                    current[parsed[0]] = parsed[1]
-            continue
-        if current is None:
-            continue
-        if stripped == "program_policies:":
-            current.setdefault("program_policies", [])
-            current_policy = None
-            in_policies = True
-            continue
-        if in_policies and stripped.startswith("- "):
-            current_policy = {}
-            current.setdefault("program_policies", []).append(current_policy)
-            item = stripped[2:].strip()
-            if item:
-                parsed = parse_key_value(item)
-                if parsed:
-                    current_policy[parsed[0]] = parsed[1]
-            continue
-        parsed = parse_key_value(stripped)
-        if not parsed:
-            continue
-        key, value = parsed
-        if in_policies and current_policy is not None and indent >= 4:
-            current_policy[key] = value
-        else:
-            in_policies = False
-            current[key] = value
-    return [entry for entry in instances if entry.get("id") or entry.get("name") or entry.get("power_sensor")]
+        instances, _ = appliance_document(raw)
+        return instances
+    except ConfigurationError:
+        LOGGER.warning("Invalid appliance configuration; correct it through the integration settings")
+        return []
 
 
 def entity_list(raw: object) -> list[str]:
@@ -1296,7 +1322,10 @@ def bool_option(value: object, default: bool = False) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
-        return bool(value)
+        try:
+            return math.isfinite(value) and bool(value)
+        except OverflowError:
+            return False
     return str(value).strip().lower() in {"1", "true", "yes", "on", "enable", "enabled"}
 
 
@@ -1479,14 +1508,20 @@ def schedule_advice(
     cycle_running: bool = False,
     active_cycle_start: str | None = None,
 ) -> dict:
-    if result.get("status") != "ready" or not result.get("start"):
+    blocked_source_unavailable = result.get("blocked_window_source_ready") is False
+    if blocked_source_unavailable or result.get("status") != "ready" or not result.get("start"):
         return {
-            "status": "cycle_running" if cycle_running else result.get("status", "not_ready"),
+            "status": ("cycle_running" if cycle_running else "blocked_window_unavailable"
+                       if blocked_source_unavailable else result.get("status", "not_ready")),
             "program": "none",
             "recommended_start": "unknown",
             "good_to_start": False,
             "automation_ready": False,
-            "reason": "cycle_already_running" if cycle_running else result.get("reason") or result.get("status", "not_ready"),
+            "reason": ("cycle_already_running" if cycle_running else "blocked_window_source_unavailable"
+                       if blocked_source_unavailable else result.get("reason") or result.get("status", "not_ready")),
+            "blocked_window_source_ready": not blocked_source_unavailable,
+            "automatic_block_reason": result.get("automatic_block_reason"),
+            "confidence_threshold": int(config.get("schedule_confidence_threshold", 20)),
             "cycle_running": cycle_running,
             "blocked_by_active_capture": cycle_running,
             "active_cycle_start": active_cycle_start,
@@ -1552,6 +1587,8 @@ def schedule_advice(
         "blocked_window_entity": result.get("blocked_window_entity"),
         "blocked_window_count": result.get("blocked_window_count", 0),
         "blocked_window_candidate_count": result.get("blocked_window_candidate_count", 0),
+        "blocked_window_source_ready": result.get("blocked_window_source_ready", True),
+        "automatic_block_reason": result.get("automatic_block_reason"),
         "constraints": {
             "earliest_allowed_start": result.get("earliest_allowed_start"),
             "latest_allowed_finish": result.get("latest_allowed_finish"),
@@ -1599,6 +1636,8 @@ def publish_cost_entities(
         "blocked_window_entity": result.get("blocked_window_entity"),
         "blocked_window_count": result.get("blocked_window_count", 0),
         "blocked_window_candidate_count": result.get("blocked_window_candidate_count", 0),
+        "blocked_window_source_ready": result.get("blocked_window_source_ready", True),
+        "automatic_block_reason": result.get("automatic_block_reason"),
         "special_price_window": result.get("special_price_window"),
         "operational_overnight_start": result.get("operational_overnight_start"),
         "operational_overnight_end": result.get("operational_overnight_end"),
@@ -1773,6 +1812,11 @@ def publish_cost_entities(
         recommendation_status = recommendation.get("status", "not_ready")
         recommendation_reason = recommendation.get("reason")
         recommendation_ready_to_start = recommendation.get("ready_to_start", False)
+        if result.get("blocked_window_source_ready") is False:
+            recommendation_ready = False
+            recommendation_status = "blocked_window_unavailable"
+            recommendation_reason = "blocked_window_source_unavailable"
+            recommendation_ready_to_start = False
         window_active = False
         try:
             start_at = datetime.fromisoformat(str(recommendation.get("start")).replace("Z", "+00:00"))
@@ -1781,6 +1825,8 @@ def publish_cost_entities(
             window_active = start_at <= current_at <= finish_at
         except (TypeError, ValueError):
             pass
+        if result.get("blocked_window_source_ready") is False:
+            window_active = False
         if cycle_running and recommendation_ready:
             recommendation_status = "cycle_running"
             recommendation_reason = "cycle_already_running"
@@ -1829,7 +1875,7 @@ def publish_cost_entities(
             "is_overnight_start": recommendation.get("is_overnight_start"),
             "is_daytime_start": recommendation.get("is_daytime_start"),
             "decision_policy": result.get("decision_policy"),
-            "program_options": recommendation.get("program_options", []),
+            "program_options": [] if result.get("blocked_window_source_ready") is False else recommendation.get("program_options", []),
             "display_program_options": recommendation.get(
                 "display_program_options",
                 recommendation.get("program_options", []),
@@ -1889,6 +1935,8 @@ def publish_schedule_entities(token: str, prefix: str, name: str, advice: dict) 
         "seconds_until_start": advice.get("seconds_until_start"),
         "good_to_start": advice.get("good_to_start"),
         "automation_ready": advice.get("automation_ready"),
+        "blocked_window_source_ready": advice.get("blocked_window_source_ready", True),
+        "automatic_block_reason": advice.get("automatic_block_reason"),
         "reason": advice.get("reason"),
         "confidence": advice.get("confidence"),
         "confidence_threshold": advice.get("confidence_threshold"),
@@ -2215,6 +2263,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     device_state_entity = source_state(token, config["state_sensor"])
     power = numeric_state(power_entity)
     energy = numeric_state(energy_entity)
+    if power is not None and power < 0:
+        power = None
     operation_state_finished = operation_state_indicates_cycle_complete(device_state_entity)
     publish_entity(token, f"{prefix}_power", power if power is not None else "unavailable", {
         "friendly_name": f"{name} Power", "device_class": "power", "unit_of_measurement": "W",
@@ -2229,6 +2279,16 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "friendly_name": f"{name} Program", "icon": "mdi:format-list-bulleted", "source_entity": config["program_sensor"] or None,
     })
 
+    if power is None and instance.get("cycle_start"):
+        if not instance.get("capture_power_gap"):
+            EVENTS.warning("LO-CYCLE-SOURCE-GAP", "Power readings missing; capture retained but excluded from learning", instance_id=instance_id)
+        instance["capture_power_gap"] = True
+        instance.setdefault("power_source_missing_since", now.isoformat())
+        instance["below_threshold"] = 0
+        instance.pop("finish_candidate", None)
+    elif power is not None:
+        instance.pop("power_source_missing_since", None)
+
     active = power is not None and power >= config["active_power_threshold"]
     if active and not operation_state_finished:
         if not instance.get("cycle_start"):
@@ -2240,9 +2300,10 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         instance["peak_power"] = max(float(instance.get("peak_power", 0)), power)
         instance["below_threshold"] = 0
         instance.pop("finish_candidate", None)
-    elif instance.get("cycle_start"):
+    elif instance.get("cycle_start") and (power is not None or operation_state_finished):
         start = datetime.fromisoformat(instance["cycle_start"])
-        instance.setdefault("profile", []).append(profile_sample(start, now, power, energy))
+        if power is not None:
+            instance.setdefault("profile", []).append(profile_sample(start, now, power, energy))
         instance["samples"] = len(instance["profile"])
         instance["below_threshold"] = (
             config["finish_delay"] if operation_state_finished
@@ -2259,17 +2320,24 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
             finish = datetime.fromisoformat(finish_candidate["time"])
             finish_energy = finish_candidate.get("energy")
             completed_profile = instance["profile"][:finish_candidate["profile_length"]]
-            profile_energy = profile_energy_kwh(completed_profile)
+            profile_energy = (
+                None if instance.get("capture_power_gap") else profile_energy_kwh(completed_profile)
+            )
             sensor_energy = (
                 round(max(0.0, finish_energy - instance["start_energy"]), 4)
                 if finish_energy is not None and instance.get("start_energy") is not None
                 else None
             )
+            energy_kwh = profile_energy if profile_energy is not None else sensor_energy
+            energy_source = "power_profile" if profile_energy is not None else "energy_sensor_delta"
+            if instance.get("capture_power_gap"):
+                energy_kwh, energy_source = None, "incomplete_power_profile"
             last = {
                 "program": instance.get("program") or program,
                 "runtime_minutes": round((finish - start).total_seconds() / 60, 1),
-                "energy_kwh": profile_energy if profile_energy is not None else sensor_energy,
-                "energy_source": "power_profile" if profile_energy is not None else "energy_sensor_delta",
+                "energy_kwh": energy_kwh,
+                "energy_source": energy_source,
+                "power_source_gap": bool(instance.get("capture_power_gap")),
                 "energy_sensor_delta_kwh": sensor_energy,
                 "peak_power": instance.get("peak_power", 0),
                 "sample_count": len(completed_profile),
@@ -2305,12 +2373,26 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 update_program_model(instance, last)
                 instance["runs"] = int(instance.get("runs", 0)) + 1
                 EVENTS.info("LO-CYCLE-COMPLETE", "Cycle learned successfully", instance_id=instance_id, program=last.get("program"), runtime_minutes=last.get("runtime_minutes"), energy_kwh=last.get("energy_kwh"), total_runs=instance["runs"])
-            for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold", "finish_candidate", "program", "capture_interrupted", "capture_interrupted_at"):
+            for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold", "finish_candidate", "program", "capture_interrupted", "capture_interrupted_at", "capture_power_gap", "power_source_missing_since"):
                 instance.pop(key, None)
     if instance.get("cycle_start") and program not in ("unknown", "unavailable", ""):
         instance["program"] = program
 
     cycle_state = "running" if instance.get("cycle_start") else "idle"
+    missing_since = datetime_from_value(instance.get("power_source_missing_since"))
+    outage_minutes = round((now - missing_since).total_seconds() / 60, 1) if missing_since else None
+    publish_entity(token, f"{prefix}_status", (
+        "configuration_required" if not configured else "source_unavailable" if power is None
+        else "capturing" if instance.get("cycle_start") else "ready"
+    ), {
+        "friendly_name": f"{name} Optimizer Status", "icon": "mdi:progress-wrench",
+        "power_sensor": config["power_sensor"] or None, "energy_sensor": config["energy_sensor"] or None,
+        "health_status": "configuration_required" if not configured else "power_source_unavailable" if power is None else "configured",
+        "cycle_state": cycle_state,
+        "capture_learning_excluded": bool(instance.get("capture_power_gap")),
+        "power_source_outage_minutes": outage_minutes,
+        "attention_required": outage_minutes is not None and outage_minutes >= 30,
+    })
     publish_entity(token, f"{prefix}_cycle_state", cycle_state, {
         "friendly_name": f"{name} Cycle State", "icon": "mdi:dishwasher" if "dishwasher" in name.lower() else "mdi:lightning-bolt",
         "source_state": device_state_entity["state"] if device_state_entity else None,
@@ -2374,6 +2456,12 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "tariff_entities": tariff_entities,
         "special_price_window": manual_window_public,
     }
+    blocked_window_entity = config.get("blocked_window_entity", "")
+    window_end = planning_window_end(config, instance, now)
+    blocked_windows, blocked_window_diagnostic = blocked_windows_from_entity(
+        token, blocked_window_entity, start=now.astimezone(timezone.utc), end=window_end,
+        naive_timezone=config.get("window_timezone", config.get("tariff_timezone", "Europe/London")),
+    ) if blocked_window_entity else ([], None)
     if tariff_entities:
         earliest_start_entity = config.get("schedule_earliest_start_entity")
         latest_finish_entity = config.get("schedule_latest_finish_entity")
@@ -2442,23 +2530,12 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     else None
                 )
                 green_window_entity = config.get("green_window_entity", "")
-                blocked_window_entity = config.get("blocked_window_entity", "")
-                window_end = now.astimezone(timezone.utc) + timedelta(hours=max(
-                    config["cost_search_hours"],
-                    config.get("cost_forecast_hours", 12),
-                ))
                 green_windows, green_window_diagnostic = green_windows_from_entity(
                     token,
                     green_window_entity,
                     start=now.astimezone(timezone.utc),
                     end=window_end,
                 ) if green_window_entity else ([], None)
-                blocked_windows, blocked_window_diagnostic = blocked_windows_from_entity(
-                    token,
-                    blocked_window_entity,
-                    start=now.astimezone(timezone.utc),
-                    end=window_end,
-                ) if blocked_window_entity else ([], None)
                 cost_result = recommend_cycle(
                     summaries,
                     policies,
@@ -2517,6 +2594,15 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "reason": str(error),
                     "special_price_window": manual_window_public,
                 }
+    blocked_source_ready = not blocked_window_entity or bool(
+        blocked_window_diagnostic and blocked_window_diagnostic.get("readable")
+    )
+    cost_result.update({
+        "blocked_window_entity": blocked_window_entity,
+        "blocked_window_diagnostic": blocked_window_diagnostic,
+        "blocked_window_source_ready": blocked_source_ready,
+        "automatic_block_reason": None if blocked_source_ready else "blocked_window_source_unavailable",
+    })
     publish_cost_entities(
         token,
         prefix,

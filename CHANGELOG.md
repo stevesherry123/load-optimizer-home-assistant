@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+- Fix the new-install guide's missing recommendation policy and add executable
+  generic-appliance and Home Connect examples, with negative-price runs off.
+- Separate fresh Home Connect activation from legacy migration; document current
+  control-target limits, advisory EV inputs and common waiting states.
+- Add a small standard-card dashboard example and recommend custom copies outside
+  HACS-managed files. Add isolated real-HA onboarding and persistence checks.
+- Add bounded shared YAML/JSON parsing and pre-save appliance validation;
+  reject duplicate identities/keys/policies, invalid numbers, ambiguous permission
+  flags and reset instructions in an ordinary appliance edit.
+- Make previously saved textual false/unknown programme permissions fail closed
+  at runtime rather than treating non-empty strings as an opt-in.
+- Add a read-only source review before saving, including missing-source and W/kWh
+  checks. Invalid or cancelled edits retain saved settings and learning. Preserve
+  legacy wrapped options, zero-prefixed IDs and unquoted overnight times.
+- Defer all learned-hub settings saves during known active captures or queued
+  starts; retain submitted values and never cancel work just to apply an edit.
+- Review comma-separated window sources individually rather than reporting the
+  combined list as an unavailable entity.
+- Do not treat missing, invalid or non-finite power as a low-power completion.
+  Retain active captures without adding missing samples, expose source health,
+  and exclude incomplete profiles from learning after a genuine end signal.
+- Enforce configured no-run source availability in recommendation/readiness
+  signals and fresh automatic command-time checks, including fallback commands.
+  Distinguish valid empty feeds from failed reads and cover the full cycle.
+- Preserve multi-source window configuration through validation and interpret
+  all-day no-run calendars in Home Assistant's timezone. Manual cooldown
+  overrides and existing appliance thresholds are unchanged.
+- Extend calendar fetching and window filtering through the longest expected
+  cycle after the search/forecast horizon. Include active capture elapsed time
+  and restored startup models, without extending candidate start times or
+  changing learning. Cover late no-run events and full green-window overlap.
+- Unreleased development only; no version bump, deployment or new control opt-in.
+
 ## 1.5.7
 
 - Restrict learning import, recovery and orchestration handover actions to Home

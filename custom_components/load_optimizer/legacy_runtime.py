@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
 import re
-import textwrap
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
@@ -34,33 +33,13 @@ from .const import (
     DOMAIN,
 )
 from .legacy import app_runtime
+from .legacy.config_validation import ConfigurationError, appliance_document
 from .optimizer.state_import import validate_import
 
 LOGGER = logging.getLogger(__name__)
 LEGACY_STORE_VERSION = 1
 LEGACY_STORE_KEY = f"{DOMAIN}_legacy_state"
 ADAPTER_MARKER = "__hass_adapter__"
-WRAPPED_OPTION_KEYS = {
-    CONF_BLOCKED_WINDOW_ENTITY,
-    CONF_COST_CANDIDATE_INTERVAL,
-    CONF_COST_FORECAST_HOURS,
-    CONF_COST_FORECAST_INTERVAL,
-    CONF_COST_SEARCH_HOURS,
-    CONF_GREEN_WINDOW_ENTITY,
-    CONF_INSTANCES_YAML,
-    CONF_PUBLISH_COST_FORECAST,
-    CONF_PUBLISH_DIAGNOSTICS,
-    CONF_PUBLISH_PROFILE_DATA,
-    CONF_SCAN_INTERVAL,
-    CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
-    CONF_TARIFF_ENTITIES,
-    CONF_TARIFF_ENTITY,
-    CONF_TARIFF_PRICE_UNIT,
-    CONF_TARIFF_TIMEZONE,
-    "log_history",
-    "log_level",
-    "reset_instance_ids",
-}
 RETIRED_GREEN_WINDOW_SUFFIX = "_greener_nights"
 LEGACY_SAVING_SESSIONS_SUFFIX = "_octoplus_saving_sessions"
 POWER_DOWN_SUFFIX = "_octoplus_power_down"
@@ -141,7 +120,7 @@ class LegacyRuntime:
         configs = app_runtime.instance_configs(options)
         for config in configs:
             self._normalise_calendar_entities(config)
-        await self._async_prefetch_calendar_events(configs, now)
+            config["window_timezone"] = self.hass.config.time_zone
         if not self.started:
             app_runtime.RUNTIME_STARTED_AT = now
             app_runtime.SCAN_HEALTH_TIMEOUT_SECONDS = max(180, (int(options.get("scan_interval", 60)) * 3) + 30)
@@ -152,6 +131,7 @@ class LegacyRuntime:
             app_runtime.mark_interrupted_captures(self.state, startup_running)
             app_runtime.publish_restart_warning(ADAPTER_MARKER, startup_running)
             self.started = True
+        await self._async_prefetch_calendar_events(configs, now)
         reset_status = app_runtime.reset_request_status(self.state, options)
         app_runtime.LAST_SCAN_STARTED_AT = now
         for config in configs:
@@ -201,9 +181,6 @@ class LegacyRuntime:
         for key, value in wrapped.items():
             if key == CONF_INSTANCES_YAML or self._option_is_blank(normalised.get(key)):
                 normalised[key] = value
-        normalised[CONF_INSTANCES_YAML] = app_runtime.normalise_instances_yaml(
-            normalised.get(CONF_INSTANCES_YAML, "")
-        )
         self._normalise_calendar_entities(normalised)
         return normalised
 
@@ -221,36 +198,13 @@ class LegacyRuntime:
                 config[CONF_BLOCKED_WINDOW_ENTITY] = power_down
 
     def _parse_wrapped_options(self, raw: object) -> dict[str, Any]:
-        text = str(raw or "")
-        if "instances_yaml:" not in text:
+        if raw in (None, ""):
             return {}
-        options: dict[str, Any] = {}
-        lines = textwrap.dedent(text).splitlines()
-        index = 0
-        while index < len(lines):
-            line = lines[index]
-            stripped = line.strip()
-            index += 1
-            if not stripped or stripped.startswith("#") or ":" not in stripped:
-                continue
-            key, value = stripped.split(":", 1)
-            key = key.strip()
-            value = value.strip()
-            if key not in WRAPPED_OPTION_KEYS:
-                continue
-            if value in {"|", "|-", "|+", ">", ">-", ">+"}:
-                block = []
-                while index < len(lines):
-                    block_line = lines[index]
-                    if block_line.strip() and not block_line.startswith((" ", "\t")):
-                        break
-                    block.append(block_line)
-                    index += 1
-                parsed_block = textwrap.dedent("\n".join(block)).strip()
-                options[key] = " ".join(parsed_block.split()) if value.startswith(">") else parsed_block
-                continue
-            options[key] = app_runtime.parse_config_scalar(value)
-        return options
+        try:
+            _, wrapped = appliance_document(raw)
+            return wrapped
+        except ConfigurationError:
+            return {}
 
     @staticmethod
     def _option_is_blank(value: object) -> bool:
@@ -324,18 +278,16 @@ class LegacyRuntime:
         if path.startswith("/calendars/"):
             parsed = urlparse(path)
             entity_id = unquote(parsed.path.removeprefix("/calendars/"))
-            return self.calendar_events.get(entity_id, [])
+            return self.calendar_events.get(entity_id)
         return None
 
     async def _async_prefetch_calendar_events(self, configs: list[dict[str, Any]], now: datetime) -> None:
         calendar_ids: set[str] = set()
-        horizon_hours = 24
+        end = now + timedelta(hours=24)
+        instances = (self.state or {}).get("instances", {})
         for config in configs:
-            horizon_hours = max(
-                horizon_hours,
-                int(config.get("cost_search_hours", 24) or 24),
-                int(config.get("cost_forecast_hours", 12) or 12),
-            )
+            instance = instances.get(str(config.get("instance_id")), {})
+            end = max(end, app_runtime.planning_window_end(config, instance, now))
             for key in ("green_window_entity", "blocked_window_entity"):
                 for entity_id in app_runtime.entity_list(config.get(key, "")):
                     if entity_id.startswith("calendar."):
@@ -343,33 +295,80 @@ class LegacyRuntime:
         self.calendar_events = {}
         if not calendar_ids:
             return
-        end = now + timedelta(hours=horizon_hours)
         for entity_id in sorted(calendar_ids):
-            try:
+            events = await self._async_calendar_events(entity_id, now, end)
+            if events is not None:
+                self.calendar_events[entity_id] = events
+
+    async def _async_calendar_events(self, entity_id: str, start: datetime, end: datetime) -> list | None:
+        """Keep a failed/unsupported response distinct from a successful empty list."""
+        try:
+            async with asyncio.timeout(10):
                 response = await self.hass.services.async_call(
                     "calendar",
                     "get_events",
                     {
                         "entity_id": entity_id,
-                        "start_date_time": now.isoformat(),
+                        "start_date_time": start.isoformat(),
                         "end_date_time": end.isoformat(),
                     },
                     blocking=True,
                     return_response=True,
                 )
-            except Exception as error:  # pragma: no cover - depends on HA calendar platform
-                LOGGER.debug("Could not prefetch calendar events for %s (%s)", entity_id, type(error).__name__)
-                continue
-            events = []
-            if isinstance(response, dict):
-                payload = response.get(entity_id, response)
-                if isinstance(payload, dict):
-                    raw_events = payload.get("events", [])
-                    if isinstance(raw_events, list):
-                        events = raw_events
-                elif isinstance(payload, list):
-                    events = payload
-            self.calendar_events[entity_id] = events
+        except Exception as error:  # Calendar failures must not permit automatic starts.
+            LOGGER.debug("Could not read calendar events for %s (%s)", entity_id, type(error).__name__)
+            return None
+        if isinstance(response, dict):
+            payload = response.get(entity_id, response)
+            if isinstance(payload, dict) and isinstance(payload.get("events"), list):
+                return payload["events"]
+            if isinstance(payload, list):
+                return payload
+        return None
+
+    async def async_automatic_start_block(self, options: dict[str, Any], request: dict[str, Any]) -> str | None:
+        """Re-read mandatory sources for appliance 1 immediately before a command."""
+        options = self._normalise_options(options)
+        configs = app_runtime.instance_configs(options)
+        config = next((item for item in configs if str(item.get("instance_id")) == "1"), None)
+        if config is None:
+            return "automatic_configuration_unavailable"
+        self._normalise_calendar_entities(config)
+        entity_ids = app_runtime.entity_list(config.get("blocked_window_entity", ""))
+        if entity_ids:
+            start = datetime.now(timezone.utc)
+            planned_start = app_runtime.datetime_from_value(request.get("start"))
+            planned_finish = app_runtime.datetime_from_value(request.get("finish"))
+            if not planned_start or not planned_finish or planned_finish <= planned_start:
+                return "blocked_window_duration_unavailable"
+            duration = planned_finish - planned_start
+            # Cover the bounded fetch latency as well as the whole cycle.
+            fetch_end = start + duration + timedelta(seconds=10 * sum(
+                entity.startswith("calendar.") for entity in entity_ids
+            ))
+            calendars = {}
+            for entity_id in entity_ids:
+                if entity_id.startswith("calendar."):
+                    calendars[entity_id] = await self._async_calendar_events(entity_id, start, fetch_end)
+            start = datetime.now(timezone.utc)
+            end = start + duration
+            if calendars and end > fetch_end:
+                return "blocked_window_source_unavailable"
+            windows, diagnostic = app_runtime.blocked_windows_from_entity(
+                ADAPTER_MARKER, ",".join(entity_ids), start=start, end=end,
+                state_reader=lambda entity: self._source_state(ADAPTER_MARKER, entity),
+                calendar_reader=calendars.get,
+                naive_timezone=self.hass.config.time_zone,
+            )
+            if not diagnostic or not diagnostic.get("readable"):
+                return "blocked_window_source_unavailable"
+            if windows:
+                return "blocked_window_overlap"
+        # Do this after any awaited calendar fetch, not against the last scan's mirror.
+        power = app_runtime.numeric_state(self._source_state(ADAPTER_MARKER, config["power_sensor"]))
+        if power is None or power < 0:
+            return "power_source_unavailable"
+        return None
 
     def _render_template(self, token: str, template: str) -> object | None:
         state_attr_match = re.search(r"state_attr\('([^']+)',\s*'([^']+)'\)", template)

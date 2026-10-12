@@ -82,6 +82,99 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.values[entity_id] = SimpleNamespace(state=state, attributes=attributes,
                                                 last_changed=Clock.current)
 
+    async def test_missing_no_run_source_prevents_new_automatic_plans_and_explains_why(self):
+        self.put("sensor.load_optimizer_1_cost_status", "ready", blocked_window_source_ready=False,
+                 blocked_window_entity="calendar.no_run")
+        self.scheduler.state["auto_negative_price_enabled"] = True
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "MixedLoad", status="ready",
+                 ready_to_start=True, program="MixedLoad", confidence=80)
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.automation_explanation["reason_code"], "blocked_window_source_unavailable")
+        self.assertIn("blocked_window_source_unavailable", self.scheduler.readiness("negative_price")["blockers"])
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_live_source_disappearing_blocks_even_when_scan_reported_ready(self):
+        self.put("sensor.load_optimizer_1_cost_status", "ready", blocked_window_source_ready=True,
+                 blocked_window_entity="calendar.no_run")
+        self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"],
+                         "blocked_window_source_unavailable")
+        self.put("calendar.no_run", "off")
+        self.assertEqual(self.scheduler._automatic_decision(Clock.current)["action"], "queue")
+        self.put("sensor.load_optimizer_1_status", "source_unavailable")
+        self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"], "power_source_unavailable")
+
+    async def test_saved_automatic_requests_require_fresh_source_preflight(self):
+        for mode in ("automatic", "negative_price"):
+            with self.subTest(mode=mode):
+                check = AsyncMock(return_value="blocked_window_source_unavailable")
+                self.scheduler.set_automatic_preflight(check)
+                request = {"mode": mode, "program": "MixedLoad", "start": Clock.current.isoformat()}
+                self.scheduler.state["request"] = request
+                await self.scheduler._async_execute(request)
+                self.assertEqual(self.scheduler.state["last_reason"], "blocked_window_source_unavailable")
+                check.assert_awaited_once_with(request)
+        calls = self.hass.services.async_call.await_args_list
+        self.assertFalse(any(call.args[0] in {"switch", "button", "select", "home_connect", "home_connect_alt"}
+                             for call in calls))
+
+    async def test_mandatory_preflight_unavailable_is_fail_closed(self):
+        request = {"mode": "automatic", "program": "MixedLoad", "start": Clock.current.isoformat()}
+        await self.scheduler._async_execute(request)
+        self.assertEqual(self.scheduler.state["last_reason"], "automatic_preflight_unavailable")
+        self.scheduler.set_automatic_preflight(AsyncMock(side_effect=OSError("Synthetic source failure")))
+        self.assertFalse(await self.scheduler._async_start_allowed(request))
+        self.assertEqual(self.scheduler.state["last_reason"], "automatic_preflight_unavailable")
+
+    async def test_automatic_start_and_each_fallback_use_fresh_preflight(self):
+        for starting_domain, count in (("button", 3), ("home_connect_alt", 4), ("home_connect", 5)):
+            with self.subTest(starting_domain=starting_domain):
+                self.scheduler.state["door_opened_since_last_cycle"] = True
+                self.put("sensor.operation", "BSH.Common.EnumType.OperationState.Ready")
+                self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+                self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+                check = AsyncMock(return_value=None)
+                self.scheduler.set_automatic_preflight(check)
+
+                async def command(domain, service, *_args, **_kwargs):
+                    if domain == starting_domain:
+                        self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+
+                self.hass.services.async_call.side_effect = command
+                request = {"mode": "automatic", "program": "MixedLoad", "automatic": True,
+                           "start": Clock.current.isoformat()}
+                with patch.object(asyncio, "sleep", new=AsyncMock()):
+                    await self.scheduler._async_execute(request)
+                self.assertEqual(self.scheduler.state["last_result"], "confirmed")
+                self.assertEqual(check.await_count, count)
+
+    async def test_no_run_failure_during_power_on_delay_prevents_start_commands(self):
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        check = AsyncMock(side_effect=[None, "blocked_window_source_unavailable"])
+        self.scheduler.set_automatic_preflight(check)
+        request = {"mode": "automatic", "program": "MixedLoad", "start": Clock.current.isoformat()}
+        with patch.object(asyncio, "sleep", new=AsyncMock()):
+            await self.scheduler._async_execute(request)
+        self.assertEqual(self.scheduler.state["last_reason"], "blocked_window_source_unavailable")
+        self.assertEqual(check.await_count, 2)
+        calls = self.hass.services.async_call.await_args_list
+        self.assertTrue(any(call.args[:2] == ("switch", "turn_on") for call in calls))
+        self.assertFalse(any(call.args[0] in {"button", "select", "home_connect", "home_connect_alt"} for call in calls))
+
+    async def test_manual_request_preserves_cooldown_override_and_does_not_use_automatic_preflight(self):
+        self.scheduler.state["door_opened_since_last_cycle"] = False
+        self.put("sensor.load_optimizer_1_cost_status", "ready", blocked_window_source_ready=False)
+        check = AsyncMock(return_value="blocked_window_source_unavailable")
+        self.scheduler.set_automatic_preflight(check)
+        request = {"mode": "now", "program": "MixedLoad", "automatic": False,
+                   "explicit_program_override": True}
+        self.assertTrue(await self.scheduler._async_start_allowed(request))
+        check.assert_not_awaited()
+        self.put("binary_sensor.door", "on")
+        self.assertFalse(await self.scheduler._async_start_allowed(request))
+        self.assertEqual(self.scheduler.state["last_reason"], "door_open")
+
     async def test_deactivation_cancels_inflight_commands_and_pending_request(self):
         started = asyncio.Event()
         cancelled = asyncio.Event()
