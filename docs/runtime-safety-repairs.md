@@ -78,23 +78,37 @@ to explicit manual commands. It does withhold engine recommendations when their
 configured mandatory source is unreadable; manual control is not an assertion
 that a no-run calendar has been checked successfully.
 
-### Remaining Planning Boundary
+### Planning Boundary Repair
 
-The recommendation scan currently reads calendar windows only through the
-configured search/forecast horizon, without adding the candidate's duration.
-A candidate near that boundary can therefore look eligible despite a later
-no-run event. The fresh automatic command-time check above covers the entire
-actual cycle and blocks that start. Extending the planning fetch and filtering
-range, with an end-of-horizon regression, remains a separate follow-up; these
-repairs do not claim that every future recommendation is already complete.
+The approved follow-up reproduced a late candidate being recommended despite a
+no-run event after the search horizon. Both calendar fetching and event filtering
+now use the same range: the longer search/forecast horizon plus the longest
+learned runtime for that appliance. Green-window overlap includes that same tail.
+Candidate start limits, pricing coverage requirements and cooldowns are unchanged.
+
+The adapter fetches enough coverage for every configured appliance and retains
+its existing minimum 24-hour fetch. An active capture's elapsed time, rounded up
+to the summary's precision, covers a longer model learned during this scan.
+Startup model restoration runs before fetching. Invalid/non-finite ranges or
+date overflow are rejected rather than issuing an invalid calendar request.
+These calculations do not alter saved settings or learning.
+
+Unit regressions cover search and forecast tails, multiple appliance horizons,
+an active capture's longer duration, green overlap and an event starting exactly
+at a cycle's finish. Real minimum-HA acceptance uses a calendar service that
+actually filters its response to the requested range; it verifies the changed
+recommendation, the exact-finish boundary and startup model restoration without
+false learning increments or device commands. Fresh command-time checks remain
+in place because events can still change after a recommendation is published.
 
 ## Local Acceptance
 
 Against Home Assistant 2024.12.0 and Python 3.12:
 
-- 276 unit tests pass, including outages, high/low recovery, explicit completion,
+- 285 unit tests pass, including outages, high/low recovery, explicit completion,
   exact existing-model/count preservation, multiple sources, failed/malformed
-  fetches, new overlaps, all-day timezone and command/fallback checks.
+  fetches, new overlaps, all-day timezone, planning-boundary coverage and
+  command/fallback checks.
 - `ha_runtime_safety_smoke.py` passes using real config entries, storage,
   registered entities, reload and the coordinator-to-controller preflight wiring.
   It verifies no false count increment, preserved identity, source recovery and

@@ -135,6 +135,41 @@ class AdapterSourceSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.request["finish"] = None
         self.assertEqual(await self.check(), "blocked_window_duration_unavailable")
 
+    async def test_calendar_prefetch_covers_longest_cycle_after_each_start_horizon(self):
+        def instance(minutes):
+            return {"program_models": {"Synthetic": {"statistics": {
+                "runtime_minutes": {"count": 1, "mean": minutes, "m2": 0},
+            }}}}
+
+        self.runtime.state = {"instances": {"1": instance(120), "2": instance(90)}}
+        self.hass.services.async_call.return_value = {"calendar.no_run": {"events": []}}
+        await self.runtime._async_prefetch_calendar_events([
+            {"instance_id": "1", "cost_search_hours": 24, "cost_forecast_hours": 12,
+             "blocked_window_entity": "calendar.no_run"},
+            {"instance_id": "2", "cost_search_hours": 12, "cost_forecast_hours": 48,
+             "green_window_entity": "calendar.no_run"},
+        ], self.now)
+        request = self.hass.services.async_call.await_args.args[2]
+        self.assertEqual(datetime.fromisoformat(request["end_date_time"]),
+                         self.now + timedelta(hours=49, minutes=30))
+        self.hass.services.async_call.assert_awaited_once()
+
+    async def test_prefetch_covers_new_longer_model_when_active_capture_finishes(self):
+        self.runtime.state = {"instances": {"1": {
+            "cycle_start": (self.now - timedelta(hours=3)).isoformat(),
+            "program_models": {"Synthetic": {"statistics": {
+                "runtime_minutes": {"count": 1, "mean": 30, "m2": 0},
+            }}},
+        }}}
+        self.hass.services.async_call.return_value = {"calendar.no_run": {"events": []}}
+        await self.runtime._async_prefetch_calendar_events([
+            {"instance_id": "1", "cost_search_hours": 24,
+             "blocked_window_entity": "calendar.no_run"},
+        ], self.now)
+        request = self.hass.services.async_call.await_args.args[2]
+        self.assertEqual(datetime.fromisoformat(request["end_date_time"]),
+                         self.now + timedelta(hours=27))
+
 
 if __name__ == "__main__":
     unittest.main()

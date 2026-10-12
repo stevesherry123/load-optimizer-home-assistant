@@ -113,3 +113,10 @@ gates are recorded in [runtime safety repairs](runtime-safety-repairs.md).
 The owner approved pushing this repair branch and opening a review request in
 this repository. This does not approve a main merge, release, installation or
 changes/comments on the HACS catalogue submission.
+
+The subsequent approved planning-boundary follow-up adds nine unit regressions
+(285 tests total) and range-filtering real-HA calendar acceptance. It covers late
+no-run events, longer forecast tails, green overlap, active-capture padding and
+startup model restoration. Learning and identities remain unchanged during
+normal recommendation scans. See the repair record for the current scope;
+release, production installation and physical acceptance remain separate.

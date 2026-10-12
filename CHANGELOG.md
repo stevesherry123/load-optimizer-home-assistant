@@ -29,6 +29,10 @@
 - Preserve multi-source window configuration through validation and interpret
   all-day no-run calendars in Home Assistant's timezone. Manual cooldown
   overrides and existing appliance thresholds are unchanged.
+- Extend calendar fetching and window filtering through the longest expected
+  cycle after the search/forecast horizon. Include active capture elapsed time
+  and restored startup models, without extending candidate start times or
+  changing learning. Cover late no-run events and full green-window overlap.
 - Unreleased development only; no version bump, deployment or new control opt-in.
 
 ## 1.5.7

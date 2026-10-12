@@ -6,20 +6,18 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- Finish remote checks and human review of `fix/runtime-data-safety`. The owner
+- Finish remote checks and human review of
+  [repair PR #16](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/16).
+  The owner
   approved a push and review request in this repository only; merge, release and
   deployment remain separately approved. R1/R3 outage/no-run enforcement and
   R2/R4 permission/configuration validation have isolated acceptance, including
   busy-save guards across all learned-hub settings. See
   [runtime safety repairs](runtime-safety-repairs.md). Keep feature proposals,
   R5's repeated negative-run beta promotion and the HACS submission separate.
-- Extend planning-time calendar coverage past the search/forecast boundary by
-  the candidate cycle duration, with a late-candidate no-run regression. The
-  repaired automatic command-time check already covers the full actual cycle,
-  but a boundary recommendation can still be withdrawn when execution is checked.
-- review the documentation-first onboarding branch and its isolated acceptance
-  results before merging; include the guides in a separately approved release,
-  without changing existing stable tags or promoting the tariff beta
+- The onboarding guides and initial parser/source-review slice are included in
+  PR #16, not separate merge tasks. Include them in a separately approved release
+  after review, without changing existing stable tags or promoting the tariff beta.
 - follow up separately with guided appliance/policy editing,
   selectable control targets and generated dashboards; add privacy-safe screenshots,
   issue forms and an unfamiliar-user onboarding trial before broad promotion
@@ -62,6 +60,13 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Completed the approved planning-boundary follow-up on `fix/runtime-data-safety`:
+  calendar fetching and event filtering include the full learned cycle tail,
+  including startup restoration and a capture finishing during the scan.
+  Candidate start horizons and learning are unchanged. 285 unit tests and real
+  minimum-HA calendar-range acceptance pass locally; PR #16's latest remote
+  checks, human review and any merge/release remain separate gates.
 
 - Implemented the approved runtime repairs locally, not in a published release:
   missing power cannot finish/learn a capture; mandatory no-run source failures

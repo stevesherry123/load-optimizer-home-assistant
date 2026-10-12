@@ -241,5 +241,118 @@ class NoRunSourceSafetyTests(unittest.TestCase):
         self.assertTrue(health["readable"])
 
 
+class PlanningWindowCoverageTests(unittest.TestCase):
+    def setUp(self):
+        self.now = datetime(2026, 10, 12, 10, tzinfo=timezone.utc)
+        self.config = {
+            "instance_id": "1", "name": "Synthetic appliance", "power_sensor": "sensor.power",
+            "energy_sensor": "", "program_sensor": "", "state_sensor": "",
+            "active_power_threshold": 10, "finish_delay": 2,
+            "tariff_entities": ["sensor.rates"], "tariff_timezone": "Europe/London",
+            "tariff_price_unit": "gbp_per_kwh", "cost_search_hours": 2,
+            "cost_forecast_hours": 2, "cost_candidate_interval": 30,
+            "cost_forecast_interval": 30, "publish_diagnostics": True,
+            "blocked_window_entity": "event.no_run", "green_window_entity": "event.green",
+            "program_policies": [{"program": "MixedLoad", "enabled": True,
+                                  "allow_normal_recommendation": True}],
+        }
+        self.instance = {"runs": 5, "program_models": {}}
+        cycle = {"program": "MixedLoad", "runtime_minutes": 120, "energy_kwh": 2,
+                 "peak_power": 1000, "sample_count": 121, "finish": self.now.isoformat(),
+                 "power_profile": [{"offset_seconds": 0, "power_w": 1000},
+                                   {"offset_seconds": 7200, "power_w": 1000}]}
+        for _ in range(5):
+            app.update_program_model(self.instance, cycle)
+        self.database = {"schema_version": 1, "instances": {"1": self.instance}}
+        self.sources = {
+            "sensor.power": {"state": "0"},
+            "sensor.rates": {"state": "ready", "attributes": {"rates": [
+                {"start": self.now.isoformat(), "end": (self.now + timedelta(hours=2)).isoformat(),
+                 "value_inc_vat": 0.3},
+                {"start": (self.now + timedelta(hours=2)).isoformat(),
+                 "end": (self.now + timedelta(hours=6)).isoformat(), "value_inc_vat": 0.01},
+            ]}},
+            "event.no_run": {"state": "ready", "attributes": {"events": []}},
+            "event.green": {"state": "ready", "attributes": {"events": []}},
+        }
+        for target, kwargs in (
+            ("source_state", {"side_effect": lambda _token, entity: self.sources.get(entity)}),
+            ("api_request", {"return_value": []}), ("publish_entity", {}),
+        ):
+            mock = patch.object(app, target, **kwargs)
+            setattr(self, target, mock.start())
+            self.addCleanup(mock.stop)
+
+    def scan(self):
+        memory = deepcopy(self.database)
+        app.update_instance("synthetic", self.database, self.config, self.now)
+        self.assertEqual(self.database, memory)
+        return {call.args[1]: call.args[2:] for call in self.publish_entity.call_args_list}
+
+    def event(self, start, finish):
+        return {"start": (self.now + timedelta(hours=start)).isoformat(),
+                "end": (self.now + timedelta(hours=finish)).isoformat()}
+
+    def test_no_run_after_search_boundary_rejects_late_cheapest_start(self):
+        self.sources["event.no_run"]["attributes"]["events"] = [self.event(3, 4)]
+        published = self.scan()
+        self.assertEqual(published["sensor.load_optimizer_1_cheapest_start"][0],
+                         (self.now + timedelta(hours=1)).isoformat())
+        status = published["sensor.load_optimizer_1_cost_status"][1]
+        self.assertEqual(status["blocked_window_count"], 1)
+        self.assertGreater(status["blocked_window_candidate_count"], 0)
+
+    def test_forecast_tail_is_checked_when_forecast_is_longer_than_search(self):
+        self.config["cost_forecast_hours"] = 4
+        self.sources["event.no_run"]["attributes"]["events"] = [self.event(5, 6)]
+        published = self.scan()
+        forecast = published["sensor.load_optimizer_1_cost_forecast"][1]["forecast"]
+        self.assertTrue(forecast)
+        self.assertTrue(all(datetime.fromisoformat(point["finish"]) <= self.now + timedelta(hours=5)
+                            for point in forecast))
+
+    def test_green_overlap_covers_tail_without_extending_candidate_starts(self):
+        self.sources["event.green"]["attributes"]["events"] = [self.event(3, 4)]
+        published = self.scan()
+        self.assertEqual(published["sensor.load_optimizer_1_cheapest_start"][0],
+                         (self.now + timedelta(hours=2)).isoformat())
+        status = published["sensor.load_optimizer_1_cost_status"][1]
+        self.assertEqual(status["green_window_count"], 1)
+        greenest = published["sensor.load_optimizer_1_greenest_cost"][1]
+        self.assertEqual(greenest["green_window_overlap_percent"], 50)
+
+    def test_event_beginning_at_cycle_finish_does_not_block_that_candidate(self):
+        self.sources["event.no_run"]["attributes"]["events"] = [self.event(4, 5)]
+        published = self.scan()
+        self.assertEqual(published["sensor.load_optimizer_1_cheapest_start"][0],
+                         (self.now + timedelta(hours=2)).isoformat())
+
+    def test_duration_padding_does_not_change_saved_search_settings_or_learning(self):
+        before = deepcopy(self.config)
+        self.assertEqual(app.planning_window_end(self.config, self.instance, self.now),
+                         self.now + timedelta(hours=4))
+        self.assertEqual(self.config, before)
+        self.assertEqual(app.planning_window_end(self.config, {}, self.now),
+                         self.now + timedelta(hours=2))
+
+    def test_active_elapsed_padding_rounds_up_like_a_new_learned_summary(self):
+        self.instance["cycle_start"] = (self.now - timedelta(hours=3, seconds=4)).isoformat()
+        self.assertEqual(app.planning_window_end(self.config, self.instance, self.now),
+                         self.now + timedelta(hours=5, seconds=6))
+
+    def test_invalid_horizons_or_durations_reject_calendar_range(self):
+        for invalid in (float("nan"), float("inf"), -1, 73):
+            with self.subTest(horizon=invalid):
+                with self.assertRaises(ValueError):
+                    app.planning_window_end({**self.config, "cost_forecast_hours": invalid},
+                                            self.instance, self.now)
+        for invalid in (float("nan"), float("inf"), -1, 1e300):
+            with self.subTest(duration=invalid):
+                instance = deepcopy(self.instance)
+                instance["program_models"]["MixedLoad"]["statistics"]["runtime_minutes"]["mean"] = invalid
+                with self.assertRaises(ValueError):
+                    app.planning_window_end(self.config, instance, self.now)
+
+
 if __name__ == "__main__":
     unittest.main()

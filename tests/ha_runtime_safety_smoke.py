@@ -41,6 +41,7 @@ async def main():
         loader.async_setup(hass)
         physical_commands = []
         calendar_response = {"calendar.synthetic_no_run": {"events": []}}
+        calendar_queries = []
         original_call = type(hass.services).async_call
 
         async def guarded_call(registry, domain, service, service_data=None, *args, **kwargs):
@@ -50,7 +51,16 @@ async def main():
             return await original_call(registry, domain, service, service_data, *args, **kwargs)
 
         async def calendar_events(_call):
-            return deepcopy(calendar_response)
+            calendar_queries.append(dict(_call.data))
+            start_at = datetime.fromisoformat(_call.data["start_date_time"])
+            end_at = datetime.fromisoformat(_call.data["end_date_time"])
+            entity_ids = _call.data["entity_id"]
+            if isinstance(entity_ids, str):
+                entity_ids = [entity_ids]
+            return {entity: {"events": [deepcopy(event) for event in calendar_response[entity]["events"]
+                                        if datetime.fromisoformat(event["end"]) > start_at
+                                        and datetime.fromisoformat(event["start"]) < end_at]}
+                    for entity in entity_ids}
 
         Clock.current = datetime.now(timezone.utc).replace(second=0, microsecond=0)
         start = Clock.current
@@ -138,6 +148,53 @@ async def main():
                 assert identities(hass, entry.entry_id) == before
                 assert not physical_commands
                 print("Real HA: missing no-run source blocks, valid empty feed recovers, fresh overlapping event blocks saved plan; no device commands")
+
+                Clock.current = (Clock.current + timedelta(hours=1)).replace(minute=0)
+                reference = Clock.current
+                cycle = {"program": "MixedLoad", "runtime_minutes": 120, "energy_kwh": 2,
+                         "peak_power": 1000, "sample_count": 121, "finish": reference.isoformat(),
+                         "power_profile": [{"offset_seconds": 0, "power_w": 1000},
+                                           {"offset_seconds": 7200, "power_w": 1000}]}
+                for _ in range(5):
+                    app_runtime.update_program_model(instance, cycle)
+                instance["runs"] = 5
+                instance["last_cycle"] = cycle
+                memory_before = deepcopy(coordinator.legacy_runtime.state)
+                hass.states.async_set("sensor.synthetic_rates", "ready", {"rates": [
+                    {"start": reference.isoformat(), "end": (reference + timedelta(hours=24)).isoformat(),
+                     "value_inc_vat": 0.3},
+                    {"start": (reference + timedelta(hours=24)).isoformat(),
+                     "end": (reference + timedelta(hours=72)).isoformat(), "value_inc_vat": 0.01},
+                ]})
+                calendar_response["calendar.synthetic_no_run"]["events"] = [{
+                    "start": (reference + timedelta(hours=25)).isoformat(),
+                    "end": (reference + timedelta(hours=27)).isoformat(),
+                }]
+                await coordinator.async_refresh()
+                assert datetime.fromisoformat(calendar_queries[-1]["end_date_time"]) >= reference + timedelta(hours=26)
+                assert hass.states.get("sensor.load_optimizer_1_cheapest_start").state == (reference + timedelta(hours=23)).isoformat()
+                assert coordinator.legacy_runtime.state == memory_before
+                calendar_response["calendar.synthetic_no_run"]["events"][0]["start"] = (reference + timedelta(hours=26)).isoformat()
+                await coordinator.async_refresh()
+                assert hass.states.get("sensor.load_optimizer_1_cheapest_start").state == (reference + timedelta(hours=24)).isoformat()
+                assert coordinator.legacy_runtime.state == memory_before
+                assert identities(hass, entry.entry_id) == before and not physical_commands
+                print("Real HA: calendar fetch and recommendation cover the cycle tail; exact-finish boundary, learning and identities preserved")
+
+                # A legacy record can bootstrap its first model during startup.
+                await coordinator.legacy_runtime.async_import_state({
+                    "schema_version": 1, "instances": {"1": {"runs": 1, "last_cycle": cycle}},
+                })
+                calendar_response["calendar.synthetic_no_run"]["events"][0]["start"] = (reference + timedelta(hours=25)).isoformat()
+                calendar_queries.clear()
+                await hass.config_entries.async_reload(entry.entry_id)
+                await hass.async_block_till_done()
+                coordinator = hass.data[DOMAIN][entry.entry_id]
+                assert datetime.fromisoformat(calendar_queries[0]["end_date_time"]) >= reference + timedelta(hours=26)
+                assert hass.states.get("sensor.load_optimizer_1_cheapest_start").state == (reference + timedelta(hours=23)).isoformat()
+                assert coordinator.legacy_runtime.state["instances"]["1"]["runs"] == 1
+                assert identities(hass, entry.entry_id) == before and not physical_commands
+                print("Real HA: startup model bootstrap precedes calendar coverage, without a false learning increment")
             finally:
                 await hass.async_stop(force=True)
 

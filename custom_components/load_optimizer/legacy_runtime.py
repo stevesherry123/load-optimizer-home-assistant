@@ -121,7 +121,6 @@ class LegacyRuntime:
         for config in configs:
             self._normalise_calendar_entities(config)
             config["window_timezone"] = self.hass.config.time_zone
-        await self._async_prefetch_calendar_events(configs, now)
         if not self.started:
             app_runtime.RUNTIME_STARTED_AT = now
             app_runtime.SCAN_HEALTH_TIMEOUT_SECONDS = max(180, (int(options.get("scan_interval", 60)) * 3) + 30)
@@ -132,6 +131,7 @@ class LegacyRuntime:
             app_runtime.mark_interrupted_captures(self.state, startup_running)
             app_runtime.publish_restart_warning(ADAPTER_MARKER, startup_running)
             self.started = True
+        await self._async_prefetch_calendar_events(configs, now)
         reset_status = app_runtime.reset_request_status(self.state, options)
         app_runtime.LAST_SCAN_STARTED_AT = now
         for config in configs:
@@ -283,13 +283,11 @@ class LegacyRuntime:
 
     async def _async_prefetch_calendar_events(self, configs: list[dict[str, Any]], now: datetime) -> None:
         calendar_ids: set[str] = set()
-        horizon_hours = 24
+        end = now + timedelta(hours=24)
+        instances = (self.state or {}).get("instances", {})
         for config in configs:
-            horizon_hours = max(
-                horizon_hours,
-                int(config.get("cost_search_hours", 24) or 24),
-                int(config.get("cost_forecast_hours", 12) or 12),
-            )
+            instance = instances.get(str(config.get("instance_id")), {})
+            end = max(end, app_runtime.planning_window_end(config, instance, now))
             for key in ("green_window_entity", "blocked_window_entity"):
                 for entity_id in app_runtime.entity_list(config.get(key, "")):
                     if entity_id.startswith("calendar."):
@@ -297,7 +295,6 @@ class LegacyRuntime:
         self.calendar_events = {}
         if not calendar_ids:
             return
-        end = now + timedelta(hours=horizon_hours)
         for entity_id in sorted(calendar_ids):
             events = await self._async_calendar_events(entity_id, now, end)
             if events is not None:

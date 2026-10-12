@@ -847,6 +847,27 @@ def program_summary(program: str, model: dict) -> dict:
     }
 
 
+def planning_window_end(config: dict, instance: dict, now: datetime) -> datetime:
+    """Cover every candidate's finish without extending its allowed start range."""
+    reference = now.astimezone(timezone.utc)
+    horizons = [float(config.get("cost_search_hours", 24)),
+                float(config.get("cost_forecast_hours", 12))]
+    if any(not math.isfinite(hours) or not 0 <= hours <= 72 for hours in horizons):
+        raise ValueError("Planning horizon must be between 0 and 72 hours")
+    runtimes = [stat_summary(model, "runtime_minutes", 1)[0] or 0
+                for model in instance.get("program_models", {}).values()]
+    # A finishing capture can teach a longer model after calendars are fetched.
+    if started := datetime_from_value(instance.get("cycle_start")):
+        elapsed = max(0, (reference - started).total_seconds() / 60)
+        runtimes.append(math.ceil(elapsed * 10) / 10)
+    if any(not math.isfinite(runtime) or runtime < 0 for runtime in runtimes):
+        raise ValueError("Learned cycle duration must be finite and non-negative")
+    try:
+        return reference + timedelta(hours=max(horizons), minutes=max(runtimes, default=0))
+    except OverflowError as error:
+        raise ValueError("Learned cycle duration exceeds the planning date range") from error
+
+
 def bounded_cost_breakdown(rows: object) -> tuple[list[dict], int, bool]:
     """Publish enough cost detail for a dashboard without retaining a long history."""
     if not isinstance(rows, list):
@@ -2436,9 +2457,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         "special_price_window": manual_window_public,
     }
     blocked_window_entity = config.get("blocked_window_entity", "")
-    window_end = now.astimezone(timezone.utc) + timedelta(hours=max(
-        config.get("cost_search_hours", 18), config.get("cost_forecast_hours", 12),
-    ))
+    window_end = planning_window_end(config, instance, now)
     blocked_windows, blocked_window_diagnostic = blocked_windows_from_entity(
         token, blocked_window_entity, start=now.astimezone(timezone.utc), end=window_end,
         naive_timezone=config.get("window_timezone", config.get("tariff_timezone", "Europe/London")),

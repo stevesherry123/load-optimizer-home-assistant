@@ -4,10 +4,11 @@
 
 The next development phase is safe community onboarding, not another supplier
 integration or an automatic-control expansion. Documentation and isolated
-clean-install tests are pushed on `docs/onboarding-clean-install` at `becd204`.
-The first runtime slice is local on `feature/onboarding-validation`, based on
-that documentation commit. Neither branch is merged into main or released.
-The release version remains unchanged.
+clean-install tests from `becd204` and the initial runtime validation slice are
+now included in `fix/runtime-data-safety` and
+[PR #16](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/16).
+They are awaiting review, not separate merge tasks. Main and the release version
+remain unchanged.
 
 Do not fold either tariff beta into this work. Keep release publication, live
 installation/restarts and physical appliance commands separately approved.
@@ -36,9 +37,9 @@ has been independently security-audited.
 
 | Slice | Status | Acceptance |
 | --- | --- | --- |
-| Executable guides and minimal standard-card dashboard | Pushed, awaiting review | Fresh generic/Home Connect learning and persisted restart without imported memory |
-| Shared bounded YAML parser and pre-save validation | Implemented locally | Invalid shape, duplicate IDs/keys/policies, non-finite values, bad references, flags and scheduling settings cannot save |
-| Read-only source review before saving | Implemented locally | Show IDs, policy/tariff counts, missing sources and W/kWh warnings; cancellation changes nothing; saving enables no new control |
+| Executable guides and minimal standard-card dashboard | In PR #16, awaiting review | Fresh generic/Home Connect learning and persisted restart without imported memory |
+| Shared bounded YAML parser and pre-save validation | In PR #16, awaiting review | Invalid shape, duplicate IDs/keys/policies, non-finite values, bad references, flags and scheduling settings cannot save |
+| Read-only source review before saving | In PR #16, awaiting review | Show IDs, policy/tariff counts, missing sources and W/kWh warnings; cancellation changes nothing; saving enables no new control |
 | Guided add/edit appliance form | Next implementation | Retain advanced YAML, immutable existing IDs, explicit removals, source selectors, no learning/model reclassification |
 | Programme-policy editor | After appliance editor | Exact learned programme names, independent normal/negative permissions, explicit zero-as-unlimited labels, no implicit opt-ins |
 | Selectable native controller target | Separate design/review | Remove ID 1 assumption only with safe identity migration, handover and no cross-appliance commands |
