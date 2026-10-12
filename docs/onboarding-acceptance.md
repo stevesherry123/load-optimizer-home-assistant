@@ -99,3 +99,17 @@ fresh setup, source review, cancellation, active-capture/queued-request save
 guards, reload and persisted restart; EV lifecycle, platform imports, dashboard
 templates and security smoke checks all pass. Bandit reports no findings with
 no skipped checks. These results do not constitute live deployment or remote CI.
+
+## Runtime Safety Review: 12 October 2026
+
+On `fix/runtime-data-safety`, 276 unit tests pass. The real minimum-HA onboarding
+checks also verify each learned-hub settings section defers both synthetic active
+captures and queued starts, preserving options, requests, memory and registered
+identities. Multi-source review checks each window entity independently. Both
+documented appliance examples still pass setup, learning, save/reload and
+persisted restart. The separate runtime-safety acceptance and remaining release
+gates are recorded in [runtime safety repairs](runtime-safety-repairs.md).
+
+The owner approved pushing this repair branch and opening a review request in
+this repository. This does not approve a main merge, release, installation or
+changes/comments on the HACS catalogue submission.

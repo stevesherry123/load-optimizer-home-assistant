@@ -16,8 +16,10 @@
 - Add a read-only source review before saving, including missing-source and W/kWh
   checks. Invalid or cancelled edits retain saved settings and learning. Preserve
   legacy wrapped options, zero-prefixed IDs and unquoted overnight times.
-- Defer appliance-source saves during known active captures or queued starts;
-  never cancel a cycle or request just to apply an edit.
+- Defer all learned-hub settings saves during known active captures or queued
+  starts; retain submitted values and never cancel work just to apply an edit.
+- Review comma-separated window sources individually rather than reporting the
+  combined list as an unavailable entity.
 - Do not treat missing, invalid or non-finite power as a low-power completion.
   Retain active captures without adding missing samples, expose source health,
   and exclude incomplete profiles from learning after a genuine end signal.

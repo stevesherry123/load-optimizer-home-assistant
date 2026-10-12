@@ -65,9 +65,10 @@ start action. Confirm removal semantics before implementing deletion.
   parser remains tolerant of an invalid document by reporting no configuration.
 - Source warnings are a snapshot, not proof of future tariff completeness,
   correct price-unit selection or successful remote activation.
-- Saving valid options still reloads the runtime. Finish active captures first;
-  the final confirmation blocks a known active capture or queued start without
-  cancelling either. The check is repeated when the user retries saving.
+- Saving valid options still reloads the runtime. All learned-hub settings
+  sections block a known active capture or queued start without cancelling
+  either. Submitted values remain in the form, and the check repeats on retry.
+  EV settings use their independent lifecycle.
 
 ## Verification And Release Gates
 

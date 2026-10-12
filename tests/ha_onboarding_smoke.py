@@ -32,6 +32,8 @@ from homeassistant.helpers.config_validation import custom_serializer
 from voluptuous_serialize import convert
 
 from custom_components.load_optimizer.legacy import app_runtime
+from custom_components.load_optimizer.config_flow import _appliance_review
+from custom_components.load_optimizer.legacy.config_validation import validate_appliance_options
 from custom_components.load_optimizer.orchestration import LEGACY_CONFIG_HELPERS
 
 DOMAIN = "load_optimizer"
@@ -144,6 +146,22 @@ async def verify_appliance_editing(hass, entry, coordinator, example):
     assert hass.data[DOMAIN][entry.entry_id] is coordinator
     assert coordinator.legacy_runtime.state == memory_before
 
+    hass.states.async_set("calendar.synthetic_first", "off")
+    hass.states.async_set("event.synthetic_second", "ready", {"events": []})
+    review = _appliance_review(hass, validate_appliance_options({
+        "instances_yaml": example,
+        "blocked_window_entity": "calendar.synthetic_first,event.synthetic_second",
+    }))
+    assert "not currently available" not in review, review
+    hass.states.async_remove("event.synthetic_second")
+    review = _appliance_review(hass, validate_appliance_options({
+        "instances_yaml": example,
+        "blocked_window_entity": "calendar.synthetic_first,event.synthetic_second",
+    }))
+    assert "event.synthetic_second: not currently available" in review, review
+    assert "calendar.synthetic_first: not currently available" not in review, review
+    await verify_section_edit_guards(hass, entry, coordinator)
+
     flow = await hass.config_entries.options.async_init(entry.entry_id)
     flow = await hass.config_entries.options.async_configure(flow["flow_id"], {"next_step_id": "appliances_tariff"})
     result = await hass.config_entries.options.async_configure(flow["flow_id"], {"instances_yaml": example})
@@ -174,6 +192,45 @@ async def verify_appliance_editing(hass, entry, coordinator, example):
     assert current.orchestrator.state["request"] is None
     print("Appliance edits: rejection/cancellation preserve memory; explicit reviewed save preserves identities and permissions")
     return current
+
+
+async def verify_section_edit_guards(hass, entry, coordinator):
+    """Every learned-hub settings section reloads, so each must defer busy edits."""
+    sections = {
+        "optimisation": {"cost_search_hours": 18},
+        "publishing": {"publish_diagnostics": True},
+        "dishwasher_control": dict(CONTROL),
+        "price_cap": {"price_cap_region": "Merseyside and Northern Wales"},
+    }
+    instance = coordinator.legacy_runtime.state["instances"]["1"]
+    for section, values in sections.items():
+        options_before = dict(entry.options)
+        memory_before = deepcopy(coordinator.legacy_runtime.state)
+        ids_before = identities(hass, entry.entry_id)
+        flow = await hass.config_entries.options.async_init(entry.entry_id)
+        flow = await hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": section}
+        )
+        instance["cycle_start"] = Clock.current.isoformat()
+        rejected = await hass.config_entries.options.async_configure(flow["flow_id"], values)
+        assert rejected["type"] == "form", (section, rejected)
+        assert rejected["step_id"] == section and rejected["errors"] == {
+            "base": "active_appliance_capture"
+        }, (section, rejected)
+        convert(rejected["data_schema"], custom_serializer=custom_serializer)
+        assert dict(entry.options) == options_before
+        instance.pop("cycle_start")
+        coordinator.orchestrator.state["request"] = {"synthetic": "held-for-section-edit"}
+        rejected = await hass.config_entries.options.async_configure(flow["flow_id"], values)
+        assert rejected["errors"] == {"base": "appliance_request_pending"}, (section, rejected)
+        assert coordinator.orchestrator.state["request"] == {"synthetic": "held-for-section-edit"}
+        assert dict(entry.options) == options_before
+        assert hass.data[DOMAIN][entry.entry_id] is coordinator
+        assert identities(hass, entry.entry_id) == ids_before
+        coordinator.orchestrator.state["request"] = None
+        assert coordinator.legacy_runtime.state == memory_before
+        hass.config_entries.options.async_abort(flow["flow_id"])
+    print("All learned settings sections defer captures/queued starts; multi-source review checks each entity")
 
 
 async def session(config_dir, example_name, snapshot=None):

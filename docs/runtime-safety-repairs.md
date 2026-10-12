@@ -1,10 +1,12 @@
 # Runtime Safety Repairs
 
-Status: local, unreleased work on `fix/runtime-data-safety`, 12 October 2026.
+Status: reviewed, unreleased work on `fix/runtime-data-safety`, 12 October 2026.
 Based on main plus the existing onboarding documentation and validation commits
 (`becd204`, `31c87e6`). No tariff-beta feature or negative-run scheduling fix was
-merged incidentally. No version change, push, release, live HA access or physical
-appliance command was performed for this stage.
+merged incidentally. The owner approved pushing this branch and opening a review
+request in this repository only. Merge, version changes, release and deployment
+remain separate approvals. No live HA access or physical appliance command was
+performed for this stage; the HACS catalogue submission is unchanged.
 
 ## Approved Repair Scope
 
@@ -14,6 +16,22 @@ appliance command was performed for this stage.
 | R2: textual false becomes permission | Retains the existing fail-closed conversion from the onboarding validation commit. No automatic opt-in is enabled. |
 | R3: missing mandatory no-run source permits scheduling | Configured feeds must be readable. Valid empty feeds pass; missing entities, unavailable states, calendar failures and malformed event contracts block. Every configured source must pass. |
 | R4: unsafe configuration saving | Retains bounded parsing, duplicate detection, source review and active-capture/pending-request edit guards. Repairs validation of existing comma-separated green/no-run sources. |
+
+## Review Follow-Up
+
+The review reproduced and repaired two additional gaps:
+
+- Optimisation, publishing, dishwasher control and benchmark saves could bypass
+  the appliance-source guard and reload the learned hub during active work.
+  Every learned-hub settings section now defers a known capture or queued start,
+  retains submitted values and leaves options, requests and registered identities
+  unchanged. EV benchmark settings remain independent.
+- The source review treated comma-separated window references as a single entity.
+  It now checks each source separately and reports only genuinely missing inputs.
+
+Real minimum-HA onboarding tests reproduce both failures against the old code
+and verify the repairs for the generic and Home Connect examples. Captures and
+queued requests in these tests are synthetic; no real command is sent.
 
 ## Capture Recovery
 
@@ -60,6 +78,16 @@ to explicit manual commands. It does withhold engine recommendations when their
 configured mandatory source is unreadable; manual control is not an assertion
 that a no-run calendar has been checked successfully.
 
+### Remaining Planning Boundary
+
+The recommendation scan currently reads calendar windows only through the
+configured search/forecast horizon, without adding the candidate's duration.
+A candidate near that boundary can therefore look eligible despite a later
+no-run event. The fresh automatic command-time check above covers the entire
+actual cycle and blocks that start. Extending the planning fetch and filtering
+range, with an end-of-horizon regression, remains a separate follow-up; these
+repairs do not claim that every future recommendation is already complete.
+
 ## Local Acceptance
 
 Against Home Assistant 2024.12.0 and Python 3.12:
@@ -83,7 +111,9 @@ Against Home Assistant 2024.12.0 and Python 3.12:
   compatibility, not a full HACS/HA rollback deployment. Do not downgrade during
   a capture or pending request; old code does not enforce these new safeguards.
 
-CI includes the new real-HA safety smoke test. Remote CI/HACS/hassfest has not
-run for this unpublished branch. Human review, a separately approved release
-and supervised live acceptance remain outstanding. R5's repeated negative-run
-fix and comparable-integration feature decisions are separate next steps.
+CI includes the new real-HA safety smoke test and the extended settings guards.
+The repository review request is the authoritative record of remote CI,
+including HACS validation and hassfest; local results alone do not imply those
+checks passed. Human review, a separately approved release and supervised live
+acceptance remain outstanding. R5's repeated negative-run fix and
+comparable-integration feature decisions are separate next steps.

@@ -91,7 +91,11 @@ def _appliance_review(hass, config: ApplianceConfiguration) -> str:
                           ("schedule_earliest_start_entity", None), ("schedule_latest_finish_entity", None),
                           ("green_window_entity", None), ("blocked_window_entity", None)):
             if entity_id := item.get(key):
-                sources.setdefault(entity_id, set()).add(unit)
+                entity_ids = entity_id.split(",") if key in {
+                    "green_window_entity", "blocked_window_entity",
+                } else [entity_id]
+                for source_id in entity_ids:
+                    sources.setdefault(source_id.strip(), set()).add(unit)
     tariffs = config.options.get(CONF_TARIFF_ENTITIES, "")
     tariffs = tariffs.split(",") if isinstance(tariffs, str) else tariffs
     tariffs = {str(item).strip() for item in tariffs if str(item).strip()}
@@ -539,7 +543,9 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
         return self._save_section(values)
 
     def _appliance_save_errors(self):
-        """Do not reload appliance sources during a capture or queued start."""
+        """Do not reload learned-hub settings during a capture or queued start."""
+        if self.config_entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
+            return {}
         coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
         if coordinator is None:
             return {}
@@ -554,12 +560,14 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
         self, user_input: dict[str, Any] | None = None
     ):
         """Edit cost-search and scheduling settings."""
-        if user_input is not None:
+        errors = self._appliance_save_errors() if user_input is not None else {}
+        if user_input is not None and not errors:
             return self._save_section(user_input)
 
-        existing = self._existing
+        existing = {**self._existing, **(user_input or {})}
         return self.async_show_form(
             step_id="optimisation",
+            errors=errors,
             data_schema=vol.Schema(
                 {
                     vol.Optional(
@@ -593,12 +601,14 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
         self, user_input: dict[str, Any] | None = None
     ):
         """Edit optional diagnostic and forecast publishing settings."""
-        if user_input is not None:
+        errors = self._appliance_save_errors() if user_input is not None else {}
+        if user_input is not None and not errors:
             return self._save_section(user_input)
 
-        existing = self._existing
+        existing = {**self._existing, **(user_input or {})}
         return self.async_show_form(
             step_id="publishing",
+            errors=errors,
             data_schema=vol.Schema(
                 {
                     vol.Optional(
@@ -621,10 +631,11 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
         self, user_input: dict[str, Any] | None = None
     ):
         """Edit optional Home Connect dishwasher control references."""
-        if user_input is not None:
+        errors = self._appliance_save_errors() if user_input is not None else {}
+        if user_input is not None and not errors:
             return self._save_section(user_input)
 
-        existing = self._existing
+        existing = {**self._existing, **(user_input or {})}
         schema: dict[Any, Any] = {}
         entity_fields = (
             CONF_BOSCH_POWER_SWITCH,
@@ -650,6 +661,7 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
             ] = selector.EntitySelector(selector.EntitySelectorConfig())
         return self.async_show_form(
             step_id="dishwasher_control",
+            errors=errors,
             data_schema=vol.Schema(schema),
         )
 
@@ -657,10 +669,12 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
         self, user_input: dict[str, Any] | None = None
     ):
         """Edit the regional Ofgem benchmark configuration."""
-        if user_input is not None:
+        errors = self._appliance_save_errors() if user_input is not None else {}
+        if user_input is not None and not errors:
             return self._save_section(user_input)
 
         return self.async_show_form(
             step_id="price_cap",
-            data_schema=vol.Schema(_price_cap_schema(self._existing)),
+            errors=errors,
+            data_schema=vol.Schema(_price_cap_schema({**self._existing, **(user_input or {})})),
         )

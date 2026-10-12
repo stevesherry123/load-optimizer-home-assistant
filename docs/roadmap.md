@@ -6,11 +6,17 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- Review the repair-only `fix/runtime-data-safety` branch before any push, merge,
-  release or deployment. R1/R3 outage/no-run enforcement is implemented locally,
-  alongside the existing R2/R4 permission/configuration validation. Acceptance:
-  [runtime safety repairs](runtime-safety-repairs.md). Keep feature proposals and
-  R5's repeated negative-run beta promotion separately approved.
+- Finish remote checks and human review of `fix/runtime-data-safety`. The owner
+  approved a push and review request in this repository only; merge, release and
+  deployment remain separately approved. R1/R3 outage/no-run enforcement and
+  R2/R4 permission/configuration validation have isolated acceptance, including
+  busy-save guards across all learned-hub settings. See
+  [runtime safety repairs](runtime-safety-repairs.md). Keep feature proposals,
+  R5's repeated negative-run beta promotion and the HACS submission separate.
+- Extend planning-time calendar coverage past the search/forecast boundary by
+  the candidate cycle duration, with a late-candidate no-run regression. The
+  repaired automatic command-time check already covers the full actual cycle,
+  but a boundary recommendation can still be withdrawn when execution is checked.
 - review the documentation-first onboarding branch and its isolated acceptance
   results before merging; include the guides in a separately approved release,
   without changing existing stable tags or promoting the tariff beta
