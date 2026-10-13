@@ -2,7 +2,8 @@
 
 Status: discussion draft, 13 October 2026. No ledger, counter migration, new
 entity or guided editor is implemented by this document. Based on the PR #17
-review branch; its repairs and open command-time finding remain separate gates.
+review branch at `f4cae72`; command-time pricing is repaired and tested there.
+Its merge, release and live acceptance remain separately approved gates.
 
 ## Purpose
 
@@ -33,8 +34,9 @@ replacement import or a relabelled learning count.
   ledger identity model should support other appliances without pretending their
   control adapters already exist.
 - Final review found no exact-programme tariff revalidation after command delays.
-  Resolve that independently before live repeat-scheduling acceptance; do not
-  wait for a new ledger to repair an execution-time price check.
+  PR #17 now repairs this independently, including delayed/fallback attempts,
+  revised rates and exact-programme caps. 322 unit tests and isolated minimum-HA
+  acceptance pass. A new ledger is not needed to repair that execution check.
 
 ## Proposed Record
 
@@ -176,7 +178,7 @@ installation, restart and a supervised real cycle remain separately approved.
 
 ## Delivery Order
 
-1. Agree accounting rules and completion evidence; resolve the PR #17 review.
+1. Agree accounting rules and completion evidence; approve PR #17's reviewed merge.
 2. Implement additive shadow ledger and recovery tests on a development branch.
 3. Compare shadow outcomes with real observations without changing control.
 4. Add opt-in enforcement and explanatory entities after parity evidence.

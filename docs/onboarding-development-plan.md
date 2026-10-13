@@ -49,8 +49,9 @@ has been independently security-audited.
 The 13 October [ledger and guided-setup design](physical-cycle-ledger-design.md)
 records the proposed forms, removal semantics and the separately prioritized
 physical-cycle counter. It is a discussion draft, not an implemented editor or
-approval to change automatic accounting. First close PR #17's command-time
-review; then agree the ledger design before its shadow implementation.
+approval to change automatic accounting. PR #17's command-time repair now has
+322 passing unit tests and isolated minimum-HA acceptance; merge approval is
+separate. Agree the ledger design before its shadow implementation.
 
 The guided editor should update one appliance in the existing list rather than
 replace the hub or allocate a new identity when its name changes. Existing
