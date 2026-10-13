@@ -24,6 +24,9 @@ implementation architecture in `docs/architecture.md`.
   of learning rejection and recent-profile retention. Current finite-window
   limits count learned runs and conservatively pause when history is incomplete;
   do not present them as a lifetime record of every physical wash.
+  The [ledger and guided-setup discussion draft](physical-cycle-ledger-design.md)
+  is on `docs/physical-cycle-ledger-design`, not implemented. Agree manual-cycle,
+  failed-start and window-overlap accounting before shadow collection/enforcement.
 
 - await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
   for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream

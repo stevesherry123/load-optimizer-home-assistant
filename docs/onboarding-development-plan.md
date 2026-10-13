@@ -46,6 +46,12 @@ has been independently security-audited.
 | Installation-specific starter dashboard | After editor | Use actual registered IDs; create an optional copy without overwriting custom dashboards |
 | Community support pack and onboarding trial | Before broad promotion | Private-safe screenshots/issue forms; unfamiliar user completes documented flow |
 
+The 13 October [ledger and guided-setup design](physical-cycle-ledger-design.md)
+records the proposed forms, removal semantics and the separately prioritized
+physical-cycle counter. It is a discussion draft, not an implemented editor or
+approval to change automatic accounting. First close PR #17's command-time
+review; then agree the ledger design before its shadow implementation.
+
 The guided editor should update one appliance in the existing list rather than
 replace the hub or allocate a new identity when its name changes. Existing
 thresholds, policies, capture behaviour and unknown extension fields must survive
