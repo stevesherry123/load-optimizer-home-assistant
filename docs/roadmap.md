@@ -6,29 +6,22 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- Finish remote checks and human review of
-  [repair PR #16](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/16).
-  The owner
-  approved a push and review request in this repository only; merge, release and
-  deployment remain separately approved. R1/R3 outage/no-run enforcement and
-  R2/R4 permission/configuration validation have isolated acceptance, including
-  busy-save guards across all learned-hub settings. See
-  [runtime safety repairs](runtime-safety-repairs.md). Keep feature proposals,
-  R5's repeated negative-run beta promotion and the HACS submission separate.
-- The onboarding guides and initial parser/source-review slice are included in
-  PR #16, not separate merge tasks. Include them in a separately approved release
-  after review, without changing existing stable tags or promoting the tariff beta.
+- Review `fix/negative-price-repeat-safety` against current main before any
+  merge/release. It selectively carries the earlier repeat fix plus retry-wait
+  explanations and conservative finite-history checks, without tariff-beta
+  features. See [repeat repair acceptance](negative-price-repeat-repairs.md).
+- Runtime safety, planning-boundary repairs and the initial onboarding guides,
+  parser/source review are merged through
+  [PR #16](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/16)
+  at `c16b9e9`, with all five post-merge checks passing. They are unreleased;
+  publication and live installation remain separately approved.
 - follow up separately with guided appliance/policy editing,
   selectable control targets and generated dashboards; add privacy-safe screenshots,
   issue forms and an unfamiliar-user onboarding trial before broad promotion
-- first runtime onboarding slice was implemented on
-  `feature/onboarding-validation` and is retained in `fix/runtime-data-safety`:
-  shared bounded parsing, pre-save validation and
-  a read-only source review. Guided editing and public/live acceptance remain
-  separate; see [the development plan](onboarding-development-plan.md).
-- keep `e6ba6ca`'s repeated free/negative-price scheduling fix on
-  `fix/negative-price-repeat-runs` visible as a separate stable-promotion priority;
-  do not merge it or the tariff betas incidentally with onboarding changes
+- Add a separately designed confirmed-physical-cycle quota ledger, independent
+  of learning rejection and recent-profile retention. Current finite-window
+  limits count learned runs and conservatively pause when history is incomplete;
+  do not present them as a lifetime record of every physical wash.
 
 - await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
   for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
@@ -60,6 +53,17 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Implemented the approved repeat-scheduling follow-up on a separate repair
+  branch, not main or a release. 306 tests pass, including a five-run synthetic
+  timeline and real minimum-HA repeat/persistence/fresh-safety acceptance.
+  Normal permissions and manual cooldown overrides remain intact. No live
+  commands, release or HACS submission changes were made.
+
+- Merged runtime safety, planning-boundary and initial onboarding work through
+  PR #16 on 12 October at `c16b9e9`. All five post-merge checks pass, including
+  285 unit tests. This supersedes the earlier local-only status below; stable
+  version and production installation were not changed by that merge.
 
 - Completed the approved planning-boundary follow-up on `fix/runtime-data-safety`:
   calendar fetching and event filtering include the full learned cycle tail,

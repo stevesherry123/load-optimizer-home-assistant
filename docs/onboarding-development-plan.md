@@ -5,10 +5,10 @@
 The next development phase is safe community onboarding, not another supplier
 integration or an automatic-control expansion. Documentation and isolated
 clean-install tests from `becd204` and the initial runtime validation slice are
-now included in `fix/runtime-data-safety` and
+were merged to main at `c16b9e9` through
 [PR #16](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/16).
-They are awaiting review, not separate merge tasks. Main and the release version
-remain unchanged.
+They are unreleased, not separate merge tasks. Guided editing remains future
+work; the release version is unchanged.
 
 Do not fold either tariff beta into this work. Keep release publication, live
 installation/restarts and physical appliance commands separately approved.
@@ -37,9 +37,9 @@ has been independently security-audited.
 
 | Slice | Status | Acceptance |
 | --- | --- | --- |
-| Executable guides and minimal standard-card dashboard | In PR #16, awaiting review | Fresh generic/Home Connect learning and persisted restart without imported memory |
-| Shared bounded YAML parser and pre-save validation | In PR #16, awaiting review | Invalid shape, duplicate IDs/keys/policies, non-finite values, bad references, flags and scheduling settings cannot save |
-| Read-only source review before saving | In PR #16, awaiting review | Show IDs, policy/tariff counts, missing sources and W/kWh warnings; cancellation changes nothing; saving enables no new control |
+| Executable guides and minimal standard-card dashboard | On main, unreleased | Fresh generic/Home Connect learning and persisted restart without imported memory |
+| Shared bounded YAML parser and pre-save validation | On main, unreleased | Invalid shape, duplicate IDs/keys/policies, non-finite values, bad references, flags and scheduling settings cannot save |
+| Read-only source review before saving | On main, unreleased | Show IDs, policy/tariff counts, missing sources and W/kWh warnings; cancellation changes nothing; saving enables no new control |
 | Guided add/edit appliance form | Next implementation | Retain advanced YAML, immutable existing IDs, explicit removals, source selectors, no learning/model reclassification |
 | Programme-policy editor | After appliance editor | Exact learned programme names, independent normal/negative permissions, explicit zero-as-unlimited labels, no implicit opt-ins |
 | Selectable native controller target | Separate design/review | Remove ID 1 assumption only with safe identity migration, handover and no cross-appliance commands |
@@ -86,13 +86,11 @@ stable release/version bump and live deployment require separate approval.
 
 ## Other Release Work Still Separate
 
-The repeated free/negative-price scheduling fix remains at `e6ba6ca` on
-`fix/negative-price-repeat-runs`, outside main. It deserves priority for beta
-observation and a separately approved stable promotion; it must not disappear
-behind onboarding work or be merged incidentally with it.
-The stored scheduling diff was reviewed and its 235 unit tests rerun successfully
-on 10 October, without changing that checkout. This is not evidence of today's
-live automatic cycles or permission to promote/publish it.
+The earlier repeated free/negative-price fix at `e6ba6ca` is being selectively
+carried on `fix/negative-price-repeat-safety` against current main, with fresh
+source checks, retry explanations and finite-history protection. See
+[repeat repair acceptance](negative-price-repeat-repairs.md). Its isolated
+results are not evidence of today's live cycles or permission to merge/release.
 
 The tariff history/import/AI branches still have their own next-day/provider,
 dashboard and historical-rebasing gates. The previous HACS catalogue request

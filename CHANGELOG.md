@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Fix repeated free/negative-price scheduling between candidate grid points;
+  prefer an immediately usable permitted programme over a future opportunity.
+  Keep normal rounding, full-cycle pricing, no-run checks and explicit opt-ins.
+- Keep the 30-minute automatic request interval without reserving an overnight
+  request during that retry wait. Explain negative-mode waits, limits, confidence
+  and retry eligibility using the matching programme rather than overnight data.
+- Fail closed for finite negative-window limits when retained learned-cycle
+  history cannot establish the count. Preserve explicit zero-as-unlimited policy
+  and expose missing history without rewriting learning.
 - Fix the new-install guide's missing recommendation policy and add executable
   generic-appliance and Home Connect examples, with negative-price runs off.
 - Separate fresh Home Connect activation from legacy migration; document current
