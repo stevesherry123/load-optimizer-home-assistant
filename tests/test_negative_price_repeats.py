@@ -191,6 +191,40 @@ class NegativePriceRepeatTests(unittest.TestCase):
         recommendation = self.recommend()["negative_price_recommendation"]
         self.assertEqual(recommendation["reason"], "negative_run_history_incomplete")
 
+    def test_malformed_history_cannot_claim_complete_finite_window_coverage(self):
+        self.model["runs"] = 2
+        for history in ([{}, {}], [None, None], "invalid", {"bad": "history"},
+                        [{"finish": self.reference.isoformat(), "runtime_minutes": "bad"}],
+                        [{"finish": self.reference.isoformat(), "runtime_minutes": 1e300}],
+                        [{"finish": self.reference.isoformat(), "runtime_minutes": float("nan")}],
+                        [{"finish": self.reference.isoformat(), "runtime_minutes": float("inf")}],
+                        [{"finish": self.reference.isoformat(), "runtime_minutes": 0}],
+                        [{"finish": self.reference.isoformat(), "runtime_minutes": -1}],
+                        [{"finish": self.reference.isoformat(), "runtime_minutes": True}],
+                        [{"finish": "2026-10-13T08:00:00", "runtime_minutes": 1}]):
+            with self.subTest(history=history):
+                self.model["recent_cycles"] = history
+                recommendation = self.recommend()["negative_price_recommendation"]
+                self.assertFalse(recommendation["ready_to_start"])
+                self.assertEqual(recommendation["reason"], "negative_run_history_incomplete")
+
+    def test_explicit_unlimited_policy_does_not_crash_on_invalid_history(self):
+        self.policy["maximum_runs_per_window"] = 0
+        self.model.update(runs=50, recent_cycles=[{
+            "finish": self.reference.isoformat(), "runtime_minutes": 1e300}])
+        recommendation = self.recommend()["negative_price_recommendation"]
+        self.assertTrue(recommendation["ready_to_start"])
+        self.assertEqual(recommendation["negative_window_runs"], 0)
+
+    def test_out_of_order_history_does_not_prove_older_runs_precede_the_window(self):
+        self.policy["maximum_runs_per_window"] = 20
+        self.model.update(runs=50, recent_cycles=[
+            {"finish": self.reference.isoformat(), "runtime_minutes": 0.5},
+            {"finish": (self.start - timedelta(hours=1)).isoformat(), "runtime_minutes": 28.4},
+        ])
+        recommendation = self.recommend()["negative_price_recommendation"]
+        self.assertEqual(recommendation["reason"], "negative_run_history_incomplete")
+
     def test_native_and_compatibility_costing_copies_are_identical(self):
         self.assertEqual((ROOT / "legacy/costing.py").read_bytes(),
                          (ROOT / "optimizer/tariffs.py").read_bytes())

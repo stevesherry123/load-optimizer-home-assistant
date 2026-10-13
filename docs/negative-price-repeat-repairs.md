@@ -16,6 +16,9 @@ repairs. Neither tariff-beta branch nor its version changes is included.
   usable. The explanation also reported overnight details for negative-only mode.
 - When every programme reached its cap, the early no-candidate result omitted
   the negative-intent reason. Truncated learning history could undercount a cap.
+- Final review reproduced malformed history claiming coverage by list length,
+  out-of-order records claiming a pre-window anchor, and an overflowing runtime
+  crashing the count. Shared cycle-span validation now rejects that evidence.
 
 ## Behaviour
 
@@ -43,6 +46,9 @@ Adjacent negative and zero-price slots share one window; a positive-price gap
 separates allowances. Counts come from learned cycles overlapping that window.
 If the model has unretained older runs and no retained pre-window completion
 establishes coverage, a finite cap pauses with `negative_run_history_incomplete`.
+Malformed or out-of-order records cannot establish that coverage either. Runtime
+values must be finite, positive, non-boolean and representable as an interval;
+invalid evidence never rewrites the stored learning record.
 An already reached cap retains `maximum_runs_per_window_reached`. Zero still
 means deliberately unlimited; missing history does not invent a cap for it.
 
@@ -59,7 +65,7 @@ dashboard, custom resource or production configuration is installed.
 
 ## Acceptance
 
-- 306 unit tests pass, including off-grid execution, active/future ordering,
+- 309 unit tests pass, including off-grid execution, active/future ordering,
   programme flags, separate-window allowances, normal cooldown overrides,
   finite-history uncertainty, physical safety and queued-request preservation.
 - The actual planner/controller simulation produces five confirmed mocked starts
@@ -74,6 +80,25 @@ dashboard, custom resource or production configuration is installed.
 - Existing imports, dashboard templates, onboarding, runtime safety, security
   and EV backend lifecycle checks pass. No new browser acceptance is claimed;
   the sandbox denied the EV runner's optional local HTTP listener.
+- Follow-up review adds malformed/overflowing runtime, timezone, chronology and
+  explicit-unlimited regressions. Bandit and working-tree/history credential
+  scans pass; the history scan covers 243 commits before this follow-up commit.
+
+## Open Command-Time Review Finding
+
+The automatic preflight re-reads power and full-cycle no-run calendars, but does
+not reprice the requested programme at the actual command time. The controller
+instead consults the published negative recommendation's fit flag, without
+checking that it still describes the requested programme. Power-on, selection
+and fallback delays can age an otherwise valid high-power fit out of its window.
+An isolated controller probe also accepted a stale MachineCare fit while the
+requested programme was Quick45; no physical command was sent.
+
+This is an existing execution-layer limitation, not fixed by the history repair.
+Do not merge on the strength of green tests alone: the owner's decision on
+including a narrowly scoped command-time repair is pending. Release/live gates
+must include exact-programme price-window revalidation, including delayed and
+fallback starts, while preserving explicit manual cooldown overrides.
 
 The new real-HA test runs in CI with all device commands intercepted and HTTP
 listeners mocked. No supplier, AI provider or production HA request is needed.

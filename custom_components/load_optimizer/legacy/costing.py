@@ -292,34 +292,56 @@ def _negative_power_window_fit(start: datetime, model: dict, periods: list[dict]
     }
 
 
+def _learned_cycle_span(cycle: object) -> tuple[datetime, datetime] | None:
+    """Validate a retained cycle before using it as count or coverage evidence."""
+    if not isinstance(cycle, Mapping):
+        return None
+    try:
+        finish = _parse_timestamp(cycle.get("finish"))
+        raw_runtime = cycle.get("runtime_minutes")
+        if isinstance(raw_runtime, bool):
+            return None
+        runtime = float(raw_runtime)
+        if not math.isfinite(runtime) or runtime <= 0:
+            return None
+        return finish - timedelta(minutes=runtime), finish
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def _recent_runs_in_window(model: dict, window_start: datetime, window_end: datetime) -> int:
     """Count learned runs that overlap a tariff opportunity window."""
+    history = model.get("recent_cycles", [])
+    if not isinstance(history, list):
+        return 0
     count = 0
-    for cycle in model.get("recent_cycles", []) or []:
-        try:
-            finish = _parse_timestamp(cycle.get("finish"))
-            runtime = float(cycle.get("runtime_minutes"))
-        except (AttributeError, TypeError, ValueError):
-            continue
-        cycle_start = finish - timedelta(minutes=runtime)
-        if cycle_start < window_end and finish > window_start:
+    for cycle in history:
+        span = _learned_cycle_span(cycle)
+        if span is not None and span[0] < window_end and span[1] > window_start:
             count += 1
     return count
 
 
 def _negative_run_history_complete(model: dict, window_start: datetime) -> bool:
-    history = model.get("recent_cycles", []) or []
-    if int(model.get("runs", 0)) <= len(history):
+    history = model.get("recent_cycles", [])
+    runs = model.get("runs", 0)
+    if not isinstance(history, list) or type(runs) is not int or runs < 0:
+        return False
+    spans = [_learned_cycle_span(cycle) for cycle in history]
+    if any(span is None for span in spans):
+        return False
+    finishes = [span[1] for span in spans]
+    if any(later < earlier for earlier, later in zip(finishes, finishes[1:])):
+        return False
+    if runs <= len(history):
         return True
-    # Retained completions are chronological; a pre-window entry anchors older runs.
-    finishes = [cycle.get("finish") for cycle in history if isinstance(cycle, dict)]
-    for value in finishes if history else [model.get("last_seen")]:
-        try:
-            if _parse_timestamp(value) <= window_start:
-                return True
-        except (TypeError, ValueError):
-            continue
-    return False
+    # Only verified chronological history can anchor the omitted older runs.
+    if finishes:
+        return finishes[0] <= window_start
+    try:
+        return _parse_timestamp(model.get("last_seen")) <= window_start
+    except (TypeError, ValueError, OverflowError):
+        return False
 
 
 def _apply_negative_run_limit(model: dict, policy: dict, negative_fit: dict) -> dict:

@@ -6,9 +6,11 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- Review `fix/negative-price-repeat-safety` against current main before any
-  merge/release. It selectively carries the earlier repeat fix plus retry-wait
-  explanations and conservative finite-history checks, without tariff-beta
+- Resolve the final command-time pricing review finding on PR #17 before any
+  merge/release: actual command delays and a different published recommendation
+  must not authorize a stale requested programme. Scope approval is pending.
+  `fix/negative-price-repeat-safety` selectively carries the earlier repeat fix
+  plus retry-wait explanations and conservative finite-history checks, without tariff-beta
   features. See [repeat repair acceptance](negative-price-repeat-repairs.md).
 - Runtime safety, planning-boundary repairs and the initial onboarding guides,
   parser/source review are merged through
@@ -55,7 +57,8 @@ implementation architecture in `docs/architecture.md`.
 ## Completed Recently
 
 - Implemented the approved repeat-scheduling follow-up on a separate repair
-  branch, not main or a release. 306 tests pass, including a five-run synthetic
+  branch, not main or a release. 309 tests pass, including malformed/overflowing
+  history regressions, a five-run synthetic
   timeline and real minimum-HA repeat/persistence/fresh-safety acceptance.
   Normal permissions and manual cooldown overrides remain intact. No live
   commands, release or HACS submission changes were made.

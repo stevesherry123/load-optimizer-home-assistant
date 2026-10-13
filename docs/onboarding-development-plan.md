@@ -4,7 +4,7 @@
 
 The next development phase is safe community onboarding, not another supplier
 integration or an automatic-control expansion. Documentation and isolated
-clean-install tests from `becd204` and the initial runtime validation slice are
+clean-install tests from `becd204` and the initial runtime validation slice
 were merged to main at `c16b9e9` through
 [PR #16](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/16).
 They are unreleased, not separate merge tasks. Guided editing remains future
