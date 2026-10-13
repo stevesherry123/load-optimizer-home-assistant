@@ -19,6 +19,10 @@ SCHEDULE_STRATEGIES = {"cheapest_absolute", "cheapest_earliest_finish", "cheapes
 WINDOW_PREFERENCES = {"any", "overnight_only", "daytime_only", "prefer_overnight", "prefer_daytime"}
 
 
+class TariffDataUnavailable(ValueError):
+    """A tariff entity has not exposed a populated supported rate attribute."""
+
+
 def _nearest_year(day: int, month: int, reference_local: datetime) -> int:
     candidates = []
     for year in (reference_local.year - 1, reference_local.year, reference_local.year + 1):
@@ -192,7 +196,7 @@ def tariff_periods_from_entity(
     rates = _find_structured_rates(attributes)
     if rates:
         return parse_structured_rates(rates, price_unit=price_unit)
-    raise ValueError("Tariff entity has no supported future-rate attribute")
+    raise TariffDataUnavailable("Tariff entity has no supported future-rate attribute")
 
 
 def overlay_price_window(

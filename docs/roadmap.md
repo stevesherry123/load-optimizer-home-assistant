@@ -6,9 +6,9 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- Resolve the final command-time pricing review finding on PR #17 before any
-  merge/release: actual command delays and a different published recommendation
-  must not authorize a stale requested programme. Scope approval is pending.
+- Review PR #17's completed command-time follow-up before any merge/release:
+  exact-programme repricing now covers delays and fallback attempts, with
+  revised-price, permission/cap and calendar-duration regressions.
   `fix/negative-price-repeat-safety` selectively carries the earlier repeat fix
   plus retry-wait explanations and conservative finite-history checks, without tariff-beta
   features. See [repeat repair acceptance](negative-price-repeat-repairs.md).
@@ -57,8 +57,8 @@ implementation architecture in `docs/architecture.md`.
 ## Completed Recently
 
 - Implemented the approved repeat-scheduling follow-up on a separate repair
-  branch, not main or a release. 309 tests pass, including malformed/overflowing
-  history regressions, a five-run synthetic
+  branch, not main or a release. 322 tests pass, including malformed/overflowing
+  history and command-time price revalidation regressions, a five-run synthetic
   timeline and real minimum-HA repeat/persistence/fresh-safety acceptance.
   Normal permissions and manual cooldown overrides remain intact. No live
   commands, release or HACS submission changes were made.

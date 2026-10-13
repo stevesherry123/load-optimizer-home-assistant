@@ -252,6 +252,65 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(call.args[0] in {"switch", "button", "select", "home_connect", "home_connect_alt"}
                              for call in calls))
 
+    async def test_automatic_negative_preflight_is_not_replaced_by_another_programmes_fit(self):
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "MachineCare", status="not_ready",
+                 program="MachineCare", power_hungry_window_fits_negative_price=False)
+        check = AsyncMock(return_value=None)
+        self.scheduler.set_automatic_preflight(check)
+        request = {"mode": "negative_price", "program": "Quick45", "automatic": True}
+        self.assertTrue(await self.scheduler._async_start_allowed(request))
+        check.assert_awaited_once_with(request)
+        check.return_value = "power_hungry_window_outside_negative_price"
+        self.assertFalse(await self.scheduler._async_start_allowed(request, recheck=True))
+        self.assertEqual(self.scheduler.state["last_reason"], "power_hungry_window_outside_negative_price")
+
+    async def test_negative_command_delays_and_fallbacks_reprice_at_each_actual_attempt(self):
+        start = Clock.current
+        model = {"program": "Quick45", "expected_runtime_minutes": 30, "expected_energy_kwh": 0.7,
+                 "representative_profile_w": [1000, 1000], "confidence": 90, "recent_cycles": []}
+        policy = {"program": "Quick45", "enabled": True, "allow_normal_recommendation": False,
+                  "allow_negative_price_run": True, "maximum_runs_per_window": 1,
+                  "preference_rank": 50}
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.Quick45"])
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "MachineCare", status="ready",
+                 program="MachineCare", power_hungry_window_fits_negative_price=True)
+        for slack, allowed_domains, attempts in (
+            (10, ["switch"], [0, 15]),
+            (18, ["switch", "select"], [0, 15, 20]),
+            (35, ["switch", "select", "button"], [0, 15, 20, 40]),
+            (55, ["switch", "select", "button", "home_connect_alt"], [0, 15, 20, 40, 60]),
+        ):
+            with self.subTest(slack_seconds=slack):
+                Clock.current = start
+                self.hass.services.async_call.reset_mock()
+                end = start + timedelta(minutes=30, seconds=slack)
+                periods = [{"start": start, "end": end, "price_p_per_kwh": -1},
+                           {"start": end, "end": start + timedelta(hours=6), "price_p_per_kwh": 20}]
+                checked_at = []
+
+                async def preflight(request):
+                    self.assertEqual(request["program"], "Quick45")
+                    checked_at.append((Clock.current - start).total_seconds())
+                    result = recommend_cycle([model], [policy], periods, reference_utc=Clock.current,
+                                             search_hours=0, candidate_interval_minutes=1, forecast_hours=0)
+                    return (None if result["negative_price_recommendation"]["ready_to_start"]
+                            else "power_hungry_window_outside_negative_price")
+
+                async def advance(seconds):
+                    Clock.current += timedelta(seconds=seconds)
+
+                self.scheduler.set_automatic_preflight(preflight)
+                request = {"mode": "negative_price", "program": "Quick45", "automatic": True,
+                           "start": start.isoformat(), "finish": (start + timedelta(minutes=30)).isoformat()}
+                with patch.object(asyncio, "sleep", new=advance):
+                    await self.scheduler._async_execute(request)
+                self.assertEqual(self.scheduler.state["last_reason"], "power_hungry_window_outside_negative_price")
+                self.assertEqual([call.args[0] for call in self.hass.services.async_call.await_args_list
+                                  if call.args[0] != "persistent_notification"], allowed_domains)
+                self.assertEqual(checked_at, attempts)
+                self.assertIsNone(self.scheduler.state["request"])
+
     async def test_mandatory_preflight_unavailable_is_fail_closed(self):
         request = {"mode": "automatic", "program": "MixedLoad", "start": Clock.current.isoformat()}
         await self.scheduler._async_execute(request)
