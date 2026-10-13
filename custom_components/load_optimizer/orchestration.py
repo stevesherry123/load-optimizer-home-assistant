@@ -667,7 +667,11 @@ class NativeOrchestrator:
             automatic = mode in {"automatic", "negative_price"}
         if recheck and not automatic:
             return True
-        reason = self._safety_block(mode, program, explicit_override=bool(request.get("explicit_program_override")))
+        # Automatic preflight prices this request; a published fit may describe another programme.
+        reason = self._safety_block(
+            mode, program, explicit_override=bool(request.get("explicit_program_override")),
+            check_negative_fit=not automatic,
+        )
         if not reason and automatic:
             reason = self._automatic_source_block()
             if not reason:
@@ -680,7 +684,7 @@ class NativeOrchestrator:
                         LOGGER.warning("Automatic source preflight failed (%s)", type(error).__name__)
                         reason = "automatic_preflight_unavailable"
             if not reason:
-                reason = self._safety_block(mode, program, explicit_override=False)
+                reason = self._safety_block(mode, program, explicit_override=False, check_negative_fit=False)
         if reason:
             self.state["request"] = None
             await self._async_outcome("blocked", mode, program, reason, reason.replace("_", " "))
@@ -706,6 +710,7 @@ class NativeOrchestrator:
         program: str | None,
         *,
         explicit_override: bool = False,
+        check_negative_fit: bool = True,
     ) -> str | None:
         if not program or str(program).lower() in UNKNOWN_STATES:
             return "program_missing"
@@ -724,7 +729,7 @@ class NativeOrchestrator:
             return "door_open"
         if door_state not in {"off", "closed"}:
             return "door_state_unavailable"
-        if mode == "negative_price":
+        if mode == "negative_price" and check_negative_fit:
             recommendation = self._recommendation("negative_price")
             if (
                 recommendation

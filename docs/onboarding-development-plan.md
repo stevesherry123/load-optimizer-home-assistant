@@ -94,7 +94,8 @@ stable release/version bump and live deployment require separate approval.
 
 The earlier repeated free/negative-price fix at `e6ba6ca` is being selectively
 carried on `fix/negative-price-repeat-safety` against current main, with fresh
-source checks, retry explanations and finite-history protection. See
+source checks, exact-programme command-time repricing, retry explanations and
+finite-history protection. See
 [repeat repair acceptance](negative-price-repeat-repairs.md). Its isolated
 results are not evidence of today's live cycles or permission to merge/release.
 

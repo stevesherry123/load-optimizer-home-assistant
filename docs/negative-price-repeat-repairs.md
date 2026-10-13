@@ -41,6 +41,17 @@ already queued work, confidence, door/connectivity/remote activation and fresh
 calendar/power preflight still apply. Existing requests are not preempted.
 During a usable opportunity's retry wait, no new overnight reservation is made.
 
+Before every automatic negative-price command and fallback, the preflight reads
+the requested programme's current model, permission, cap, tariff sources and
+manual special-price helpers. It reuses the planner at the actual current time
+with no future search. Another programme's published fit cannot authorize or
+veto that request. Missing/unavailable tariffs, conflicting overlaps, incomplete
+whole-cycle coverage, changed schedule bounds and outgrown calendar coverage
+block the start. Identical periods from multiple sources are deduplicated.
+An unpublished next-day attribute is tolerated only when other live source data
+fully covers this cycle. Explicit manual starts and normal-request pricing
+behaviour are unchanged.
+
 Finite caps retain their existing per-programme, per-contiguous-window meaning.
 Adjacent negative and zero-price slots share one window; a positive-price gap
 separates allowances. Counts come from learned cycles overlapping that window.
@@ -65,7 +76,7 @@ dashboard, custom resource or production configuration is installed.
 
 ## Acceptance
 
-- 309 unit tests pass, including off-grid execution, active/future ordering,
+- 322 unit tests pass, including off-grid execution, active/future ordering,
   programme flags, separate-window allowances, normal cooldown overrides,
   finite-history uncertainty, physical safety and queued-request preservation.
 - The actual planner/controller simulation produces five confirmed mocked starts
@@ -82,9 +93,9 @@ dashboard, custom resource or production configuration is installed.
   the sandbox denied the EV runner's optional local HTTP listener.
 - Follow-up review adds malformed/overflowing runtime, timezone, chronology and
   explicit-unlimited regressions. Bandit and working-tree/history credential
-  scans pass; the history scan covers 243 commits before this follow-up commit.
+  scans pass; the history scan covers 245 commits before this follow-up commit.
 
-## Open Command-Time Review Finding
+## Resolved Command-Time Review Finding
 
 The automatic preflight re-reads power and full-cycle no-run calendars, but does
 not reprice the requested programme at the actual command time. The controller
@@ -94,11 +105,20 @@ and fallback delays can age an otherwise valid high-power fit out of its window.
 An isolated controller probe also accepted a stale MachineCare fit while the
 requested programme was Quick45; no physical command was sent.
 
-This is an existing execution-layer limitation, not fixed by the history repair.
-Do not merge on the strength of green tests alone: the owner's decision on
-including a narrowly scoped command-time repair is pending. Release/live gates
-must include exact-programme price-window revalidation, including delayed and
-fallback starts, while preserving explicit manual cooldown overrides.
+The approved follow-up now closes this execution-layer finding. Boundary tests
+advance the clock through the 15-second power-on wait, 5-second selection wait,
+and successive 20-second fallback waits. Each attempt rechecks the exact
+programme; an overrun sends no subsequent start-capable command. Adapter tests
+also cover revised/missing/conflicting prices, current permissions and caps,
+helper overrides, deadline changes and model growth during calendar fetching.
+The real minimum-HA smoke test vetoes revised prices, a different requested
+programme's exhausted cap, and a delayed boundary without another scan.
+
+These checks validate service-dispatch time against the learned profile. Remote
+appliance/network latency and actual heating-phase variation can still shift
+physical energy consumption; this is not a guarantee of supplier profit or an
+instruction to stop an appliance already running. Physical-cycle accounting
+remains separately designed work, not implemented by these repairs.
 
 The new real-HA test runs in CI with all device commands intercepted and HTTP
 listeners mocked. No supplier, AI provider or production HA request is needed.

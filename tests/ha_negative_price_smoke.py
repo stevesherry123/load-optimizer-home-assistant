@@ -151,6 +151,25 @@ async def main():
                 hass.states.async_set("sensor.synthetic_power", 0)
                 print("Real HA: fresh no-run overlap and fresh power outage veto the repeat without another scan")
 
+                rates_before = deepcopy(hass.states.get("sensor.synthetic_rates").attributes["rates"])
+                positive_rates = [{**period, "value_inc_vat": 0.25} for period in rates_before]
+                hass.states.async_set("sensor.synthetic_rates", "ready", {"rates": positive_rates})
+                assert recommendation.attributes["ready_to_start"] is True
+                assert not await controller._async_start_allowed(request)
+                assert controller.state["last_reason"] == "power_hungry_window_outside_negative_price"
+                hass.states.async_set("sensor.synthetic_rates", "ready", {"rates": rates_before})
+                assert await controller._async_start_allowed(request)
+                # The published MachineCare fit cannot authorize Quick45's exhausted allowance.
+                assert not await controller._async_start_allowed({**request, "program": "Quick45"})
+                assert controller.state["last_reason"] == "maximum_runs_per_window_reached"
+                before_boundary = Clock.current
+                Clock.current = start + timedelta(hours=2, minutes=-35.5, seconds=1)
+                assert not await controller._async_start_allowed(request, recheck=True)
+                assert controller.state["last_reason"] == "power_hungry_window_outside_negative_price"
+                Clock.current = before_boundary
+                assert await controller._async_start_allowed(request, recheck=True)
+                print("Real HA: revised prices, exact-programme cap and delayed boundary rechecks veto stale published fits")
+
                 controller.state["last_auto_negative_price_request"] = Clock.current.isoformat()
                 await controller._async_save()
                 memory_before = deepcopy(coordinator.legacy_runtime.state)
