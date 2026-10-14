@@ -1,24 +1,25 @@
 # EV Charging Skeleton
 
+Historical first-pass design notes, not the current setup instructions. Use
+[Getting Started](getting-started.md) and the installed release's README for
+supported configuration. EV options editing is stable from v1.5.5; charger
+control remains advisory.
+
 This is the first-pass EV charging load type for the Load Optimizer HACS
 integration. It adds recommendations without committing to charger control.
 
 ## Observed Volvo Entities
 
-From the pasted Home Assistant state list, the useful starting entities are:
+These are illustrative entity names from the original design discussion, not
+live states or required identifiers for other installations:
 
-- `sensor.volvo_xc60_battery`: current battery percentage, seen as `1.0`.
-- `sensor.volvo_xc60_battery_capacity`: usable battery capacity, seen as
-  `18.819` kWh.
-- `sensor.volvo_xc60_target_battery_charge_level`: target percentage, seen as
-  `100`.
-- `sensor.volvo_xc60_charging_connection_status`: plug status, seen as
-  `disconnected`.
-- `sensor.volvo_xc60_estimated_charging_time`: car-provided estimate, seen as
-  `0.0`.
+- `sensor.volvo_xc60_battery`: battery percentage.
+- `sensor.volvo_xc60_battery_capacity`: usable capacity in kWh.
+- `sensor.volvo_xc60_target_battery_charge_level`: target percentage.
+- `sensor.volvo_xc60_charging_connection_status`: plug status.
+- `sensor.volvo_xc60_estimated_charging_time`: car-provided estimate.
 - `sensor.volvo_xc60_estimated_charging_finish_time`: car-provided finish time.
-- `switch.volvo_charger`: possible charger switch, but currently `unavailable`
-  in the pasted state.
+- `switch.volvo_charger`: an example charger switch, not controlled by the planner.
 
 The current skeleton only plans. It does not turn `switch.volvo_charger` on or
 off.

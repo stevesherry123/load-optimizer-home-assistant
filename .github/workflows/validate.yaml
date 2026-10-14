@@ -48,7 +48,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run tests
-        run: python -m unittest discover -s tests
+        run: |
+          pip install "PyYAML==6.0.2"
+          python -m unittest discover -s tests
 
   minimum_ha:
     name: Minimum Home Assistant imports
@@ -66,6 +68,12 @@ jobs:
         run: python tests/ha_dashboard_smoke.py
       - name: Verify real EV configuration, reload and restart persistence
         run: python tests/ha_ev_lifecycle_smoke.py
+      - name: Verify documented clean-install examples and safe control defaults
+        run: python tests/ha_onboarding_smoke.py
+      - name: Verify sensor-outage learning and automatic no-run source enforcement
+        run: python tests/ha_runtime_safety_smoke.py
+      - name: Verify free-price repeat planning, persistence and fresh safety vetoes
+        run: python tests/ha_negative_price_smoke.py
       - name: Verify permissions, diagnostic privacy, safe imports and HTTP boundaries
         run: python tests/ha_security_smoke.py
 

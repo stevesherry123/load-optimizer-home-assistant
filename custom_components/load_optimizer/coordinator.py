@@ -79,6 +79,13 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         if self.legacy_runtime and self.orchestrator:
             self.legacy_runtime.external_state_provider = self._orchestration_legacy_state
+            self.orchestrator.set_automatic_preflight(self._async_automatic_start_block)
+
+    async def _async_automatic_start_block(self, request: dict[str, Any]) -> str | None:
+        if self.legacy_runtime is None:
+            return "automatic_configuration_unavailable"
+        options = {**self.config_entry.data, **self.config_entry.options}
+        return await self.legacy_runtime.async_automatic_start_block(options, request)
 
     async def _async_update_data(self) -> dict[str, Any]:
         data = {**self.config_entry.data, **self.config_entry.options}

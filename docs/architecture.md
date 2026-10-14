@@ -22,15 +22,12 @@ The project has one supported runtime surface:
 The retired add-on tree and its duplicate test runtime are not distributed.
 Tests import the exact engine packaged by HACS.
 
-The v1.0 integration scope is deliberately advisory:
-
-- read normalized future tariffs from Home Assistant entities
-- read existing vehicle/load state entities
-- publish recommendation, cost, profit, and ready/active-window entities
-- leave physical device control to opt-in Home Assistant automations
-
-This preserves the existing design principle that Load Optimizer recommends and
-household-specific automation executes.
+EV planning is advisory. Learned appliances publish forecasts and recommendations
+without enabling control. The optional native Home Connect controller is a
+separate layer, currently targeting appliance ID `1`, with explicit activation
+and independent automatic-mode opt-ins. Other appliance types do not inherit a
+generic start-service adapter. See [compatibility](compatibility.md) and the
+[fresh-install control guide](dishwasher-control.md).
 
 ## Migrated Learning Runtime
 
@@ -41,8 +38,8 @@ the HACS integration and adapts its Home Assistant API calls to direct
 integration access:
 
 - add-on `source_state` calls read `hass.states`
-- add-on `publish_entity` calls publish the same state IDs with
-  `hass.states.async_set`
+- engine `publish_entity` calls collect values for native registered platform
+  entities, retaining the existing state IDs and per-appliance devices
 - add-on JSON persistence moves to Home Assistant integration storage
 - add-on template calls are replaced with direct reads for the known helper
   contracts
@@ -122,9 +119,9 @@ Home Assistant should be used for:
 Status: Production
 
 Load Optimizer owns its scheduling state, controls, safety gates, and configured
-Bosch/Home Connect start sequence as native integration entities. Physical
-control remains explicitly opt-in through the integration's automatic-mode
-switches.
+Bosch/Home Connect start sequence as native integration entities. Native command
+ownership is explicitly activated; unattended control additionally requires the
+corresponding automatic-mode switch. Neither is enabled by installation.
 
 External household automations may still consume recommendations, announcements,
 and deadline helpers, but no bundled recovery or dishwasher-orchestration YAML
@@ -163,7 +160,8 @@ Published integration sensors include:
 - `sensor.load_optimizer_1_overnight_readiness`
 - `sensor.load_optimizer_1_negative_price_readiness`
 - `sensor.load_optimizer_1_remote_activation_check`
-- `sensor.load_optimizer_1_automation_package_status`
+- `sensor.load_optimizer_1_orchestration_status`
+- `sensor.load_optimizer_1_automation_explanation`
 
 ## Data Flow
 
@@ -240,10 +238,10 @@ travel, the likely model is a deadline constraint plus `cheapest_earliest_finish
 future EV or battery use case, the likely model is a departure deadline plus
 `cheapest_latest_finish`.
 
-The App runtime exposes advisory scheduling entities. The optional Home Assistant
-automation package may start a configured appliance only after constraints,
-confidence thresholds, remote-control prerequisites, and user permissions have
-been proven immediately before execution.
+The runtime exposes advisory scheduling entities. The optional native controller
+may start its configured dishwasher only after request permissions, constraints,
+applicable confidence thresholds and physical safety gates pass. No retired
+automation package is required for a new installation.
 
 ## Decision Flow
 
@@ -287,7 +285,7 @@ flowchart TD
     R --> S
     S -- "No" --> T["Automation readiness: false"]
     S -- "Yes" --> U["Automation readiness: true"]
-    U --> V["Home Assistant automation may execute if user/request/auto-mode policy allows it"]
+    U --> V["Opted-in native control may execute if request and safety policy allows it"]
 ```
 
 Automatic mode must sit after this flow, not beside it. That means an unattended
@@ -295,20 +293,32 @@ automation should only act when the chosen intent sensor says it is ready, the
 instance is idle, the recommendation is still current, and any household safety
 checks pass immediately before execution.
 
-The first automatic-mode implementation follows the same helper contract as
-manual dashboard or voice requests. For Dishwasher 1, the optional
-`input_boolean.load_optimizer_1_auto_negative_price_enabled` helper can allow a
-ready negative-price recommendation to populate the requested mode, program, and
-start helpers. The existing execution automation then performs the Bosch checks,
-attempts the start, records the result, announces failures, and clears the
-request. This keeps unattended operation opt-in and avoids a separate privileged
-start path.
+Current automatic modes use native switches and the same persisted request and
+execution path as manual dashboard requests. Integration storage owns this state;
+users do not need to create the former package's input helpers. Compatibility
+views retain some package-era identifiers for migrated consumers, not as new
+configuration requirements.
 
-## Execution Audit Contract
+## Native Execution Records
 
 Status: Active implementation contract
 
-Each dishwasher request records three persistent Logbook stages:
+The native controller persists a bounded recent scheduling-event list and outcome
+history. Its status/explanation entities expose queued requests, actual attempts,
+outcomes and reasons; a recommendation is not itself a queued start. These records
+do not depend on Recorder or promise the former package's three Logbook events.
+See [dashboard explanations](dashboard.md#automatic-scheduling-explanation).
+
+## Historical Package Audit Contract
+
+Status: Historical, not the current native execution implementation
+
+The following describes the retired YAML package for migration/reference only.
+Do not create these helpers or depend on this old revalidation table for a fresh
+installation. The current controller's implementation and native entity records
+are authoritative.
+
+The package recorded three Logbook stages:
 
 1. `request_received`, with the queued start and the latest recommendation
    snapshot.
@@ -323,7 +333,7 @@ the decision in `input_text.load_optimizer_1_last_start_decision_snapshot`.
 These fields are set before the terminal result changes so downstream
 automations and Logbook entries observe one consistent outcome.
 
-Queued-plan revalidation uses the following precedence:
+Its queued-plan revalidation used the following precedence:
 
 | Condition | Result | Reason code |
 |---|---|---|
@@ -335,7 +345,7 @@ Queued-plan revalidation uses the following precedence:
 | Appliance prerequisites fail | Blocked | Specific connection, door, or remote-control code |
 | No running state is observed after all command paths | Failed | `not_running_after_start` |
 
-A due automatic request bypasses recommendation-drift cancellation and proceeds
+A due automatic request bypassed recommendation-drift cancellation and proceeded
 to the stale-request and appliance-safety gates. This prevents a recommendation
 refresh at the due minute from cancelling an otherwise valid scheduled run.
 
@@ -436,7 +446,8 @@ shape and design principles of the system.
 
 ## Retired Local Infrastructure
 
-The earlier local appliance packages, templates, helper definitions, dashboards,
-and Pyscript files are no longer part of the repository. Future contributions
+The earlier local appliance packages, templates, helper definitions and Pyscript
+files are retired. Supported dashboard examples remain in the repository.
+Future contributions
 should target the supported integration runtime and avoid reintroducing
 `dishwasher_*` or `washing_machine_*` helper namespaces.

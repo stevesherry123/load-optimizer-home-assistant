@@ -40,7 +40,8 @@ and separately installed frontend integrations need their own updates/reviews.
   external URL/response boundaries without contacting live appliances.
 - Existing real-HA imports, options, dashboard templates, device registration,
   reload and restart/identity checks remain required.
-- Final security scans and HACS/hassfest must pass on the release commit before
+- Final security scans, HACS/hassfest and all other checks passed on exact
+  v1.5.7 release commit `28f4380b0b6a596227dc1159aab1bb41dbd0ecac` before
   publication. The submission record links the actual successful runs.
 - No intentional telemetry, public token endpoint, executable deserialization or
   integration-added inbound listener was identified in the stable runtime.
@@ -50,6 +51,8 @@ and separately installed frontend integrations need their own updates/reviews.
 - Credential scanners can miss nonstandard secrets; earlier diagnostic files
   cannot be made private retroactively. Review shared material and rotate any
   credential that was actually exposed.
-- The beta additionally needs administrator checks on its response-bearing
-  history/AI actions; this is handled on the beta line, not by releasing those
-  features as stable.
+- The separate v1.7.0-beta.5 release adds administrator checks on response-bearing
+  history/AI actions. All ten action boundaries are covered in real minimum-HA
+  tests; 271 unit tests and all five beta CI checks passed before publication.
+  No experimental features were promoted into stable and no real AI provider
+  request or production HA installation/restart was performed during this review.

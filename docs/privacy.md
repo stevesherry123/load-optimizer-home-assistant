@@ -14,6 +14,12 @@ listener or a remote account. It does not require a Home Assistant access token
 in its settings. Optional dashboard cards are separately installed frontend
 dependencies, not part of this Python package's security review.
 
+Home Assistant's own usage analytics are separate and opt-in. If a user enables
+them, HA can report custom-integration names and versions to its analytics
+service; only aggregate counts are published. Load Optimizer does not enable
+or change those preferences, and the author receives no named-user or household
+records. See [release statistics](release-channels.md#statistics-and-privacy).
+
 ## External Connections
 
 The regional benchmark fetches the public Ofgem page and its linked Everviz

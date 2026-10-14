@@ -54,6 +54,8 @@ class LearnedHubTests(unittest.IsolatedAsyncioTestCase):
             async_abort=Mock(side_effect=lambda **kw: kw),
             async_set_unique_id=AsyncMock(), _abort_if_unique_id_configured=Mock(),
             async_create_entry=Mock(side_effect=lambda **kw: kw),
+            _async_prepare_appliances=AsyncMock(return_value={}),
+            async_step_appliance_review=AsyncMock(return_value={"step_id": "appliance_review"}),
         )
 
     async def test_existing_learned_hub_blocks_even_a_different_title(self):
@@ -66,9 +68,9 @@ class LearnedHubTests(unittest.IsolatedAsyncioTestCase):
     async def test_ev_does_not_block_new_learned_hub(self):
         self.flow._async_current_entries = lambda: [SimpleNamespace(data={"load_type": "ev_charging"})]
         result = await self.method(self.flow, {"instances_yaml": "[]"})
-        self.assertEqual(result["title"], "New name")
-        self.flow.async_set_unique_id.assert_awaited_once_with("learned_appliance")
-        self.assertEqual(result["data"]["load_type"], "learned_appliance")
+        self.assertEqual(result["step_id"], "appliance_review")
+        self.flow.async_set_unique_id.assert_not_called()
+        self.flow.async_create_entry.assert_not_called()
 
     async def test_guard_runs_before_showing_the_form(self):
         self.flow._async_current_entries = lambda: [SimpleNamespace(data={"load_type": "learned_appliance"})]

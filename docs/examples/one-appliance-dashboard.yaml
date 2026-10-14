@@ -1,0 +1,26 @@
+title: Load Optimizer
+views:
+  - title: Appliance
+    path: appliance
+    icon: mdi:lightning-bolt
+    cards:
+      - type: entities
+        title: Learning
+        show_header_toggle: false
+        entities:
+          - sensor.load_optimizer_1_status
+          - sensor.load_optimizer_1_cycle_state
+          - sensor.load_optimizer_1_power
+          - sensor.load_optimizer_1_energy
+          - sensor.load_optimizer_1_total_runs
+          - sensor.load_optimizer_1_learned_programs
+      - type: entities
+        title: Recommendations
+        show_header_toggle: false
+        entities:
+          - sensor.load_optimizer_1_current_energy_price
+          - sensor.load_optimizer_1_tariff_horizon
+          - sensor.load_optimizer_1_cost_status
+          - sensor.load_optimizer_1_recommended_program
+          - sensor.load_optimizer_1_cheapest_start
+          - sensor.load_optimizer_1_cheapest_cost

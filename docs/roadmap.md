@@ -10,6 +10,28 @@ implementation architecture in `docs/architecture.md`.
   separately approved stable promotion. Installation/restart acceptance and
   isolated repeated-run tests pass; retain programme opt-ins, per-window limits,
   learning and queued requests. See `docs/negative-price-beta.md`.
+- Review PR #17's completed command-time follow-up before any merge/release:
+  exact-programme repricing now covers delays and fallback attempts, with
+  revised-price, permission/cap and calendar-duration regressions.
+  `fix/negative-price-repeat-safety` selectively carries the earlier repeat fix
+  plus retry-wait explanations and conservative finite-history checks, without tariff-beta
+  features. See [repeat repair acceptance](negative-price-repeat-repairs.md).
+- Runtime safety, planning-boundary repairs and the initial onboarding guides,
+  parser/source review are merged through
+  [PR #16](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/16)
+  at `c16b9e9`, with all five post-merge checks passing. They are unreleased;
+  publication and live installation remain separately approved.
+- follow up separately with guided appliance/policy editing,
+  selectable control targets and generated dashboards; add privacy-safe screenshots,
+  issue forms and an unfamiliar-user onboarding trial before broad promotion
+- Add a separately designed confirmed-physical-cycle quota ledger, independent
+  of learning rejection and recent-profile retention. Current finite-window
+  limits count learned runs and conservatively pause when history is incomplete;
+  do not present them as a lifetime record of every physical wash.
+  The [ledger and guided-setup discussion draft](physical-cycle-ledger-design.md)
+  is on `docs/physical-cycle-ledger-design`, not implemented. Agree manual-cycle,
+  failed-start and window-overlap accounting before shadow collection/enforcement.
+
 - await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
   for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
   checks passed; respond to requested changes without duplicate requests or
@@ -49,6 +71,56 @@ implementation architecture in `docs/architecture.md`.
   saved overnight request. Live diagnostics and appliance readiness passed;
   actual negative-window appliance execution is still to be observed. Main and
   stable v1.5.7 are unchanged.
+- Implemented the approved repeat-scheduling follow-up on a separate repair
+  branch, not main or a release. 322 tests pass, including malformed/overflowing
+  history and command-time price revalidation regressions, a five-run synthetic
+  timeline and real minimum-HA repeat/persistence/fresh-safety acceptance.
+  Normal permissions and manual cooldown overrides remain intact. No live
+  commands, release or HACS submission changes were made.
+
+- Merged runtime safety, planning-boundary and initial onboarding work through
+  PR #16 on 12 October at `c16b9e9`. All five post-merge checks pass, including
+  285 unit tests. This supersedes the earlier local-only status below; stable
+  version and production installation were not changed by that merge.
+
+- Completed the approved planning-boundary follow-up on `fix/runtime-data-safety`:
+  calendar fetching and event filtering include the full learned cycle tail,
+  including startup restoration and a capture finishing during the scan.
+  Candidate start horizons and learning are unchanged. 285 unit tests and real
+  minimum-HA calendar-range acceptance pass locally; PR #16's latest remote
+  checks, human review and any merge/release remain separate gates.
+
+- Implemented the approved runtime repairs locally, not in a published release:
+  missing power cannot finish/learn a capture; mandatory no-run source failures
+  block readiness and automatic execution, including saved plans and fallbacks.
+  Source recovery, multi-source editing, all-day calendar timezone, existing
+  learning and manual cooldown behavior have isolated regression coverage.
+  Main, versions and the live installation are unchanged.
+
+- Prepared documentation-first onboarding on `docs/onboarding-clean-install`:
+  explicit safe programme policies, separate Home Connect activation and advisory
+  EV guides, a standard-card starter dashboard, compatibility and troubleshooting.
+  Added executable examples and real minimum-HA fresh-install/reload/restart checks.
+  Runtime code, installed HA, main and release versions are unchanged. Guided
+  setup and human/physical acceptance remain separate; see
+  `docs/onboarding-acceptance.md`.
+
+- Reviewed public documentation and HACS release behaviour. Corrected stale EV
+  editing/publication-gate claims, focused the README on released features and
+  documented release channels, notifications and honest statistics limits.
+  Removed 14 merged branches and archived one superseded prototype as a
+  non-release tag, retaining `main` and both active tariff betas with their gates
+  intact. See `docs/branch-cleanup-2026-10-09.md`. Documentation-only changes
+  do not replace existing release tags or change installed Home Assistant code.
+- Completed the static security/privacy review and merged v1.5.7 fixes: private
+  diagnostic allowlisting, administrator-only maintenance, bounded atomic
+  imports, planner/HTTP limits, safe command handover and removal of unused
+  add-on networking. 221 unit tests, real-HA security/lifecycle checks and all
+  five main CI jobs pass. Added private vulnerability reporting and policies.
+  Published stable v1.5.7 and submitted HACS catalogue PR #11744; all upstream
+  checks passed and maintainer review remains pending. Published separate
+  v1.7.0-beta.5 with the same fixes plus administrator-only history/AI actions,
+  271 unit tests and green checks. No live deployment was performed by this task.
 - Installed v1.7.0-beta.4 with the stable EV editor and minimum-HA compatibility
   fix after fresh idle/no-queue/no-capture checks. One restart; all 222 entity and
   device identities and the exact dashboard configuration are unchanged.
@@ -58,8 +130,8 @@ implementation architecture in `docs/architecture.md`.
 - Published stable v1.5.5's EV editor and follow-up v1.5.6 compatibility fix.
   Expanded real minimum-HA acceptance found and fixed a newer-only device-link
   API in appliances/orchestration; 209 stable unit tests and all main CI checks
-  pass. The prepared owner-led HACS application has exact v1.5.6 release and
-  validation links in `docs/hacs-submission.md`; no upstream PR was opened.
+  pass. At that stage the owner-led HACS application was prepared but not
+  submitted; the reviewed v1.5.7 submission above supersedes that record.
 - Passed the final real-wash publication gate on 9 October: MixedLoad completed
   at 13:36 BST, dishwasher learning increased 113 to 114, and MixedLoad increased
   3 to 4 runs with 61% confidence. The request cleared, completion was confirmed,
