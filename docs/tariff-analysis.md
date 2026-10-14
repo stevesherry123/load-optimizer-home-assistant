@@ -1,4 +1,8 @@
-# Tariff Analysis (v1.6 Beta)
+# Tariff Analysis (Testing Channel)
+
+This feature originated in v1.6 and is now part of the combined `beta/next`
+branch, installed as v1.7.0-beta.7 for controlled testing. It is not part of
+published stable v1.5.7. See [release channels](release-channels.md).
 
 Tariff Intelligence is read-only. It does not change appliance scheduling,
 EV control, learned programs, or existing dashboard entity IDs.
@@ -30,12 +34,15 @@ below 0.5 is unusual. Repeated autumn wall times are averaged per historical day
 
 The analysis-status attributes contain bounded statistics and at most one
 local-day median curve, not the retained history database. History counts,
-date range, schema and storage health are included in diagnostics. A corrupt
+date range, schema and storage health are available on the local analysis
+entity; downloaded diagnostics deliberately omit identifying metadata. A corrupt
 or unsupported store is preserved without overwrite and reported as limited.
 
-Historical cap rebasing, import and optional AI narrative are not part of this
-beta. No OpenAI API key is needed. The previous stable integration ignores this
-new separate store on rollback; it does not delete it.
+Historical cap rebasing remains unimplemented. The combined beta also contains
+portable import and an optional manually requested AI narrative, documented in
+[history import and narrative](history-import-and-narrative.md). Neither changes
+the deterministic analysis. No OpenAI API key is held by Load Optimizer. Stable
+rollback ignores the separate history store; it does not delete it.
 
 `load_optimizer.analyse_tariffs` accepts `entry_id` for manual re-analysis.
 `load_optimizer.export_tariff_history` returns portable JSON via a service

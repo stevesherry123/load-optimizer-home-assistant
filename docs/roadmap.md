@@ -25,8 +25,10 @@ implementation architecture in `docs/architecture.md`.
   checks passed; respond to requested changes without duplicate requests or
   routine comments. Submission is not catalogue acceptance.
 - finish the real optional AI provider test after complete tomorrow rates arrive;
-  the previous manual request correctly waited on incomplete data. This beta
-  consolidation does not enable AI or make a provider call.
+  the 14 October evening check finds 46 of 48 required periods in both HA and
+  Octopus's public API. The final 23:00-midnight hour is missing, so classification
+  and AI correctly wait. Approval remains for one manual test, not incomplete-data
+  generation or automatic provider calls.
 - observe the combined beta through complete next-day publication, revisions and
   appliance cycles before stable promotion; imported history now satisfies warm-up
 - implement effective-dated price-cap references and additive historical rebasing;
@@ -50,6 +52,15 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Cleaned current contributor, tariff/import/AI and HACS guidance to use the
+  single `beta/next` branch and installed beta.7, with older branch inventories
+  and acceptance records explicitly dated as historical. Evening live checks
+  reproduce the saved overnight choice and all one-to-four-hour generic windows.
+  All published tomorrow rates match the official tariff API; the missing final
+  hour prevents full-day classification and the manual AI test. No control,
+  source settings, restart, release or upstream HACS change was made. Actual
+  wash/revision observation and the owner's next-day promotion review remain.
 
 - Consolidated development onto `beta/next`, retiring six superseded remote
   branches and replacing three reviews with draft PR #18. Published and

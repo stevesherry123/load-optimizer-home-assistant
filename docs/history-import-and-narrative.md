@@ -1,9 +1,13 @@
 # History Import And Optional Narrative (Development Only)
 
-Branch: `beta/tariff-import-narrative-v1.7`, now released and installed as
-`v1.7.0-beta.4` for controlled owner testing. Stable is v1.5.6; analysis/import/AI
-remain unpromoted. An approved 90-day official Octopus backfill has been imported;
-no live AI provider has been called.
+Current branch: `beta/next`. Installed test release: `v1.7.0-beta.7`, verified
+on 14 October 2026. Published stable release: `v1.5.7`; analysis/import/AI remain
+unpromoted. The old stacked tariff branches were consolidated and retired;
+their commits and release tags remain available. See [release channels](release-channels.md).
+
+The approved 90-day official Octopus backfill and subsequent live history are
+preserved. The dated acceptance records below describe what was verified then,
+not the current release or an authorization for another import/provider call.
 
 ## Portable Import
 
@@ -139,3 +143,24 @@ The real EV form opens with retained defaults; production settings were not save
 The latest read-only audit still has no tomorrow prices and only 46 slots today;
 AI stays disabled until a complete next-day snapshot is available. Independent
 one-to-four-hour cheapest windows continue matching live tariff arithmetic.
+
+## Current Acceptance (14 October 2026)
+
+The combined beta.7 is installed and its branch is `beta/next`. A fresh evening
+read-back and local replay match the live saved overnight request. Published
+one-to-four-hour generic tariff windows also match independent arithmetic;
+they intentionally differ from a programme's profile-weighted cheapest start.
+No appliance command, settings change, restart or history import was made.
+
+All 46 published next-day periods match Octopus's exact-tariff public API. The
+final 23:00-midnight local hour is absent upstream as well as in HA. That is
+enough coverage for the operational overnight schedule and cycle tails, not a
+complete local day. Classification and optional narrative correctly remain
+waiting/disabled. The approved single actual-provider test is still pending;
+do not pad the missing prices, bypass completeness or describe a provider call
+as successful. No new provider call was attempted during this check.
+
+Actual beta.7 wash completion/learning and genuine live price-revision
+observation remain separate gates. Merge and stable release are held until
+the owner's 15 October review; documentation cleanup does not change the
+installed release tag or HACS publication.

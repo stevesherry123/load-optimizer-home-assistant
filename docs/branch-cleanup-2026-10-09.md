@@ -1,5 +1,9 @@
 # Branch Cleanup: 9 October 2026
 
+Historical record only. The later [14 October cleanup](branch-cleanup-2026-10-14.md)
+supersedes this branch inventory: only `main` and `beta/next` remain active.
+Keep the original tips and decisions below as recovery evidence.
+
 Reviewed all 18 remote branches and their open/merged pull requests. Removed 14
 branch references whose tips were proven ancestors of retained main/beta work,
 and one superseded early prototype after preserving its exact tip in an annotated
@@ -49,4 +53,3 @@ unchanged. Merged pull requests still retain their discussion and audit trail.
 Only remote repository branch references were pruned. Local branches/checkouts
 belonging to other work were left alone. The separate personal-fork HACS branch
 `add-load-optimizer-v1.5.7` remains intact while catalogue PR #11744 is open.
-

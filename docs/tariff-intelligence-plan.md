@@ -4,15 +4,39 @@
 
 This plan brings the useful ideas from Octopus Intelligence into Load Optimizer
 without reintroducing a second runtime or making the integration depend on one
-energy supplier. v1.5.x is the stable publication
-line. Analysis development takes place on `beta/tariff-analysis-v1.6`, is released
-as a prerelease, and reaches `main` only after the acceptance checks below pass.
+energy supplier. Published stable is v1.5.7. Combined analysis/import/optional-AI
+and scheduling development now uses the single `beta/next` branch. It reaches
+`main` only after the acceptance checks below pass and the owner approves it.
 
 The accompanying detailed project brief remains the product specification. This
 document records the implementation sequence and release gates derived from a
 review of both repositories and the live Home Assistant installation.
 
-## Current Delivery Status (9 October 2026)
+## Current Delivery Status (14 October 2026)
+
+- `main` and `beta/next` are the only active repository branches. Draft PR #18
+  replaces the old stacked tariff reviews; old release tags remain for rollback.
+- The owner's installed testing release is v1.7.0-beta.7. Its 396 unit tests,
+  real minimum-HA checks and five GitHub jobs pass. Live restart preserved
+  identities, learning, controls, dashboards and tariff history; see
+  [overnight acceptance](overnight-planning-repair.md).
+- Source-shared history, deterministic analysis, validated import and manual-only
+  optional AI are implemented, but not promoted to stable. Historical cap
+  rebasing, the expanded analysis dashboard and physical-cycle quota ledger
+  remain separate backlog work, not hidden branches.
+- The latest evening check has 46 contiguous next-day periods, ending at 23:00
+  tariff-local time. The final hour is also absent from Octopus's public API.
+  Whole-night scheduling has sufficient coverage; full-next-day classification
+  and the optional AI test correctly remain waiting. No provider call was made.
+- A real automatic wash using beta.7 still needs completion/learning verification.
+  Merge and stable publication are held until the owner's review on 15 October.
+  HACS catalogue submission work is separate and unchanged.
+
+## Historical Delivery Through 9 October 2026
+
+The versions, branch names, counts and pending checks in this dated section are
+historical evidence. They do not identify currently active branches or override
+the current delivery status above.
 
 Completed and live-verified through v1.5.0-beta.6:
 
@@ -82,8 +106,8 @@ the old store; see the import documentation for the deliberate isolation limits.
 The legacy dt/r adapter now checks a verified historical tariff code against all
 live destination rate entities and runs conversion off the event loop. Tests
 cover period-end normalization, DST, gaps, malformed data and the service path.
-The original combined implementation passed 212 tests; the current beta passes
-259 after the subsequent appliance, EV and compatibility fixes.
+The original combined implementation passed 212 tests; beta.4 passed 259 after
+the subsequent appliance, EV and compatibility fixes.
 
 The 8 October live preflight found tariff `E-1R-AGILE-24-10-01-D`. With owner approval, the
 learned-appliance Ofgem benchmark was changed to Merseyside and Northern Wales
@@ -133,17 +157,17 @@ Next-day publication/revision observation and the optional AI provider test
 remain incomplete: latest check has no tomorrow data and 46 of today's 48 slots.
 Cap-adjusted history and the beta analysis dashboard remain subsequent work.
 
-### Outstanding Versus Implemented
+## Outstanding Versus Implemented (14 October 2026)
 
 | Area | Current status | Remaining gate/work |
 |---|---|---|
 | Stable appliance migration/orchestration | Released; legacy packaging retired | Community compatibility testing and guided appliance setup |
 | Ofgem benchmark and 24/48-hour chart | Stable; regional, cached, tariff-local, benchmark/Now lines | Historical cap rebasing is separate, not implemented |
 | Lab dashboard | Retired; capabilities retained at the bottom | No further Lab content requested |
-| History and deterministic analysis | v1.7.0-beta.4; warm-up and physical wash passed | Full next-day publication/revision observation |
+| History and deterministic analysis | Combined beta.7; warm-up and prior wash acceptance passed | Full next-day completion/revision observation; beta.7 real-wash acceptance |
 | Official history backfill | 90 complete days verified | No further legacy-cache import; retain source/provenance isolation |
-| Optional AI narrative | Implemented, disabled unless manually requested | Actual provider test when tomorrow is complete; latest tomorrow data unpublished |
-| EV options editor | Stable v1.5.6 and owner's beta.4; acceptance passed | No outstanding editor release gate |
+| Optional AI narrative | Implemented, manual-only; current state disabled | Actual provider test when the missing final next-day hour arrives |
+| EV options editor | Stable v1.5.7 and combined beta.7; acceptance passed | No outstanding editor release gate |
 | New analysis dashboard | Not consolidated into stable | Bounded chart/entity presentation, mobile/travel/DST validation |
 | Octopus Intelligence retirement | Not done; old cache/app preserved | Demonstrate accepted replacement parity first |
 | HACS default catalogue | v1.5.7 submitted as #11744; all catalogue checks passed | Maintainer acceptance and subsequent scan |

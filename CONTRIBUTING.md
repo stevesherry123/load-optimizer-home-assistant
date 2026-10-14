@@ -4,10 +4,12 @@ Use GitHub Issues for bugs and small proposals. Include the integration release,
 Home Assistant version, affected load type and steps to reproduce. Redact
 credentials, addresses, device identifiers and private entity data.
 
-`main` contains the stable product. Work in a separate branch and open a pull
-request. Tariff analysis (`beta/tariff-analysis-v1.6`) and import/AI
-(`beta/tariff-import-narrative-v1.7`) remain stacked development branches until
-their release gates pass. Do not merge them just to prepare a HACS submission.
+`main` contains stable functionality and approved unreleased improvements;
+the latest full GitHub release, not the branch tip, is the published stable
+product. `beta/next` is the single combined testing branch for tariff analysis,
+history import, optional AI and scheduling repairs. The old stacked tariff
+branches are retired. Open a focused pull request for proposed changes; do not
+promote beta work just to prepare a HACS submission or tidy the branch list.
 
 The standalone unit suite needs `PyYAML==6.0.2` (already supplied by the declared
 minimum Home Assistant); install it in your test environment if necessary.
@@ -37,10 +39,11 @@ publish an experimental branch as a full stable GitHub release: HACS follows
 release status, not the branch's name. Public betas are isolated from normal
 updates, not hidden from GitHub visitors. See [release channels](docs/release-channels.md).
 
-Delete completed feature/fix branches after their changes are merged. Retain the
-two stacked tariff beta branches while their separate promotion gates remain
-open. Preserve unique superseded work with an explicit archive tag if retiring
+Delete completed short-lived feature/fix branches after their changes are merged.
+Retain `main` and `beta/next`; keep feature-specific acceptance gates in the
+roadmap rather than creating a new permanent branch for each beta version.
+Preserve unique superseded work with an explicit archive tag before retiring
 its branch; an archive tag is not a GitHub release. The
-[9 October cleanup record](docs/branch-cleanup-2026-10-09.md) records retained
-branches and recoverable commits. Do not delete the HACS submission fork branch
-while the upstream request is open.
+[14 October cleanup record](docs/branch-cleanup-2026-10-14.md) records the current
+two-branch model and recoverable history. Do not delete the separate HACS
+submission fork branch while the upstream request is open.

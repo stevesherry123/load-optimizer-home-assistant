@@ -85,5 +85,7 @@ learning increment confirmed. These checks do not imply testing every appliance
 model or every Home Assistant version.
 
 Advanced tariff history, historical comparisons, portable import and optional
-AI summaries remain experimental v1.6/v1.7 work and are not part of this stable
-submission. Do not present them as released stable functionality.
+AI summaries remain experimental work on the combined `beta/next` branch and are
+not part of this stable submission. The owner testing release is v1.7.0-beta.7;
+see [release channels](release-channels.md). Do not present those features as
+released stable functionality or replace the pending upstream submission.
