@@ -6,11 +6,6 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- Complete the approved `v1.7.0-beta.7` publication/installation from the single
-  `beta/next` branch. It combines current main, PR #17's safety repairs, tariff
-  development and automatic overnight coverage/replanning. Stable v1.5.7 is
-  unchanged. See [release channels](release-channels.md) and
-  [overnight repair](overnight-planning-repair.md).
 - Observe the next actual automatic overnight wash and repeated free-price
   washes before separately approved stable promotion. Local unit and real-HA
   synthetic acceptance do not prove future appliance execution.
@@ -55,6 +50,15 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Consolidated development onto `beta/next`, retiring six superseded remote
+  branches and replacing three reviews with draft PR #18. Published and
+  installed v1.7.0-beta.7 with whole-night pricing and automatic-only overnight
+  replanning after 396 unit tests, real minimum-HA acceptance and all five CI
+  checks. One idle-time restart preserved learning, history, controls, identities
+  and both dashboards. Runtime diagnostics and the current integration log pass;
+  real future wash observation and stable promotion remain separate gates.
+  See [overnight acceptance](overnight-planning-repair.md).
 
 - Published and installed v1.7.0-beta.6 after 285 unit tests, isolated minimum-HA
   lifecycle/dashboard/security checks and all GitHub validation jobs passed.

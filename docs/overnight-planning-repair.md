@@ -45,3 +45,27 @@ learning, identities and manual-request persistence without appliance commands.
 
 Live installation/restart checks do not prove a future overnight wash ran.
 Observe the next actual automatic request and completion before stable promotion.
+
+## Live Installation, 14 October 2026
+
+Published `v1.7.0-beta.7` from `46a06496a4f513670cc4ff8920b1901860d82169`
+after all five GitHub checks passed, including 396 unit tests and real minimum-HA
+acceptance. HACS downloaded that exact release. All appliance captures were idle,
+mandatory sources ready and no request queued before one Home Assistant restart.
+
+The recovered live runtime reports beta.7. Read-back preserved all 222 registered
+entity identities, seven devices, both exact dashboard configurations, 18
+learning/profile/policy entities, control opt-ins and tariff-history metadata.
+All three learned-appliance cost states are ready; AI remains disabled.
+Both entry diagnostics report successful updates and clean legacy cleanup; the
+current in-memory system log contains no Load Optimizer errors. The retired
+file-log endpoint was unavailable, so it was not treated as a clean log.
+
+The live planner correctly waits for tomorrow's overnight prices before making
+a reservation. An independent local replay of the recorded 13 October prices
+confirms the partial feed is rejected and the later relevant overnight coverage
+permits the cheaper Eco50 recommendation. Pre-run Quick65 means in that replay
+were reconstructed from rounded published statistics; estimates are not bills.
+No physical test wash, charger command, provider call or full backup was made.
+Stable main, v1.5.7 and the upstream HACS submission are unchanged. The next real
+automatic overnight/free-price execution remains an observation gate.

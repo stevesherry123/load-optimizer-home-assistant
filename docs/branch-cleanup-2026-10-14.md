@@ -16,13 +16,16 @@ promoted by this work. The canonical testing branch is now `beta/next`.
 | fix/runtime-data-safety | 381306b386df260061ac2d64eb4b96dc5c26cde7 |
 
 `f7a7b66` is the consolidation merge, preserving both parents and the original
-commits. Remove superseded remote branches only after `beta/next` is pushed and
-ancestry is verified. Replace stacked PRs #4/#5 and repair PR #17 with one draft
-beta-to-main review; closing a superseded PR is not stable promotion.
+commits. All six remote tips were verified unchanged and ancestors of the pushed
+`beta/next` before deletion. Stacked PRs #4/#5 and repair PR #17 were closed and
+replaced by [draft PR #18](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/18).
+Closing these superseded reviews is not stable promotion.
 
-Local branches whose tips are already ancestors may also be removed. Preserve
-any unique prototype tip under an explicitly non-release archive tag first.
-Never move or delete an installed release tag to tidy branches.
+Eighteen local ancestor branches were also removed. Two unique prototype tips
+remain recoverable through non-release archive tags before their local branches
+were removed: `archive/tariff-intelligence-2026-10-09` and
+`archive/negative-repeat-prototype-2026-10-14`. Only `main` and `beta/next` remain
+locally and remotely. No installed release tag was moved or deleted.
 
 ## Still Experimental
 
