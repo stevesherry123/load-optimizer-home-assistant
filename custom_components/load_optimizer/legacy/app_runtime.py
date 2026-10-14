@@ -17,13 +17,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .config_validation import ConfigurationError, appliance_document
 
 try:
-    from .costing import TariffDataUnavailable, overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from .costing import TariffDataUnavailable, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from .observability import EventEngine, configure_logging as configure_event_logging
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
-    from costing import TariffDataUnavailable, overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from costing import TariffDataUnavailable, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.7.0-beta.6"
+APP_VERSION = "1.7.0-beta.7"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -868,6 +868,49 @@ def planning_window_end(config: dict, instance: dict, now: datetime) -> datetime
         raise ValueError("Learned cycle duration exceeds the planning date range") from error
 
 
+def overnight_planning_coverage(config: dict, summaries: list[dict], policies: list[dict],
+                                periods: list[dict], now: datetime,
+                                earliest: datetime | None = None,
+                                latest: datetime | None = None) -> dict:
+    """Require the whole operational night, including possible cycle tails."""
+    window_start, window_end = operational_overnight_window(
+        now, config.get("schedule_overnight_start", "20:00"),
+        config.get("schedule_overnight_end", "08:00"),
+        config.get("tariff_timezone", "Europe/London"),
+    )
+    allowed = {p["program"] for p in policies if p.get("enabled") and p.get("allow_normal_recommendation")}
+    runtimes = [float(m["expected_runtime_minutes"]) for m in summaries
+                if m.get("program") in allowed and m.get("expected_runtime_minutes") is not None]
+    start = max(now, window_start, earliest or now)
+    end = window_end + timedelta(minutes=max(runtimes, default=0))
+    if latest:
+        end = min(end, latest)
+    search_complete = now + timedelta(hours=config["cost_search_hours"]) >= min(window_end, latest or window_end)
+    result = {"complete": False, "window_start": window_start.isoformat(),
+              "window_end": window_end.isoformat(), "required_start": start.isoformat(),
+              "required_end": end.isoformat(), "search_complete": search_complete,
+              "reason": "overnight_tariff_coverage_incomplete"}
+    if not search_complete:
+        result["reason"] = "overnight_search_horizon_incomplete"
+        return result
+    if start >= min(window_end, latest or window_end) or not runtimes:
+        return result
+    relevant = sorted({(p["start"], p["end"], p["price_p_per_kwh"])
+                       for p in periods if p["end"] > start and p["start"] < end})
+    cursor = start
+    previous_end = None
+    for first, last, price in relevant:
+        if (not math.isfinite(price) or last <= first or first > cursor
+                or previous_end is not None and first < previous_end):
+            return result
+        cursor = max(cursor, last)
+        previous_end = last
+    result["covered_until"] = min(cursor, end).isoformat()
+    result["complete"] = cursor >= end
+    result["reason"] = "overnight_tariff_coverage_complete" if result["complete"] else result["reason"]
+    return result
+
+
 def bounded_cost_breakdown(rows: object) -> tuple[list[dict], int, bool]:
     """Publish enough cost detail for a dashboard without retaining a long history."""
     if not isinstance(rows, list):
@@ -1641,6 +1684,7 @@ def publish_cost_entities(
         "special_price_window": result.get("special_price_window"),
         "operational_overnight_start": result.get("operational_overnight_start"),
         "operational_overnight_end": result.get("operational_overnight_end"),
+        "overnight_planning_coverage": result.get("overnight_planning_coverage", {}),
         "decision_policy": result.get("decision_policy"),
     }
     if publish_diagnostics:
@@ -2499,6 +2543,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
             try:
                 periods = []
                 tariff_parse_errors = []
+                published_tariff_invalid = False
                 for tariff_state in tariff_states:
                     try:
                         periods.extend(tariff_periods_from_entity(
@@ -2508,6 +2553,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                             price_unit=config["tariff_price_unit"],
                         ))
                     except (TypeError, ValueError) as error:
+                        published_tariff_invalid |= not isinstance(error, TariffDataUnavailable)
                         tariff_parse_errors.append({
                             "entity_id": tariff_state.get("entity_id"),
                             "reason": str(error),
@@ -2559,6 +2605,9 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     excluded_programs=blocked_remote_start_programs,
                 )
                 cost_result.update({
+                    "overnight_planning_coverage": overnight_planning_coverage(
+                        config, summaries, policies, periods, now, earliest_start_utc, latest_finish_utc,
+                    ),
                     "tariff_entity": ", ".join(tariff_entities),
                     "tariff_entities": tariff_entities,
                     "tariff_periods": len(periods),
@@ -2585,6 +2634,10 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "remote_start_blocked_programs": blocked_remote_start_programs,
                     "special_price_window": manual_window_public,
                 })
+                if published_tariff_invalid:
+                    cost_result["overnight_planning_coverage"].update(
+                        complete=False, reason="published_tariff_invalid",
+                    )
             except (TypeError, ValueError) as error:
                 cost_result = {
                     "status": "tariff_invalid",

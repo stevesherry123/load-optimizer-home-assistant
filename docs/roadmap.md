@@ -6,21 +6,14 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- observe actual repeated automatic free/negative-price runs on beta.6 before
-  separately approved stable promotion. Installation/restart acceptance and
-  isolated repeated-run tests pass; retain programme opt-ins, per-window limits,
-  learning and queued requests. See `docs/negative-price-beta.md`.
-- Review PR #17's completed command-time follow-up before any merge/release:
-  exact-programme repricing now covers delays and fallback attempts, with
-  revised-price, permission/cap and calendar-duration regressions.
-  `fix/negative-price-repeat-safety` selectively carries the earlier repeat fix
-  plus retry-wait explanations and conservative finite-history checks, without tariff-beta
-  features. See [repeat repair acceptance](negative-price-repeat-repairs.md).
-- Runtime safety, planning-boundary repairs and the initial onboarding guides,
-  parser/source review are merged through
-  [PR #16](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/16)
-  at `c16b9e9`, with all five post-merge checks passing. They are unreleased;
-  publication and live installation remain separately approved.
+- Complete the approved `v1.7.0-beta.7` publication/installation from the single
+  `beta/next` branch. It combines current main, PR #17's safety repairs, tariff
+  development and automatic overnight coverage/replanning. Stable v1.5.7 is
+  unchanged. See [release channels](release-channels.md) and
+  [overnight repair](overnight-planning-repair.md).
+- Observe the next actual automatic overnight wash and repeated free-price
+  washes before separately approved stable promotion. Local unit and real-HA
+  synthetic acceptance do not prove future appliance execution.
 - follow up separately with guided appliance/policy editing,
   selectable control targets and generated dashboards; add privacy-safe screenshots,
   issue forms and an unfamiliar-user onboarding trial before broad promotion
@@ -29,7 +22,7 @@ implementation architecture in `docs/architecture.md`.
   limits count learned runs and conservatively pause when history is incomplete;
   do not present them as a lifetime record of every physical wash.
   The [ledger and guided-setup discussion draft](physical-cycle-ledger-design.md)
-  is on `docs/physical-cycle-ledger-design`, not implemented. Agree manual-cycle,
+  is retained in `beta/next`, not implemented. Agree manual-cycle,
   failed-start and window-overlap accounting before shadow collection/enforcement.
 
 - await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
@@ -37,9 +30,9 @@ implementation architecture in `docs/architecture.md`.
   checks passed; respond to requested changes without duplicate requests or
   routine comments. Submission is not catalogue acceptance.
 - finish the real optional AI provider test after complete tomorrow rates arrive;
-  the approved manual request correctly waited on incomplete data. Latest check:
-  tomorrow unpublished, current day 46 of 48 slots; no provider call made
-- observe the v1.6/v1.7 beta through complete next-day publication, revisions and
+  the previous manual request correctly waited on incomplete data. This beta
+  consolidation does not enable AI or make a provider call.
+- observe the combined beta through complete next-day publication, revisions and
   appliance cycles before stable promotion; imported history now satisfies warm-up
 - implement effective-dated price-cap references and additive historical rebasing;
   retain raw comparisons and disclose missing references rather than guessing

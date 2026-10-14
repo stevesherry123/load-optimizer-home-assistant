@@ -83,8 +83,87 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         Clock.current = datetime(2026, 10, 8, 15, 13, tzinfo=timezone.utc)
 
     def put(self, entity_id, state, **attributes):
+        if entity_id == "sensor.load_optimizer_1_overnight_recommendation":
+            attributes.setdefault("overnight_planning_coverage", {
+                "complete": True, "search_complete": True,
+                "window_start": "2026-10-08T19:00:00+00:00",
+                "window_end": "2026-10-09T07:00:00+00:00",
+            })
         self.values[entity_id] = SimpleNamespace(state=state, attributes=attributes,
                                                 last_changed=Clock.current)
+
+    async def test_overnight_waits_for_whole_night_prices_without_consuming_reservation(self):
+        for coverage, reason in (({}, "overnight_tariff_coverage_incomplete"),
+                                 ({"complete": False, "search_complete": False}, "overnight_search_horizon_incomplete")):
+            self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45", status="ready",
+                     confidence=88, overnight_planning_coverage=coverage)
+            await self.scheduler.async_evaluate()
+            self.assertIsNone(self.scheduler.state["request"])
+            self.assertIsNone(self.scheduler.state["last_auto_normal_request"])
+            self.assertEqual(self.scheduler.automation_explanation["reason_code"], reason)
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready",
+                 confidence=79, program="Eco50", start="2026-10-09T00:00:00+00:00",
+                 finish="2026-10-09T04:00:00+00:00", cost_pence=21.77)
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["request"]["program"], "Eco50")
+        self.assertEqual(self.scheduler.state["request"]["cost_pence"], 21.77)
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_automatic_overnight_replans_and_preserves_original_reservation(self):
+        await self.scheduler.async_evaluate()
+        original = dict(self.scheduler.state["request"])
+        last_auto = self.scheduler.state["last_auto_normal_request"]
+        Clock.current += timedelta(minutes=2)
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready",
+                 confidence=79, program="Eco50", start="2026-10-09T00:00:00+00:00",
+                 finish="2026-10-09T04:00:00+00:00", cost_pence=21.77)
+        await self.scheduler.async_evaluate()
+        updated = self.scheduler.state["request"]
+        self.assertEqual(updated["program"], "Eco50")
+        self.assertEqual(updated["created_at"], original["created_at"])
+        self.assertEqual(self.scheduler.state["last_auto_normal_request"], last_auto)
+        event = next(event for event in self.scheduler.state["schedule_events"] if event["event"] == "replanned")
+        self.assertEqual(event["event"], "replanned")
+        self.assertEqual(event["previous_program"], "Quick45")
+        self.scheduler.store.async_save.reset_mock()
+        await self.scheduler.async_evaluate()
+        self.scheduler.store.async_save.assert_not_awaited()
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_replanning_never_edits_manual_active_frozen_or_another_night_requests(self):
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready",
+                 confidence=79, program="Eco50", start="2026-10-09T00:00:00+00:00",
+                 finish="2026-10-09T04:00:00+00:00", cost_pence=21.77)
+        base = {"mode": "automatic", "program": "Quick45", "automatic": True,
+                "start": "2026-10-08T22:00:00+00:00", "created_at": Clock.current.isoformat()}
+        for changes, execution in (({"automatic": False}, "queued"), ({"mode": "overnight"}, "queued"),
+                                   ({}, "commanding"), ({}, "confirmed"),
+                                   ({"start": (Clock.current + timedelta(minutes=2)).isoformat()}, "queued"),
+                                   ({"start": "2026-10-09T22:00:00+00:00"}, "queued")):
+            request = {**base, **changes}
+            self.scheduler.state.update(request=request, execution_status=execution)
+            self.assertFalse(self.scheduler._refresh_automatic_overnight_request(Clock.current))
+            self.assertEqual(self.scheduler.state["request"], request)
+        self.scheduler.state.update(request=base, execution_status="queued")
+        self.put("sensor.load_optimizer_1_cycle_state", "running")
+        self.assertFalse(self.scheduler._refresh_automatic_overnight_request(Clock.current))
+        self.put("sensor.load_optimizer_1_cycle_state", "idle")
+        task = asyncio.create_task(asyncio.sleep(10))
+        self.scheduler._execution_task = task
+        try:
+            self.assertFalse(self.scheduler._refresh_automatic_overnight_request(Clock.current))
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def test_replanning_keeps_saved_plan_during_incomplete_or_unready_recommendations(self):
+        await self.scheduler.async_evaluate()
+        original = dict(self.scheduler.state["request"])
+        for attributes in ({"status": "not_ready"}, {"status": "ready", "confidence": 10},
+                           {"status": "ready", "confidence": 88, "overnight_planning_coverage": {"complete": False}}):
+            self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", **attributes)
+            await self.scheduler.async_evaluate()
+            self.assertEqual(self.scheduler.state["request"], original)
 
     async def test_missing_no_run_source_prevents_new_automatic_plans_and_explains_why(self):
         self.put("sensor.load_optimizer_1_cost_status", "ready", blocked_window_source_ready=False,
@@ -521,6 +600,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(decision["program"], "Super60")
 
     async def test_real_planner_drives_repeated_free_runs_with_limits_and_no_door_reload(self):
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value=None))
         start = datetime(2026, 10, 10, 8, 30, tzinfo=timezone.utc)
         Clock.current = start + timedelta(seconds=54, microseconds=183546)
         self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=True,
