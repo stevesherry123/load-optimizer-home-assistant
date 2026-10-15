@@ -24,13 +24,18 @@ implementation architecture in `docs/architecture.md`.
   for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
   checks passed; respond to requested changes without duplicate requests or
   routine comments. Submission is not catalogue acceptance.
-- finish the real optional AI provider test after complete tomorrow rates arrive;
-  the 14 October evening check finds 46 of 48 required periods in both HA and
-  Octopus's public API. The final 23:00-midnight hour is missing, so classification
-  and AI correctly wait. Approval remains for one manual test, not incomplete-data
-  generation or automatic provider calls.
-- observe the combined beta through complete next-day publication, revisions and
-  appliance cycles before stable promotion; imported history now satisfies warm-up
+- Implement [published forecast coverage](forecast-coverage-plan.md): the owner
+  confirmed that a normal approximately 16:00 publication covers most of the
+  next day, with the tail supplied later. Separate usable forecast analysis/AI
+  readiness from complete-day storage; match historical comparison coverage and
+  disclose the unknown tail. The current beta.7 calendar-day gate is too strict
+  for this pattern. This is planned, not implemented or installed.
+- finish the approved single manual AI provider test after the coverage-aware
+  behavior passes tests and a separately approved installation; no invented
+  prices, automatic provider calls or claimed complete-day analysis.
+- observe the combined beta through normal partial publication, later tail
+  completion/revisions, date rollover and appliance cycles before separately
+  approved stable promotion; imported history now satisfies warm-up
 - implement effective-dated price-cap references and additive historical rebasing;
   retain raw comparisons and disclose missing references rather than guessing
 - add a public Tariff Intelligence dashboard section for the new beta entities,

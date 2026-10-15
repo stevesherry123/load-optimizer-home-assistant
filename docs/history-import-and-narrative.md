@@ -78,6 +78,13 @@ only during rollback need a verified import. Appliance learning is unaffected.
 
 ## Optional Narrative
 
+Installed beta.7 behavior is described below. The owner's subsequent normal-
+publication clarification is captured in the
+[published forecast coverage plan](forecast-coverage-plan.md): usable partial-day
+analysis should support an explicitly scoped manual summary without waiting for
+the trailing hour. That readiness change is planned, not yet implemented or
+installed. Strict historical-day import validation is unaffected.
+
 `load_optimizer.generate_tariff_summary` accepts `entry_id` and an explicit
 `ai_task_entity`. It uses Home Assistant's `ai_task.generate_data` action:
 https://www.home-assistant.io/actions/ai_task.generate_data/
@@ -155,12 +162,23 @@ No appliance command, settings change, restart or history import was made.
 All 46 published next-day periods match Octopus's exact-tariff public API. The
 final 23:00-midnight local hour is absent upstream as well as in HA. That is
 enough coverage for the operational overnight schedule and cycle tails, not a
-complete local day. Classification and optional narrative correctly remain
-waiting/disabled. The approved single actual-provider test is still pending;
-do not pad the missing prices, bypass completeness or describe a provider call
-as successful. No new provider call was attempted during this check.
+complete local day. Installed beta.7 kept classification and optional narrative
+waiting/disabled under its existing calendar-day rule. The approved single
+actual-provider test remained pending and no provider call was attempted.
 
 Actual beta.7 wash completion/learning and genuine live price-revision
 observation remain separate gates. Merge and stable release are held until
 the owner's 15 October review; documentation cleanup does not change the
 installed release tag or HACS publication.
+
+## Publication Policy Clarification (15 October 2026)
+
+The owner confirmed that the approximately 16:00 publication normally supplies
+most of tomorrow, with the trailing hour supplied later. Waiting for a complete
+next calendar day is therefore not the intended operational readiness rule.
+Implement coverage-aware deterministic analysis, like-for-like historical
+comparisons and explicitly scoped manual narrative eligibility as specified in
+[the coverage plan](forecast-coverage-plan.md), without filling unknown prices.
+The actual provider test follows tested and separately approved deployment of
+that change. Automatic AI remains disabled; the planning update changes no live
+configuration, tariff history or release and does not claim new live acceptance.

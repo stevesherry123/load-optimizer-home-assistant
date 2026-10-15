@@ -4,6 +4,12 @@ This feature originated in v1.6 and is now part of the combined `beta/next`
 branch, installed as v1.7.0-beta.7 for controlled testing. It is not part of
 published stable v1.5.7. See [release channels](release-channels.md).
 
+This page describes installed beta.7. The owner's normal trailing-partial
+publication pattern is covered by the
+[published forecast coverage plan](forecast-coverage-plan.md): operational
+analysis should not require a complete next calendar day. That change is planned,
+not yet installed; completed historical storage/import will remain strict.
+
 Tariff Intelligence is read-only. It does not change appliance scheduling,
 EV control, learned programs, or existing dashboard entity IDs.
 

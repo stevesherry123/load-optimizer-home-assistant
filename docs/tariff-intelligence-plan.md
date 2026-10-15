@@ -12,7 +12,7 @@ The accompanying detailed project brief remains the product specification. This
 document records the implementation sequence and release gates derived from a
 review of both repositories and the live Home Assistant installation.
 
-## Current Delivery Status (14 October 2026)
+## Current Delivery Status (15 October 2026)
 
 - `main` and `beta/next` are the only active repository branches. Draft PR #18
   replaces the old stacked tariff reviews; old release tags remain for rollback.
@@ -24,12 +24,17 @@ review of both repositories and the live Home Assistant installation.
   optional AI are implemented, but not promoted to stable. Historical cap
   rebasing, the expanded analysis dashboard and physical-cycle quota ledger
   remain separate backlog work, not hidden branches.
-- The latest evening check has 46 contiguous next-day periods, ending at 23:00
-  tariff-local time. The final hour is also absent from Octopus's public API.
-  Whole-night scheduling has sufficient coverage; full-next-day classification
-  and the optional AI test correctly remain waiting. No provider call was made.
+- The 14 October evening check had 46 contiguous next-day periods, ending at 23:00
+  tariff-local time. The final hour was also absent from Octopus's public API.
+  Whole-night scheduling had sufficient coverage. Installed beta.7 held
+  classification/AI because its gate requires a full calendar day; no provider
+  call was made. The owner clarified that this trailing-partial publication is
+  normal. The [published forecast coverage plan](forecast-coverage-plan.md)
+  replaces that over-strict gate with scoped analysis and matched historical
+  comparisons, while preserving strict completed-day storage. Not implemented.
 - A real automatic wash using beta.7 still needs completion/learning verification.
-  Merge and stable publication are held until the owner's review on 15 October.
+  Merge and stable publication require the owner's separate review/approval;
+  reaching 15 October is not permission to promote automatically.
   HACS catalogue submission work is separate and unchanged.
 
 ## Historical Delivery Through 9 October 2026
@@ -157,16 +162,16 @@ Next-day publication/revision observation and the optional AI provider test
 remain incomplete: latest check has no tomorrow data and 46 of today's 48 slots.
 Cap-adjusted history and the beta analysis dashboard remain subsequent work.
 
-## Outstanding Versus Implemented (14 October 2026)
+## Outstanding Versus Implemented (15 October 2026)
 
 | Area | Current status | Remaining gate/work |
 |---|---|---|
 | Stable appliance migration/orchestration | Released; legacy packaging retired | Community compatibility testing and guided appliance setup |
 | Ofgem benchmark and 24/48-hour chart | Stable; regional, cached, tariff-local, benchmark/Now lines | Historical cap rebasing is separate, not implemented |
 | Lab dashboard | Retired; capabilities retained at the bottom | No further Lab content requested |
-| History and deterministic analysis | Combined beta.7; warm-up and prior wash acceptance passed | Full next-day completion/revision observation; beta.7 real-wash acceptance |
+| History and deterministic analysis | Combined beta.7; warm-up and prior wash acceptance passed | Implement coverage-aware partial publication analysis; observe tail completion/revision and beta.7 real wash |
 | Official history backfill | 90 complete days verified | No further legacy-cache import; retain source/provenance isolation |
-| Optional AI narrative | Implemented, manual-only; current state disabled | Actual provider test when the missing final next-day hour arrives |
+| Optional AI narrative | Implemented, manual-only; current beta.7 requires a full calendar day | Implement scoped published-forecast readiness; then one approved manual provider test after separately approved deployment |
 | EV options editor | Stable v1.5.7 and combined beta.7; acceptance passed | No outstanding editor release gate |
 | New analysis dashboard | Not consolidated into stable | Bounded chart/entity presentation, mobile/travel/DST validation |
 | Octopus Intelligence retirement | Not done; old cache/app preserved | Demonstrate accepted replacement parity first |
@@ -242,6 +247,13 @@ code accepts normalized slots and must not refer to Octopus entity IDs.
 - Do not use Recorder history as an algorithmic dependency.
 
 ### Analysis boundary
+
+The [published forecast coverage plan](forecast-coverage-plan.md), recorded on
+15 October, supersedes full-calendar-day readiness requirements for operational
+analysis and the optional narrative. Complete-day history/import validation
+remains strict. A normal trailing-partial publication is usable with explicit
+scope; a genuine gap or invalid source is not. This is a planned change, not
+behavior already present in installed beta.7.
 
 Generic tariff analysis and load-specific optimization remain separate:
 
