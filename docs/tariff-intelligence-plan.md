@@ -31,8 +31,12 @@ review of both repositories and the live Home Assistant installation.
   call was made. The owner clarified that this trailing-partial publication is
   normal. The [published forecast coverage plan](forecast-coverage-plan.md)
   replaces that over-strict gate with scoped analysis and matched historical
-  comparisons, while preserving strict completed-day storage. Not implemented.
-- A real automatic wash using beta.7 still needs completion/learning verification.
+  comparisons, while preserving strict completed-day storage. Implemented on
+  `beta/next` with 418 passing unit tests and minimum-HA synthetic-provider
+  acceptance; not released or installed.
+- A real automatic wash using beta.7 passed completion/learning verification
+  in the 15 October read-only audit. Repeated free-price execution and live
+  coverage-revision observation remain pending.
   Merge and stable publication require the owner's separate review/approval;
   reaching 15 October is not permission to promote automatically.
   HACS catalogue submission work is separate and unchanged.
@@ -169,9 +173,9 @@ Cap-adjusted history and the beta analysis dashboard remain subsequent work.
 | Stable appliance migration/orchestration | Released; legacy packaging retired | Community compatibility testing and guided appliance setup |
 | Ofgem benchmark and 24/48-hour chart | Stable; regional, cached, tariff-local, benchmark/Now lines | Historical cap rebasing is separate, not implemented |
 | Lab dashboard | Retired; capabilities retained at the bottom | No further Lab content requested |
-| History and deterministic analysis | Combined beta.7; warm-up and prior wash acceptance passed | Implement coverage-aware partial publication analysis; observe tail completion/revision and beta.7 real wash |
+| History and deterministic analysis | Beta.7 actual wash passed; scoped analysis tested on beta/next | Separately approved deployment; observe live tail completion/revision |
 | Official history backfill | 90 complete days verified | No further legacy-cache import; retain source/provenance isolation |
-| Optional AI narrative | Implemented, manual-only; current beta.7 requires a full calendar day | Implement scoped published-forecast readiness; then one approved manual provider test after separately approved deployment |
+| Optional AI narrative | Scoped readiness tested on beta/next; installed beta.7 still requires a full day | One approved manual provider test after separately approved deployment |
 | EV options editor | Stable v1.5.7 and combined beta.7; acceptance passed | No outstanding editor release gate |
 | New analysis dashboard | Not consolidated into stable | Bounded chart/entity presentation, mobile/travel/DST validation |
 | Octopus Intelligence retirement | Not done; old cache/app preserved | Demonstrate accepted replacement parity first |
@@ -252,8 +256,8 @@ The [published forecast coverage plan](forecast-coverage-plan.md), recorded on
 15 October, supersedes full-calendar-day readiness requirements for operational
 analysis and the optional narrative. Complete-day history/import validation
 remains strict. A normal trailing-partial publication is usable with explicit
-scope; a genuine gap or invalid source is not. This is a planned change, not
-behavior already present in installed beta.7.
+scope; a genuine gap or invalid source is not. This is implemented and tested
+on `beta/next`, but is not present in installed beta.7.
 
 Generic tariff analysis and load-specific optimization remain separate:
 

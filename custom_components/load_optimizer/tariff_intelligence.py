@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import logging
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from homeassistant.helpers.storage import Store
 
@@ -130,11 +130,22 @@ class TariffIntelligence:
 
     async def async_status(self, benchmark: dict, now: datetime | None = None) -> dict:
         async with self.lock:
+            try:
+                ZoneInfo(self.timezone_name)
+                if self.price_unit not in {"gbp_per_kwh", "p_per_kwh", "auto"}:
+                    raise ValueError("Invalid tariff price unit")
+            except (ZoneInfoNotFoundError, ValueError, TypeError):
+                return {"status": "error", "forecast_usable": False, "tomorrow_complete": False,
+                        "data_quality": "invalid_settings",
+                        "summary": "Invalid tariff timezone or price unit; history preserved."}
             await self.async_load()
             now = now or datetime.now(timezone.utc)
             periods, errors = [], []
             for entity_id in self.entity_ids:
                 state = self.hass.states.get(entity_id)
+                if state is None or getattr(state, "state", None) in {"unavailable", "unknown"}:
+                    errors.append("source_unavailable")
+                    continue
                 try:
                     periods.extend(tariff_periods_from_entity(
                         {"attributes": dict(state.attributes)} if state else {},
@@ -144,7 +155,8 @@ class TariffIntelligence:
             try:
                 slots = normalize(periods)
             except (ValueError, TypeError, KeyError):
-                return {"status": "error", "data_quality": "invalid_slots", "summary": "Conflicting or invalid tariff periods; history preserved."}
+                return {"status": "error", "forecast_usable": False, "tomorrow_complete": False,
+                        "data_quality": "invalid_slots", "summary": "Conflicting or invalid tariff periods; history preserved."}
             current_cap = benchmark.get("unit_rate_p_per_kwh") if benchmark.get("status") == "ready" else None
             observed = days_from_slots(slots, self.timezone_name, self.source_id, current_cap)
             changed = False
@@ -173,10 +185,16 @@ class TariffIntelligence:
                     LOGGER.warning("Tariff history save failed; previous history retained (%s)", type(error).__name__)
             result = analyse(slots, list(self.days.values()), now=now,
                              timezone_name=self.timezone_name, source=self.source_id)
-            result["data_quality"] = "storage_error" if self.storage_error else "partial_sources" if errors else "complete" if result["tomorrow_complete"] else "waiting_for_tomorrow"
+            quality = {"full_day": "complete", "partial_day": "published_partial_day",
+                       "gapped": "gapped_forecast", "insufficient": "insufficient_coverage",
+                       "missing": "waiting_for_tomorrow"}
+            result["data_quality"] = ("storage_error" if self.storage_error else "partial_sources" if errors else
+                                      quality[result["forecast_coverage"]["status"]])
             result["storage"] = {"schema": 2, "day_count": len(self.days),
                                  "first_day": min(self.days, default=None), "last_day": max(self.days, default=None),
                                  "source_id": self.source_id, "error": self.storage_error}
-            if self.storage_error:
-                result["status"] = "limited"
+            if self.storage_error or errors:
+                result["forecast_usable"] = False
+                if result["status"] == "ready":
+                    result["status"] = "limited"
             return result

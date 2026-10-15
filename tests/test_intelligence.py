@@ -51,9 +51,9 @@ class IntelligenceTests(unittest.TestCase):
         other = day(date(2026, 10, 8), [21])
         self.assertNotEqual(first.fingerprint, other.fingerprint)
 
-    def test_incomplete_day_not_classified(self):
+    def test_gapped_day_not_classified(self):
         target = day(date(2026, 10, 9))
-        result = module.analyse(target.slots[:-1], [], now=module.utc("2026-10-08T12:00:00Z"), timezone_name="Europe/London", source="test")
+        result = module.analyse(target.slots[:20] + target.slots[21:], [], now=module.utc("2026-10-08T12:00:00Z"), timezone_name="Europe/London", source="test")
         self.assertFalse(result["tomorrow_complete"])
         self.assertEqual(result["tomorrow_classification"], "waiting")
 

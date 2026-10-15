@@ -2,9 +2,16 @@
 
 ## Decision And Scope (15 October 2026)
 
-Planning only; not implemented or installed. Continue on `beta/next`. No version
+Implemented and locally tested on `beta/next`; not released or installed. No version
 bump, release, main merge, Home Assistant restart or provider call is authorized
 by this document. Those actions remain separately reviewed.
+
+Acceptance on 15 October: 418 unit tests pass, including partial publication,
+DST, matching historical intervals, invalid sources and stale narratives. A new
+minimum-Home-Assistant smoke test verifies registered entities and the manual
+service with a synthetic provider, including an in-flight price revision. No
+external AI provider was called. Existing backend acceptance tests also pass;
+the optional EV HTTP listener could not bind under the local sandbox.
 
 The owner clarified that the normal approximately 16:00 publication contains
 most, not necessarily all, of the next local calendar day. The trailing hour
@@ -35,12 +42,12 @@ Distinguish missing next-day data, usable trailing-partial data, full-day data,
 and invalid/gapped data. Never call a partial calendar day complete or claim
 that a provider has published its entire market horizon without evidence.
 
-Recommended initial readiness rule: a valid contiguous next-day prefix from
+Implemented readiness rule: a valid contiguous next-day prefix from
 local midnight covering the existing overnight, morning, daytime and evening
 bands (through 19:00 local) may be analysed as a usable published forecast.
 The remaining late band may be partial. This admits the observed 23-hour feed
 without accepting a lone slot or a short morning-only snapshot as a useful
-next-day outlook. This is a proposed semantic coverage threshold, not a provider
+next-day outlook. This is a semantic coverage threshold, not a provider
 slot-count assumption. Shorter snapshots may expose covered-period statistics
 but retain limited readiness for classification and optional AI.
 

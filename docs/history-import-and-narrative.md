@@ -78,12 +78,11 @@ only during rollback need a verified import. Appliance learning is unaffected.
 
 ## Optional Narrative
 
-Installed beta.7 behavior is described below. The owner's subsequent normal-
-publication clarification is captured in the
-[published forecast coverage plan](forecast-coverage-plan.md): usable partial-day
-analysis should support an explicitly scoped manual summary without waiting for
-the trailing hour. That readiness change is planned, not yet implemented or
-installed. Strict historical-day import validation is unaffected.
+The following describes tested, unreleased `beta/next` behavior. Installed
+beta.7 still requires a complete next calendar day. The
+[published forecast coverage plan](forecast-coverage-plan.md) records acceptance
+of explicitly scoped partial-day summaries without waiting for the trailing
+hour. Strict historical-day import validation is unaffected.
 
 `load_optimizer.generate_tariff_summary` accepts `entry_id` and an explicit
 `ai_task_entity`. It uses Home Assistant's `ai_task.generate_data` action:
@@ -96,8 +95,11 @@ runtime, so older Home Assistant versions without it retain deterministic
 analysis without optional narrative.
 
 Only an allowlisted compact analysis is sent, without entity IDs, credentials,
-raw history or storage metadata. Incomplete next-day analysis cannot generate
-a narrative. Provider failures, malformed responses and a 60-second timeout
+raw history or storage metadata. A validated contiguous forecast from midnight
+through at least 19:00 tariff-local time can generate a scoped narrative;
+historical warm-up must be disclosed when applicable. Missing prefixes, internal gaps and unhealthy
+sources/storage block generation. Coverage and unknown trailing prices are
+explicit in the provider input. Provider failures, malformed responses and a 60-second timeout
 are independent of scheduling and learning. Concurrent duplicate requests do
 not cause concurrent provider calls. Status is disabled/pending/ready/failed/
 waiting/stale; text is exposed only while its analysis fingerprint remains
@@ -166,8 +168,9 @@ complete local day. Installed beta.7 kept classification and optional narrative
 waiting/disabled under its existing calendar-day rule. The approved single
 actual-provider test remained pending and no provider call was attempted.
 
-Actual beta.7 wash completion/learning and genuine live price-revision
-observation remain separate gates. Merge and stable release are held until
+The 15 October audit subsequently verified actual beta.7 wash completion and
+learning. Genuine live price-revision observation remains a separate gate.
+Merge and stable release are held until
 the owner's 15 October review; documentation cleanup does not change the
 installed release tag or HACS publication.
 
@@ -176,9 +179,11 @@ installed release tag or HACS publication.
 The owner confirmed that the approximately 16:00 publication normally supplies
 most of tomorrow, with the trailing hour supplied later. Waiting for a complete
 next calendar day is therefore not the intended operational readiness rule.
-Implement coverage-aware deterministic analysis, like-for-like historical
+Implemented on `beta/next`: coverage-aware deterministic analysis, like-for-like historical
 comparisons and explicitly scoped manual narrative eligibility as specified in
 [the coverage plan](forecast-coverage-plan.md), without filling unknown prices.
 The actual provider test follows tested and separately approved deployment of
-that change. Automatic AI remains disabled; the planning update changes no live
-configuration, tariff history or release and does not claim new live acceptance.
+that change. All 418 unit tests and the new minimum-HA synthetic-provider
+acceptance pass, including revisions during an in-flight request. Automatic AI
+remains disabled. This branch work changes no live configuration or release;
+an external provider has not been tested with the new behavior.

@@ -88,6 +88,28 @@ def complete(day: TariffDay) -> bool:
                 and all(a.end == b.start for a, b in zip(day.slots, day.slots[1:])))
 
 
+def forecast_coverage(day: TariffDay | None, local_date: date, timezone_name: str) -> dict:
+    """Separate a usable published prefix from a complete historical day."""
+    start, end = bounds(local_date, timezone_name)
+    slots = day.slots if day else ()
+    gap = any(a.end != b.start for a, b in zip(slots, slots[1:]))
+    prefix = bool(slots and slots[0].start == start and not gap)
+    required_end = datetime.combine(local_date, time(19), ZoneInfo(timezone_name)).astimezone(timezone.utc)
+    full = bool(day and complete(day))
+    usable = bool(prefix and slots[-1].end >= required_end)
+    status = ("missing" if not slots else "gapped" if gap else "full_day" if full
+              else "partial_day" if usable else "insufficient")
+    return {"date": local_date.isoformat(), "status": status, "usable": usable,
+            "complete": full, "start": slots[0].start.isoformat() if slots else None,
+            "end": slots[-1].end.isoformat() if slots else None,
+            "expected_start": start.isoformat(), "expected_end": end.isoformat(),
+            "known_minutes": sum((s.end - s.start).total_seconds() / 60 for s in slots),
+            "expected_minutes": (end - start).total_seconds() / 60,
+            "trailing_missing_minutes": (end - slots[-1].end).total_seconds() / 60 if slots else None,
+            "starts_at_midnight": bool(slots and slots[0].start == start),
+            "has_internal_gap": gap}
+
+
 def days_from_slots(slots: tuple[TariffSlot, ...], timezone_name: str, source: str,
                     benchmark: float | None = None) -> list[TariffDay]:
     grouped = {}
@@ -156,17 +178,72 @@ def cheapest_window(slots: tuple[TariffSlot, ...], hours: int, now: datetime) ->
             "cost_at_1kw_pence": round(cost, 6)}
 
 
-def wall_prices(day: TariffDay) -> dict[str, float]:
-    """Compare matching local half hours; average repeated DST hours per day."""
-    result = {}
+def wall_intervals(day: TariffDay) -> list[tuple[float, float, float]]:
+    """Split UTC durations into wall-time half hours, retaining DST repeats."""
+    result = []
     zone = ZoneInfo(day.timezone_name)
     for slot in day.slots:
         cursor = slot.start
         while cursor < slot.end:
-            key = cursor.astimezone(zone).strftime("%H:%M")
-            result.setdefault(key, []).append(slot.price)
-            cursor += timedelta(minutes=30)
-    return {key: statistics.mean(values) for key, values in result.items()}
+            local = cursor.astimezone(zone)
+            wall = local.hour * 3600 + local.minute * 60 + local.second + local.microsecond / 1_000_000
+            stop = min(slot.end, cursor + timedelta(seconds=1800 - wall % 1800))
+            result.append((wall, wall + (stop - cursor).total_seconds(), slot.price))
+            cursor = stop
+    return result
+
+
+def wall_key(seconds: float) -> str:
+    half_hour = int(seconds // 1800)
+    return f"{half_hour // 2:02d}:{half_hour % 2 * 30:02d}"
+
+
+def wall_prices(day: TariffDay) -> dict[str, float]:
+    """Duration-weighted half hours; repeated wall times count once per day."""
+    totals, weights = {}, {}
+    for start, end, price in wall_intervals(day):
+        key = wall_key(start)
+        totals[key] = totals.get(key, 0) + price * (end - start)
+        weights[key] = weights.get(key, 0) + end - start
+    return {key: value / weights[key] for key, value in totals.items()}
+
+
+def matching_reference(day: TariffDay, target: TariffDay) -> tuple[float, dict] | None:
+    """Integrate history over exactly the target's wall intervals and weights."""
+    historical = wall_intervals(day)
+    totals, weights = {}, {}
+    for start, end, _ in wall_intervals(target):
+        overlapping = [(a, b, price) for a, b, price in historical if a < end and b > start]
+        edges = sorted({start, end} | {max(start, a) for a, _, _ in overlapping}
+                       | {min(end, b) for _, b, _ in overlapping})
+        key = wall_key(start)
+        for left, right in zip(edges, edges[1:]):
+            prices = [price for a, b, price in overlapping if a <= left and b >= right]
+            if not prices:
+                return None
+            totals[key] = totals.get(key, 0) + statistics.mean(prices) * (right - left)
+            weights[key] = weights.get(key, 0) + right - left
+    if not weights:
+        return None
+    return (round(sum(totals.values()) / sum(weights.values()), 6),
+            {key: value / weights[key] for key, value in totals.items()})
+
+
+def time_bands(day: TariffDay) -> tuple[dict, dict]:
+    means, coverage = {}, {}
+    zone = ZoneInfo(day.timezone_name)
+    for name, first, last in (("overnight", 0, 7), ("morning", 7, 10), ("daytime", 10, 16),
+                              ("evening", 16, 19), ("late", 19, 24)):
+        start = datetime.combine(day.local_date, time(first), zone).astimezone(timezone.utc)
+        end = (bounds(day.local_date, day.timezone_name)[1] if last == 24 else
+               datetime.combine(day.local_date, time(last), zone).astimezone(timezone.utc))
+        clipped = tuple(TariffSlot(max(s.start, start), min(s.end, end), s.price)
+                        for s in day.slots if s.start < end and s.end > start)
+        means[name] = stats(clipped).get("mean")
+        full = bool(clipped and clipped[0].start == start and clipped[-1].end == end
+                    and all(a.end == b.start for a, b in zip(clipped, clipped[1:])))
+        coverage[name] = "complete" if full else "partial" if clipped else "unavailable"
+    return means, coverage
 
 
 def analyse(slots: tuple[TariffSlot, ...], history: list[TariffDay], *, now: datetime,
@@ -176,40 +253,53 @@ def analyse(slots: tuple[TariffSlot, ...], history: list[TariffDay], *, now: dat
     tomorrow = today + timedelta(days=1)
     live_days = days_from_slots(slots, timezone_name, source)
     target = next((day for day in live_days if day.local_date == tomorrow), None)
-    past = sorted((day for day in history if today - timedelta(days=14) <= day.local_date < today and complete(day)),
+    coverage = forecast_coverage(target, tomorrow, timezone_name)
+    past = sorted((day for day in history if today - timedelta(days=14) <= day.local_date < today
+                   and day.source == source and day.timezone_name == timezone_name and complete(day)),
                   key=lambda day: day.local_date)[-14:]
-    result = {"status": "ready" if target and complete(target) else "limited" if slots else "waiting",
-              "tomorrow_complete": bool(target and complete(target)),
+    result = {"status": "ready" if coverage["usable"] else "limited" if slots else "waiting",
+              "tomorrow_complete": coverage["complete"], "tomorrow_date": tomorrow.isoformat(),
+              "forecast_usable": coverage["usable"], "forecast_coverage": coverage,
+              "forecast_fingerprint": target.fingerprint if target else None,
+              "analysis_scope": "full_day" if coverage["complete"] else "published_hours",
+              "window_scope": "known_future_prices",
               "history_days": len(past), "warmup_days_required": 14,
               "baseline_status": "ready" if len(past) >= 14 else "warming_up",
               "timezone": timezone_name, "updated_at": now.isoformat(),
               "windows": {str(hours): cheapest_window(slots, hours, now) for hours in range(1, 5)}}
-    if not target or not complete(target):
-        result.update(tomorrow_classification="waiting", summary="Waiting for complete next-day tariff rates.")
+    if not target or not coverage["usable"]:
+        reason = ("Next-day tariff prices contain a gap." if coverage["has_internal_gap"] else
+                  "Waiting for usable next-day tariff coverage through the evening peak.")
+        result.update(tomorrow_classification="waiting", summary=reason)
         return result
     summary = stats(target.slots)
     result["tomorrow_statistics"] = summary
-    zone = ZoneInfo(timezone_name)
-    bands = {}
-    for name, start, end in (("overnight", 0, 7), ("morning", 7, 10), ("daytime", 10, 16), ("evening", 16, 19), ("late", 19, 24)):
-        bands[name] = stats(tuple(s for s in target.slots if start <= s.start.astimezone(zone).hour < end)).get("mean")
+    bands, band_coverage = time_bands(target)
     result["time_bands"] = bands
+    result["time_band_coverage"] = band_coverage
     result["evening_peak"] = "strong" if bands["evening"] is not None and bands["evening"] > summary["mean"] + summary["standard_deviation"] else "ordinary"
     result["volatility"] = "high" if summary["standard_deviation"] > 10 else "moderate" if summary["standard_deviation"] > 5 else "low"
     classification = "warming_up"
-    if len(past) >= 14:
-        averages = [stats(day.slots)["mean"] for day in past]
+    references = [reference for day in past if (reference := matching_reference(day, target)) is not None]
+    result["comparison_days"] = len(references)
+    result["baseline_status"] = "ready" if len(references) >= 14 else "warming_up"
+    if len(references) >= 14:
+        averages = [mean for mean, _ in references]
         percentile = 100 * (sum(value < summary["mean"] for value in averages)
                             + 0.5 * sum(value == summary["mean"] for value in averages)) / len(averages)
         classification = "cheap" if percentile <= 25 else "expensive" if percentile >= 75 else "typical"
         result["recent_percentile"] = round(percentile, 2)
         result["recent_average_p_per_kwh"] = statistics.mean(averages)
-        historical = [wall_prices(day) for day in past]
+        historical = [prices for _, prices in references]
         target_prices = wall_prices(target)
         baseline = {key: statistics.median([day[key] for day in historical if key in day]) for key in target_prices}
         result["matching_half_hour_baseline"] = baseline
-        differences = [target_prices[key] - baseline[key] for key in target_prices]
-        result["raw_baseline_difference_p_per_kwh"] = statistics.mean(differences)
+        weights = {}
+        for start, end, _ in wall_intervals(target):
+            key = wall_key(start)
+            weights[key] = weights.get(key, 0) + end - start
+        result["raw_baseline_difference_p_per_kwh"] = sum(
+            (target_prices[key] - baseline[key]) * weights[key] for key in target_prices) / sum(weights.values())
         a, b = list(target_prices.values()), list(baseline.values())
         ma, mb = statistics.mean(a), statistics.mean(b)
         denom = math.sqrt(sum((v - ma) ** 2 for v in a) * sum((v - mb) ** 2 for v in b))
@@ -217,6 +307,13 @@ def analyse(slots: tuple[TariffSlot, ...], history: list[TariffDay], *, now: dat
         result["shape_similarity"] = similarity
         result["pattern"] = "unusual" if similarity is not None and similarity < 0.5 else "typical" if similarity is not None else "flat"
     result["tomorrow_classification"] = classification
-    result["summary"] = (f"Tomorrow averages {summary['mean']:.2f} p/kWh; {classification.replace('_', ' ')}. "
+    zone = ZoneInfo(timezone_name)
+    scope = ("Tomorrow" if coverage["complete"] else
+             f"Published tomorrow prices ({target.slots[0].start.astimezone(zone):%H:%M}-"
+             f"{target.slots[-1].end.astimezone(zone):%H:%M}, {timezone_name})")
+    verb = "averages" if coverage["complete"] else "average"
+    result["summary"] = (f"{scope} {verb} {summary['mean']:.2f} p/kWh; {classification.replace('_', ' ')}. "
                          f"Volatility: {result['volatility']}. Evening peak: {result['evening_peak']}.")
+    if not coverage["complete"]:
+        result["summary"] += " The remaining prices are not yet published."
     return result

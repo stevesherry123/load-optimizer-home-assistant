@@ -6,8 +6,9 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- Observe the next actual automatic overnight wash and repeated free-price
-  washes before separately approved stable promotion. Local unit and real-HA
+- Observe repeated free-price washes before separately approved stable promotion.
+  Automatic overnight completion and learning passed the 15 October live audit.
+  Local unit and real-HA
   synthetic acceptance do not prove future appliance execution.
 - follow up separately with guided appliance/policy editing,
   selectable control targets and generated dashboards; add privacy-safe screenshots,
@@ -24,12 +25,14 @@ implementation architecture in `docs/architecture.md`.
   for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
   checks passed; respond to requested changes without duplicate requests or
   routine comments. Submission is not catalogue acceptance.
-- Implement [published forecast coverage](forecast-coverage-plan.md): the owner
+- Deploy and observe [published forecast coverage](forecast-coverage-plan.md)
+  after separate release approval: the owner
   confirmed that a normal approximately 16:00 publication covers most of the
   next day, with the tail supplied later. Separate usable forecast analysis/AI
   readiness from complete-day storage; match historical comparison coverage and
   disclose the unknown tail. The current beta.7 calendar-day gate is too strict
-  for this pattern. This is planned, not implemented or installed.
+  for this pattern. The replacement is implemented and tested on `beta/next`,
+  but not released or installed.
 - finish the approved single manual AI provider test after the coverage-aware
   behavior passes tests and a separately approved installation; no invented
   prices, automatic provider calls or claimed complete-day analysis.
@@ -58,6 +61,14 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Implemented scoped partial-forecast analysis and manual narrative eligibility
+  on `beta/next`, with matched historical intervals, DST handling and stale-text
+  protection. All 418 unit tests and the new minimum-HA synthetic-provider
+  acceptance pass. No provider charge, release or installation was performed.
+- Verified the owner's actual beta.7 automatic overnight wash completed and
+  incremented both total and programme learning; the queue cleared and the
+  current integration log had no errors. Private household evidence stays local.
+
 - Cleaned current contributor, tariff/import/AI and HACS guidance to use the
   single `beta/next` branch and installed beta.7, with older branch inventories
   and acceptance records explicitly dated as historical. Evening live checks
@@ -65,7 +76,8 @@ implementation architecture in `docs/architecture.md`.
   All published tomorrow rates match the official tariff API; the missing final
   hour prevents full-day classification and the manual AI test. No control,
   source settings, restart, release or upstream HACS change was made. Actual
-  wash/revision observation and the owner's next-day promotion review remain.
+  revision observation and the owner's promotion review remain. The subsequent
+  15 October audit cleared the actual overnight wash gate.
 
 - Consolidated development onto `beta/next`, retiring six superseded remote
   branches and replacing three reviews with draft PR #18. Published and

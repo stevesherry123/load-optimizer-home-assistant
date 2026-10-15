@@ -46,6 +46,53 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "waiting")
         self.call.assert_not_called()
 
+    async def test_usable_partial_analysis_can_generate_with_explicit_scope(self):
+        self.analysis.update(tomorrow_complete=False, forecast_usable=True, tomorrow_date="2026-10-09",
+                             analysis_scope="published_hours", forecast_fingerprint="synthetic-rates-1",
+                             forecast_coverage={"status": "partial_day", "start": "2026-10-08T23:00:00Z",
+                                                "end": "2026-10-09T22:00:00Z", "known_minutes": 1380,
+                                                "trailing_missing_minutes": 60, "source_id": "DO_NOT_SEND"})
+        result = await self.narrative.async_generate(self.analysis, "ai_task.test")
+        self.assertEqual(result["status"], "ready")
+        instructions = self.call.call_args.args[2]["instructions"]
+        self.assertIn("partial_day", instructions)
+        self.assertIn("trailing prices are unknown", instructions)
+        self.assertIn("Europe/London", instructions)
+        self.assertNotIn("DO_NOT_SEND", instructions)
+        self.assertNotIn("synthetic-rates-1", instructions)
+
+    async def test_coverage_or_source_error_vetoes_even_complete_analysis(self):
+        for status in ("limited", "error", "ready"):
+            self.analysis.update(status=status, forecast_usable=False)
+            self.assertEqual((await self.narrative.async_generate(self.analysis, "ai_task.test"))["status"], "waiting")
+        self.call.assert_not_called()
+
+    async def test_rate_only_or_coverage_revision_invalidates_summary_without_recalling(self):
+        self.analysis["forecast_fingerprint"] = "synthetic-rates-1"
+        await self.narrative.async_generate(self.analysis, "ai_task.test")
+        self.analysis["forecast_fingerprint"] = "synthetic-rates-2"
+        self.assertEqual(self.narrative.snapshot(self.analysis)["status"], "stale")
+        self.analysis["forecast_fingerprint"] = "synthetic-rates-1"
+        self.analysis["forecast_coverage"] = {"end": "2026-10-09T22:30:00Z"}
+        self.assertIsNone(self.narrative.snapshot(self.analysis)["text"])
+        self.assertEqual(self.call.await_count, 1)
+
+    async def test_revision_during_generation_never_returns_old_ready_text(self):
+        gate = asyncio.Event()
+        async def provider(*args, **kwargs):
+            await gate.wait()
+            return {"data": "A summary of the earlier prices."}
+        self.call.side_effect = provider
+        self.analysis["forecast_fingerprint"] = "synthetic-rates-1"
+        task = asyncio.create_task(self.narrative.async_generate(self.analysis, "ai_task.test"))
+        await asyncio.sleep(0)
+        self.analysis["forecast_fingerprint"] = "synthetic-rates-2"
+        gate.set()
+        result = await task
+        self.assertEqual(result["status"], "stale")
+        self.assertIsNone(result["text"])
+        self.assertEqual(self.call.await_count, 1)
+
     async def test_provider_failure_does_not_change_analysis(self):
         before = copy.deepcopy(self.analysis)
         self.call.side_effect = RuntimeError("sensitive provider details")

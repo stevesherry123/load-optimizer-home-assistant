@@ -92,6 +92,52 @@ class TariffHistoryTests(unittest.IsolatedAsyncioTestCase):
         self.publish(day(date(2026, 10, 9)))
         self.assertEqual((await self.service.async_status({}, self.now))["status"], "ready")
 
+    async def test_usable_partial_forecast_is_ready_without_history_write(self):
+        self.publish(day(date(2026, 10, 9)))
+        self.states["sensor.rates"].attributes["rates"] = self.states["sensor.rates"].attributes["rates"][:-2]
+        result = await self.service.async_status({}, self.now)
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["data_quality"], "published_partial_day")
+        self.assertFalse(result["tomorrow_complete"])
+        self.assertEqual(MemoryStore.writes, 0)
+        fresh = manager.TariffIntelligence(self.hass, self.service.source_id, ["sensor.rates"], "Europe/London", "p_per_kwh")
+        await fresh.async_load()
+        self.assertEqual(fresh.days, {})
+
+    async def test_failed_source_vetoes_narrative_despite_other_valid_prices(self):
+        self.service.entity_ids.append("sensor.other_rates")
+        self.publish(day(date(2026, 10, 9)))
+        result = await self.service.async_status({}, self.now)
+        self.assertEqual(result["status"], "limited")
+        self.assertEqual(result["data_quality"], "partial_sources")
+        self.assertFalse(result["forecast_usable"])
+        self.states["sensor.other_rates"] = SimpleNamespace(state="ready", attributes=self.states["sensor.rates"].attributes)
+        self.assertTrue((await self.service.async_status({}, self.now))["forecast_usable"])
+
+    async def test_unavailable_source_cannot_reuse_its_cached_prices(self):
+        self.publish(day(date(2026, 10, 9)))
+        self.states["sensor.rates"].state = "unavailable"
+        result = await self.service.async_status({}, self.now)
+        self.assertFalse(result["forecast_usable"])
+        self.assertEqual(MemoryStore.writes, 0)
+
+    async def test_storage_failure_vetoes_ai_but_preserves_observed_coverage(self):
+        self.publish(day(date(2026, 10, 9)))
+        with patch.object(self.service.store, "async_save", AsyncMock(side_effect=OSError("test"))):
+            result = await self.service.async_status({}, self.now)
+        self.assertEqual(result["status"], "limited")
+        self.assertFalse(result["forecast_usable"])
+        self.assertTrue(result["forecast_coverage"]["usable"])
+        self.assertEqual(result["data_quality"], "storage_error")
+
+    async def test_invalid_source_units_or_timezone_are_reported_without_writes(self):
+        for unit, zone in (("invalid", "Europe/London"), ("p_per_kwh", "Invalid/Timezone")):
+            service = manager.TariffIntelligence(self.hass, "invalid-settings", ["sensor.rates"], zone, unit)
+            result = await service.async_status({}, self.now)
+            self.assertEqual(result["status"], "error")
+            self.assertFalse(result["forecast_usable"])
+        self.assertEqual(MemoryStore.writes, 0)
+
     async def test_corrupt_store_not_overwritten(self):
         payload = {"schema": 999, "days": {}}
         MemoryStore.values[self.service.store.key] = copy.deepcopy(payload)

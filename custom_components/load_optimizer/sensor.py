@@ -205,6 +205,8 @@ class LoadOptimizerIntelligenceSensor(LoadOptimizerEntity, SensorEntity):
             return result.get("windows", {}).get(self.key[-1])
         if self.key == "status":
             return {key: value for key, value in result.items() if key not in {"summary", "windows"}}
+        if self.key in {"tomorrow_average", "tomorrow_classification", "volatility", "evening_peak", "pattern", "summary"}:
+            return {key: result.get(key) for key in ("tomorrow_date", "analysis_scope", "forecast_coverage")}
         return None
 
 

@@ -4,11 +4,10 @@ This feature originated in v1.6 and is now part of the combined `beta/next`
 branch, installed as v1.7.0-beta.7 for controlled testing. It is not part of
 published stable v1.5.7. See [release channels](release-channels.md).
 
-This page describes installed beta.7. The owner's normal trailing-partial
-publication pattern is covered by the
-[published forecast coverage plan](forecast-coverage-plan.md): operational
-analysis should not require a complete next calendar day. That change is planned,
-not yet installed; completed historical storage/import will remain strict.
+This page describes the tested, unreleased `beta/next` coverage changes.
+Installed beta.7 still requires a complete next calendar day for classification
+and optional AI. See the [coverage acceptance record](forecast-coverage-plan.md).
+Completed historical storage/import remains strict in both versions.
 
 Tariff Intelligence is read-only. It does not change appliance scheduling,
 EV control, learned programs, or existing dashboard entity IDs.
@@ -31,12 +30,22 @@ choose the earliest start. Gaps cannot be bridged. A complete local day can have
 
 Historical comparisons require all 14 recent completed local days. Until then
 classification is `warming_up`, never a guessed cheap/expensive label. Missing
-or incomplete tomorrow rates produce `waiting`. Percentiles use the midrank
+tomorrow rates or an internal gap produce `waiting`. A contiguous publication
+from local midnight through at least 19:00 is usable with explicit partial-day
+scope. Unknown trailing prices are excluded, never filled. Historical means
+use the same covered wall-time intervals and target duration weights; historical
+days missing a required interval cannot satisfy the 14-day baseline. Percentiles use the midrank
 for ties: <=25 is cheap, >=75 expensive, otherwise typical. Volatility is low
 up to 5 p/kWh standard deviation, moderate up to 10, otherwise high. A strong
 evening peak has a 16:00-19:00 mean above the day mean plus one standard deviation.
 Shape similarity is centered correlation against the matching-wall-time median;
 below 0.5 is unusual. Repeated autumn wall times are averaged per historical day.
+
+`tomorrow_complete` remains a strict calendar-day fact, while `forecast_usable`
+also checks source and storage health. Forecast attributes expose target date,
+timezone, known/expected duration, missing tail and per-band coverage. Tomorrow
+summary sensors carry `analysis_scope` and `forecast_coverage`; their entity IDs
+are unchanged. Generic windows are cheapest within the known searchable horizon.
 
 The analysis-status attributes contain bounded statistics and at most one
 local-day median curve, not the retained history database. History counts,
