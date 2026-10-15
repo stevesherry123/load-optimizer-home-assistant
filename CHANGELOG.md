@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.0-beta.8
+
+- Analyse contiguous published next-day rates through the evening peak without
+  requiring the unpublished trailing hours. Explicitly label partial coverage.
+- Compare historical prices over matching hours with duration-aware DST handling;
+  retain strict complete-day history storage and import validation.
+- Allow explicitly requested AI summaries of usable partial forecasts; invalidate
+  old summaries when coverage or prices change, including during generation.
+- Reject unavailable cached sources and unhealthy storage for narrative readiness.
+- Add partial-forecast, source-health, DST and real Home Assistant service tests.
+  Validated with 418 unit tests and minimum-version Home Assistant acceptance.
+
 ## 1.7.0-beta.7
 
 - Consolidate testing into one `beta/next` branch; preserve existing release tags
