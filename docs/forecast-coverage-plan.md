@@ -2,9 +2,10 @@
 
 ## Decision And Scope (15 October 2026)
 
-Implemented and locally tested on `beta/next`; not released or installed. No version
-bump, release, main merge, Home Assistant restart or provider call is authorized
-by this document. Those actions remain separately reviewed.
+Released as `v1.7.0-beta.8` after separate owner approval and installed on
+15 October. Live verification completed on 16 October; see
+[deployment acceptance](forecast-coverage-acceptance.md). Stable promotion
+remains separately reviewed. No external AI provider has been called for this change.
 
 Acceptance on 15 October: 418 unit tests pass, including partial publication,
 DST, matching historical intervals, invalid sources and stale narratives. A new

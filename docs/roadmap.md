@@ -31,8 +31,8 @@ implementation architecture in `docs/architecture.md`.
   next day, with the tail supplied later. Separate usable forecast analysis/AI
   readiness from complete-day storage; match historical comparison coverage and
   disclose the unknown tail. The current beta.7 calendar-day gate is too strict
-  for this pattern. The replacement is implemented and tested on `beta/next`,
-  but not released or installed.
+  for this pattern. The replacement is now installed as beta.8 and live partial
+  analysis/date rollover passed. Live tail/revision observation remains.
 - finish the approved single manual AI provider test after the coverage-aware
   behavior passes tests and a separately approved installation; no invented
   prices, automatic provider calls or claimed complete-day analysis.
@@ -60,6 +60,12 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Published and installed beta.8 after owner approval. The 16 October audit
+  verified preserved identities, learning, dashboards, history and queued wash;
+  real partial-forecast analysis and the subsequent automatic wash passed.
+  See [deployment acceptance](forecast-coverage-acceptance.md). External AI is
+  still pending suitable next-day data; stable remains v1.5.7.
 
 - Implemented scoped partial-forecast analysis and manual narrative eligibility
   on `beta/next`, with matched historical intervals, DST handling and stale-text

@@ -44,8 +44,9 @@ isolated from normal updates, not secret.
 - `beta/next`: the single combined testing branch. It includes tariff history,
   validated import, optional AI narratives and the pending scheduling repairs.
 
-The owner's installed test version is `v1.7.0-beta.7`, verified on 14 October
-after upgrading from `v1.7.0-beta.6`. Stable publication remains `v1.5.7`. A beta release is a labelled
+The owner's installed test version is `v1.7.0-beta.8`, verified on 16 October
+after upgrading from `v1.7.0-beta.7`; see [deployment acceptance](forecast-coverage-acceptance.md).
+Stable publication remains `v1.5.7`. A beta release is a labelled
 snapshot of `beta/next`, not another installation or a new branch. Future beta
 updates continue on this same branch. Stable promotion requires separate approval
 and successful feature-specific acceptance; combining branches does not waive

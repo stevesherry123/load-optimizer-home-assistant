@@ -1,13 +1,12 @@
 # Tariff Analysis (Testing Channel)
 
 This feature originated in v1.6 and is now part of the combined `beta/next`
-branch, installed as v1.7.0-beta.7 for controlled testing. It is not part of
+branch, installed as v1.7.0-beta.8 for controlled testing. It is not part of
 published stable v1.5.7. See [release channels](release-channels.md).
 
-This page describes the tested, unreleased `beta/next` coverage changes.
-Installed beta.7 still requires a complete next calendar day for classification
-and optional AI. See the [coverage acceptance record](forecast-coverage-plan.md).
-Completed historical storage/import remains strict in both versions.
+This page describes beta.8 coverage behavior, verified live on 16 October.
+See the [coverage acceptance record](forecast-coverage-acceptance.md).
+Completed historical storage/import remains strict.
 
 Tariff Intelligence is read-only. It does not change appliance scheduling,
 EV control, learned programs, or existing dashboard entity IDs.
