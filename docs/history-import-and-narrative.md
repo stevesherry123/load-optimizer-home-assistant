@@ -78,14 +78,14 @@ only during rollback need a verified import. Appliance learning is unaffected.
 
 ## Optional Narrative
 
-17 October acceptance update: the single real provider replay connected but
-returned inaccurate coverage and warm-up prose. A tested, unreleased beta/next
-guard now supplies authoritative facts from deterministic analysis and rejects
-provider text that restates quantities or coverage. Installed beta.8 does not
-yet contain this guard. See [the acceptance record](forecast-coverage-acceptance.md).
+17 October acceptance update: two real provider replays exposed inaccurate
+coverage and unsupported causal speculation. The replacement on beta/next uses
+constrained selection of verified findings rather than provider-written prose.
+Installed beta.8 still has the original free-text path. See
+[the acceptance record](forecast-coverage-acceptance.md).
 
-The following describes tested, unreleased `beta/next` behavior. Installed
-beta.7 still requires a complete next calendar day. The
+The following describes the `beta/next` replacement. Installed beta.8 supports
+partial-day analysis but does not contain constrained selection. The
 [published forecast coverage plan](forecast-coverage-plan.md) records acceptance
 of explicitly scoped partial-day summaries without waiting for the trailing
 hour. Strict historical-day import validation is unaffected.
@@ -111,6 +111,22 @@ not cause concurrent provider calls. Status is disabled/pending/ready/failed/
 waiting/stale; text is exposed only while its analysis fingerprint remains
 current. Narratives are not retained across restart and are never presented as
 the authoritative price or scheduling decision.
+
+The provider receives a bounded catalogue of findings already verified by
+deterministic analysis. Home Assistant's structured-output schema requests only
+a `highlights` list of finding IDs. Local validation requires one to three
+distinct, currently available IDs, with no additional fields. Prose, unknown or
+contradictory IDs, duplicates and malformed structures fail closed; there is no
+fallback to free text. Classification findings are unavailable while the
+historical baseline is warming up.
+
+The integration renders every displayed sentence from local templates. It
+always includes the target date, tariff timezone, published interval and mean;
+partial-coverage and historical warm-up notices cannot be omitted by AI. The
+provider only chooses which verified findings to highlight and their order; it
+cannot supply prices, dates, explanations or appliance commands. This limits
+AI's role to presentation. Deterministic analysis remains available without
+any provider, subscription or charge.
 
 ## Owner Installation Verification (8 October 2026)
 

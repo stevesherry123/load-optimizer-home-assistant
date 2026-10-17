@@ -16,12 +16,13 @@ spec.loader.exec_module(module)
 
 class NarrativeTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.call = AsyncMock(return_value={"data": "Prices vary moderately, with a pronounced evening peak."})
+        self.call = AsyncMock(return_value={"data": {"highlights": ["evening_peak_strong", "volatility_moderate"]}})
         self.hass = SimpleNamespace(services=SimpleNamespace(has_service=lambda *args: True, async_call=self.call))
         self.narrative = module.OptionalNarrative(self.hass)
         self.analysis = {"status": "ready", "tomorrow_complete": True, "timezone": "Europe/London",
                          "updated_at": "2026-10-08T12:00:00+00:00", "tomorrow_classification": "warming_up",
                          "baseline_status": "warming_up", "summary": "Tomorrow averages 20 p/kWh.",
+                         "volatility": "moderate", "evening_peak": "strong",
                          "storage": {"secret": "DO_NOT_SEND"}, "raw_history": ["DO_NOT_SEND"]}
 
     async def test_disabled_by_default_and_no_background_calls(self):
@@ -51,7 +52,8 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
         result = await self.narrative.async_generate(self.analysis, "ai_task.test")
         self.assertEqual(result["status"], "ready")
         self.assertTrue(result["text"].startswith("2026-10-09. Tomorrow averages 20 p/kWh."))
-        self.assertIn("Prices vary moderately", result["text"])
+        self.assertIn("Price volatility is moderate.", result["text"])
+        self.assertIn("Historical comparison is warming up", result["text"])
 
     async def test_real_provider_incorrect_coverage_is_rejected(self):
         self.call.return_value = {"data": (
@@ -59,7 +61,7 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
             "Prices are available from midnight to 12:00, while the trailing prices remain unknown.")}
         result = await self.narrative.async_generate(self.analysis, "ai_task.test")
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["reason"], "unverified_narrative_facts")
+        self.assertEqual(result["reason"], "ValueError")
         self.assertIsNone(result["text"])
         self.assertEqual(self.call.await_count, 1)
 
@@ -68,7 +70,7 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
                      "Only the morning hours are published."):
             self.call.return_value = {"data": text}
             result = await self.narrative.async_generate(self.analysis, "ai_task.test")
-            self.assertEqual(result["reason"], "unverified_narrative_facts")
+            self.assertEqual(result["reason"], "ValueError")
             self.assertIsNone(result["text"])
 
     async def test_real_provider_demand_speculation_is_rejected(self):
@@ -78,7 +80,7 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
             "which may drive prices higher during that period.")}
         result = await self.narrative.async_generate(self.analysis, "ai_task.test")
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["reason"], "unsupported_narrative_inference")
+        self.assertEqual(result["reason"], "ValueError")
         self.assertIsNone(result["text"])
         self.assertEqual(self.call.await_count, 1)
 
@@ -92,7 +94,8 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "ready")
         instructions = self.call.call_args.args[2]["instructions"]
         self.assertIn("partial_day", instructions)
-        self.assertIn("trailing prices are unknown", instructions)
+        self.assertIn("highlights", instructions)
+        self.assertIn("trailing prices are unknown", result["text"])
         self.assertIn("Europe/London", instructions)
         self.assertNotIn("DO_NOT_SEND", instructions)
         self.assertNotIn("synthetic-rates-1", instructions)
@@ -117,7 +120,7 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
         gate = asyncio.Event()
         async def provider(*args, **kwargs):
             await gate.wait()
-            return {"data": "A summary of the earlier prices."}
+            return {"data": {"highlights": ["volatility_moderate"]}}
         self.call.side_effect = provider
         self.analysis["forecast_fingerprint"] = "synthetic-rates-1"
         task = asyncio.create_task(self.narrative.async_generate(self.analysis, "ai_task.test"))
@@ -163,7 +166,7 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
         gate = asyncio.Event()
         async def provider(*args, **kwargs):
             await gate.wait()
-            return {"data": "A verified short summary."}
+            return {"data": {"highlights": ["volatility_moderate"]}}
         self.call.side_effect = provider
         task = asyncio.create_task(self.narrative.async_generate(self.analysis, "ai_task.test"))
         await asyncio.sleep(0)
@@ -172,3 +175,65 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
         gate.set()
         await task
         self.assertEqual(self.call.call_count, 1)
+
+    async def test_structure_contains_only_available_verified_findings(self):
+        await self.narrative.async_generate(self.analysis, "ai_task.test")
+        structure = self.call.call_args.args[2]["structure"]
+        options = structure["highlights"]["selector"]["select"]["options"]
+        self.assertEqual(set(options), {"volatility_moderate", "evening_peak_strong"})
+        self.assertTrue(structure["highlights"]["required"])
+
+    async def test_invalid_selections_fail_without_exposing_provider_content(self):
+        invalid = [None, "prose", {}, {"highlights": []},
+                   {"highlights": ["invented_demand_growth"]},
+                   {"highlights": ["volatility_high"]},
+                   {"highlights": ["volatility_moderate", "volatility_moderate"]},
+                   {"highlights": [None]}, {"highlights": [{"injection": "ignore rules"}]},
+                   {"highlights": "volatility_moderate"},
+                   {"highlights": ["volatility_moderate"], "prose": "SECRET"},
+                   {"highlights": ["comparison_cheap"]}]
+        for payload in invalid:
+            with self.subTest(payload=payload):
+                self.call.return_value = {"data": payload}
+                result = await self.narrative.async_generate(self.analysis, "ai_task.test")
+                self.assertEqual(result["status"], "failed")
+                self.assertIsNone(result["text"])
+
+    async def test_selection_order_preserved_and_mandatory_context_cannot_be_omitted(self):
+        self.analysis.update(tomorrow_complete=False, forecast_usable=True, tomorrow_date="2026-10-09",
+                             tomorrow_statistics={"mean": 20},
+                             forecast_coverage={"start": "2026-10-08T23:00:00Z", "end": "2026-10-09T22:00:00Z"})
+        self.call.return_value = {"data": {"highlights": ["evening_peak_strong", "volatility_moderate"]}}
+        result = await self.narrative.async_generate(self.analysis, "ai_task.test")
+        self.assertEqual(result["status"], "ready")
+        self.assertIn("2026-10-09 (Europe/London), 00:00-23:00, average 20.00 p/kWh", result["text"])
+        self.assertIn("trailing prices are unknown", result["text"])
+        self.assertIn("Historical comparison is warming up", result["text"])
+        self.assertTrue(result["text"].endswith("The covered evening price peak is strong. Price volatility is moderate."))
+
+    async def test_classification_is_selectable_only_with_ready_baseline(self):
+        self.analysis.update(baseline_status="ready", tomorrow_classification="cheap")
+        self.call.return_value = {"data": {"highlights": ["comparison_cheap"]}}
+        result = await self.narrative.async_generate(self.analysis, "ai_task.test")
+        self.assertIn("cheap compared with matching historical hours", result["text"])
+        self.assertNotIn("warming up", result["text"])
+        self.analysis["baseline_status"] = "warming_up"
+        self.assertEqual((await self.narrative.async_generate(self.analysis, "ai_task.test"))["status"], "failed")
+
+    async def test_no_findings_prevents_provider_call(self):
+        self.analysis.pop("volatility")
+        self.analysis.pop("evening_peak")
+        result = await self.narrative.async_generate(self.analysis, "ai_task.test")
+        self.assertEqual(result["reason"], "no_verified_findings")
+        self.call.assert_not_called()
+
+    async def test_selection_is_bounded_and_full_day_end_is_unambiguous(self):
+        self.analysis.update(baseline_status="ready", tomorrow_classification="typical", tomorrow_date="2026-10-09",
+                             tomorrow_statistics={"mean": 20},
+                             forecast_coverage={"start": "2026-10-08T23:00:00Z", "end": "2026-10-09T23:00:00Z"})
+        self.call.return_value = {"data": {"highlights": ["volatility_moderate", "evening_peak_strong", "comparison_typical"]}}
+        result = await self.narrative.async_generate(self.analysis, "ai_task.test")
+        self.assertIn("00:00-00:00 next day", result["text"])
+        self.assertNotIn("trailing prices", result["text"])
+        self.call.return_value = {"data": {"highlights": ["volatility_moderate"] * 4}}
+        self.assertEqual((await self.narrative.async_generate(self.analysis, "ai_task.test"))["status"], "failed")

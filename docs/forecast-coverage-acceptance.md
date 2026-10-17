@@ -89,3 +89,15 @@ from these tests. Natural upstream revision observation and an end-to-end live
 service generation remain distinct from replay. Keep AI opt-in and experimental;
 further provider calls require approval. No additional beta was published or
 installed during this retest.
+
+### Constrained Finding Selection
+
+The owner's subsequent instruction to implement the replacement authorizes
+local tests, one real structured-provider attempt and a tested beta deployment.
+The new beta/next path removes lexical prose filters and accepts only a bounded
+list of IDs from a catalogue of deterministic findings. All displayed text is
+rendered locally; unknown selections and extra response fields fail closed.
+All 428 unit tests pass, including the original real prose failures, selection
+bounds, mandatory coverage/warm-up notices, exact local-time rendering and
+stale-result handling. Provider and deployment results are recorded separately
+when completed; local success alone is not live acceptance.

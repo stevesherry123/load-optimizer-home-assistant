@@ -37,7 +37,8 @@ implementation architecture in `docs/architecture.md`.
   single approved call connected, but misstated coverage and baseline warm-up.
   An additional authorized retest preserved facts but introduced unsupported
   demand speculation. The unreleased prose guard and authoritative facts prefix
-  now pass 422 unit tests, including both observed response failures.
+  were superseded by constrained finding selection. The replacement passes
+  428 unit tests and renders all prose from local deterministic templates.
   Review and deploy that correction, then obtain approval for another provider
   attempt. Controlled stale-text replay passed; natural revision observation
   remains open. See [provider acceptance](forecast-coverage-acceptance.md).

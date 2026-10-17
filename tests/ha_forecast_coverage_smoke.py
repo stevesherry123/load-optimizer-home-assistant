@@ -63,7 +63,8 @@ async def main():
                     started.set()
                     if gate is not None:
                         await gate.wait()
-                    return {"data": "Prices vary moderately, with a pronounced evening peak."}
+                    options = call.data["structure"]["highlights"]["selector"]["select"]["options"]
+                    return {"data": {"highlights": options[:2]}}
                 hass.services.async_register("ai_task", "generate_data", provider, supports_response=SupportsResponse.ONLY)
                 narrative = OptionalNarrative(hass)
                 entry = SimpleNamespace(entry_id="synthetic-coverage", title="Synthetic coverage hub", data={})
