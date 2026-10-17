@@ -101,3 +101,13 @@ All 428 unit tests pass, including the original real prose failures, selection
 bounds, mandatory coverage/warm-up notices, exact local-time rendering and
 stale-result handling. Provider and deployment results are recorded separately
 when completed; local success alone is not live acceptance.
+
+The single authorized structured-provider call passed on 17 October. It returned
+only two valid finding IDs; all displayed wording came from local templates.
+The real published 23-hour tariff, local date, mean and missing tail were
+rendered correctly. Historical warm-up was explicit because the isolated replay
+intentionally supplied no historical baseline; live retained history was not
+modified. Controlled price-revision and tail-arrival replays hid the result
+without another provider call. This establishes real provider/schema compatibility
+for the new contract, not natural upstream revision observation or an end-to-end
+production-service call. The approved beta.9 deployment is the next step.

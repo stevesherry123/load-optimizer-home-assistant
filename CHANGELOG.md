@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.0-beta.9
+
+- Replace optional AI prose with structured selection of verified finding IDs.
+  Render all dates, prices, coverage and finding text locally; the provider can
+  only choose which available findings to highlight and their order.
+- Reject unknown, contradictory, duplicate, oversized or malformed selections
+  and additional provider fields. Always show partial-coverage and historical
+  warm-up notices; preserve manual-only generation and stale-result protection.
+- Validate with 428 unit tests and one real structured-provider replay using
+  genuine published tariff data. Natural upstream revision observation and
+  repeated free-price execution remain separate acceptance items.
+
 ## 1.7.0-beta.8
 
 - Analyse contiguous published next-day rates through the evening peak without
