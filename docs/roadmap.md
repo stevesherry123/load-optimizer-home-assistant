@@ -6,39 +6,45 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- Finish remote checks and human review of
-  [repair PR #16](https://github.com/stevesherry123/load-optimizer-home-assistant/pull/16).
-  The owner
-  approved a push and review request in this repository only; merge, release and
-  deployment remain separately approved. R1/R3 outage/no-run enforcement and
-  R2/R4 permission/configuration validation have isolated acceptance, including
-  busy-save guards across all learned-hub settings. See
-  [runtime safety repairs](runtime-safety-repairs.md). Keep feature proposals,
-  R5's repeated negative-run beta promotion and the HACS submission separate.
-- The onboarding guides and initial parser/source-review slice are included in
-  PR #16, not separate merge tasks. Include them in a separately approved release
-  after review, without changing existing stable tags or promoting the tariff beta.
+- Observe repeated free-price washes before separately approved stable promotion.
+  Automatic overnight completion and learning passed the 15 October live audit.
+  Local unit and real-HA
+  synthetic acceptance do not prove future appliance execution.
 - follow up separately with guided appliance/policy editing,
   selectable control targets and generated dashboards; add privacy-safe screenshots,
   issue forms and an unfamiliar-user onboarding trial before broad promotion
-- first runtime onboarding slice was implemented on
-  `feature/onboarding-validation` and is retained in `fix/runtime-data-safety`:
-  shared bounded parsing, pre-save validation and
-  a read-only source review. Guided editing and public/live acceptance remain
-  separate; see [the development plan](onboarding-development-plan.md).
-- keep `e6ba6ca`'s repeated free/negative-price scheduling fix on
-  `fix/negative-price-repeat-runs` visible as a separate stable-promotion priority;
-  do not merge it or the tariff betas incidentally with onboarding changes
+- Add a separately designed confirmed-physical-cycle quota ledger, independent
+  of learning rejection and recent-profile retention. Current finite-window
+  limits count learned runs and conservatively pause when history is incomplete;
+  do not present them as a lifetime record of every physical wash.
+  The [ledger and guided-setup discussion draft](physical-cycle-ledger-design.md)
+  is retained in `beta/next`, not implemented. Agree manual-cycle,
+  failed-start and window-overlap accounting before shadow collection/enforcement.
 
 - await maintainer review of [HACS submission #11744](https://github.com/hacs/default/pull/11744)
   for stable v1.5.7, submitted on the owner's behalf on 9 October. All upstream
   checks passed; respond to requested changes without duplicate requests or
   routine comments. Submission is not catalogue acceptance.
-- finish the real optional AI provider test after complete tomorrow rates arrive;
-  the approved manual request correctly waited on incomplete data. Latest check:
-  tomorrow unpublished, current day 46 of 48 slots; no provider call made
-- observe the v1.6/v1.7 beta through complete next-day publication, revisions and
-  appliance cycles before stable promotion; imported history now satisfies warm-up
+- Deploy and observe [published forecast coverage](forecast-coverage-plan.md)
+  after separate release approval: the owner
+  confirmed that a normal approximately 16:00 publication covers most of the
+  next day, with the tail supplied later. Separate usable forecast analysis/AI
+  readiness from complete-day storage; match historical comparison coverage and
+  disclose the unknown tail. The current beta.7 calendar-day gate is too strict
+  for this pattern. The replacement is now installed as beta.8 and live partial
+  analysis/date rollover passed. Live tail/revision observation remains.
+- Resolve the real-provider quality failure identified on 17 October: the
+  single approved call connected, but misstated coverage and baseline warm-up.
+  An additional authorized retest preserved facts but introduced unsupported
+  demand speculation. The unreleased prose guard and authoritative facts prefix
+  were superseded by constrained finding selection. The replacement passes
+  428 unit tests and renders all prose from local deterministic templates.
+  Review and deploy that correction, then obtain approval for another provider
+  attempt. Controlled stale-text replay passed; natural revision observation
+  remains open. See [provider acceptance](forecast-coverage-acceptance.md).
+- observe the combined beta through normal partial publication, later tail
+  completion/revisions, date rollover and appliance cycles before separately
+  approved stable promotion; imported history now satisfies warm-up
 - implement effective-dated price-cap references and additive historical rebasing;
   retain raw comparisons and disclose missing references rather than guessing
 - add a public Tariff Intelligence dashboard section for the new beta entities,
@@ -60,6 +66,59 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Published and installed beta.8 after owner approval. The 16 October audit
+  verified preserved identities, learning, dashboards, history and queued wash;
+  real partial-forecast analysis and the subsequent automatic wash passed.
+  See [deployment acceptance](forecast-coverage-acceptance.md). External AI is
+  still pending suitable next-day data; stable remains v1.5.7.
+
+- Implemented scoped partial-forecast analysis and manual narrative eligibility
+  on `beta/next`, with matched historical intervals, DST handling and stale-text
+  protection. All 418 unit tests and the new minimum-HA synthetic-provider
+  acceptance pass. No provider charge, release or installation was performed.
+- Verified the owner's actual beta.7 automatic overnight wash completed and
+  incremented both total and programme learning; the queue cleared and the
+  current integration log had no errors. Private household evidence stays local.
+
+- Cleaned current contributor, tariff/import/AI and HACS guidance to use the
+  single `beta/next` branch and installed beta.7, with older branch inventories
+  and acceptance records explicitly dated as historical. Evening live checks
+  reproduce the saved overnight choice and all one-to-four-hour generic windows.
+  All published tomorrow rates match the official tariff API; the missing final
+  hour prevents full-day classification and the manual AI test. No control,
+  source settings, restart, release or upstream HACS change was made. Actual
+  revision observation and the owner's promotion review remain. The subsequent
+  15 October audit cleared the actual overnight wash gate.
+
+- Consolidated development onto `beta/next`, retiring six superseded remote
+  branches and replacing three reviews with draft PR #18. Published and
+  installed v1.7.0-beta.7 with whole-night pricing and automatic-only overnight
+  replanning after 396 unit tests, real minimum-HA acceptance and all five CI
+  checks. One idle-time restart preserved learning, history, controls, identities
+  and both dashboards. Runtime diagnostics and the current integration log pass;
+  real future wash observation and stable promotion remain separate gates.
+  See [overnight acceptance](overnight-planning-repair.md).
+
+- Published and installed v1.7.0-beta.6 after 285 unit tests, isolated minimum-HA
+  lifecycle/dashboard/security checks and all GitHub validation jobs passed.
+  The planner no longer perpetually defers off-grid scans or ignores an active
+  opportunity in favour of a cheaper future one. One restart preserved entity
+  identities, dashboards, profiles, controls, policies, tariff history and the
+  saved overnight request. Live diagnostics and appliance readiness passed;
+  actual negative-window appliance execution is still to be observed. Main and
+  stable v1.5.7 are unchanged.
+- Implemented the approved repeat-scheduling follow-up on a separate repair
+  branch, not main or a release. 322 tests pass, including malformed/overflowing
+  history and command-time price revalidation regressions, a five-run synthetic
+  timeline and real minimum-HA repeat/persistence/fresh-safety acceptance.
+  Normal permissions and manual cooldown overrides remain intact. No live
+  commands, release or HACS submission changes were made.
+
+- Merged runtime safety, planning-boundary and initial onboarding work through
+  PR #16 on 12 October at `c16b9e9`. All five post-merge checks pass, including
+  285 unit tests. This supersedes the earlier local-only status below; stable
+  version and production installation were not changed by that merge.
 
 - Completed the approved planning-boundary follow-up on `fix/runtime-data-safety`:
   calendar fetching and event filtering include the full learned cycle tail,

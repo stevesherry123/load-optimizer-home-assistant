@@ -27,6 +27,7 @@ PROGRAM_PREFIX = "Dishcare.Dishwasher.Program."
 RUNNING_OPERATION = "BSH.Common.EnumType.OperationState.Run"
 UNKNOWN_STATES = {"", "none", "unknown", "unavailable"}
 COOLDOWN_CONFIDENCE_FLOOR = 20
+OVERNIGHT_PLAN_FREEZE_MINUTES = 2
 
 CONTROL_DEFAULTS: dict[str, Any] = {
     "active": False,
@@ -448,9 +449,10 @@ class NativeOrchestrator:
         """Evaluate shadow or active scheduling decisions."""
         now = now or datetime.now(timezone.utc)
         options_changed = self._refresh_program_options()
+        plan_changed = self._refresh_automatic_overnight_request(now) if self.state.get("active") else False
         decision = self._automatic_decision(now)
         changed = decision != self.state.get("shadow_decision")
-        save_required = changed or options_changed
+        save_required = changed or options_changed or plan_changed
         self.state["shadow_decision"] = decision
         if changed:
             self._record_schedule_event(
@@ -473,6 +475,8 @@ class NativeOrchestrator:
                     "explicit_program_override": False,
                     "automatic": True,
                     "created_at": now.isoformat(),
+                    "cost_pence": recommendation.attributes.get("cost_pence"),
+                    "planning_coverage": recommendation.attributes.get("overnight_planning_coverage", {}),
                 }
                 self.state["execution_status"] = "queued"
                 self.state[
@@ -495,6 +499,55 @@ class NativeOrchestrator:
                 )
         self._publish()
 
+    def _overnight_planning_block(self, recommendation: Any) -> str | None:
+        coverage = recommendation.attributes.get("overnight_planning_coverage", {}) if recommendation else {}
+        if coverage.get("complete") is not True:
+            return ("overnight_search_horizon_incomplete" if coverage.get("search_complete") is False
+                    else "overnight_tariff_coverage_incomplete")
+        return None
+
+    def _refresh_automatic_overnight_request(self, now: datetime) -> bool:
+        """Follow revised plans only before an automatic overnight start is committed."""
+        request = self.state.get("request") or {}
+        start = self._parse_datetime(request.get("start"))
+        if (request.get("mode") != "automatic" or request.get("automatic") is False
+                or self.state.get("execution_status") != "queued" or not start
+                or now >= start - timedelta(minutes=OVERNIGHT_PLAN_FREEZE_MINUTES)
+                or self._execution_task and not self._execution_task.done()
+                or self._state("sensor.load_optimizer_1_cycle_state") != "idle" or self._is_running()
+                or not self.state.get("auto_mode_enabled")
+                or not self.state.get("door_opened_since_last_cycle") or self._automatic_source_block()):
+            return False
+        recommendation = self._recommendation("overnight")
+        if (not recommendation or recommendation.attributes.get("status") != "ready"
+                or not self._recommendation_confident(recommendation)
+                or self._overnight_planning_block(recommendation)):
+            return False
+        attributes = recommendation.attributes
+        coverage = attributes["overnight_planning_coverage"]
+        window_start = self._parse_datetime(coverage.get("window_start"))
+        window_end = self._parse_datetime(coverage.get("window_end"))
+        next_start = self._parse_datetime(attributes.get("start"))
+        finish = self._parse_datetime(attributes.get("finish"))
+        if (not window_start or not window_end or not next_start or not finish
+                or not window_start <= start < window_end
+                or not max(now, window_start) <= next_start < window_end or finish <= next_start):
+            return False
+        plan = {"program": attributes.get("program") or recommendation.state,
+                "start": attributes.get("start"), "finish": attributes.get("finish"),
+                "cost_pence": attributes.get("cost_pence")}
+        if all(request.get(key) == value for key, value in plan.items()):
+            return False
+        self.state["request"] = {**request, **plan, "planning_coverage": coverage,
+                                 "replanned_at": now.isoformat()}
+        self.state["last_message"] = f"Updated automatic overnight plan: {plan['program']} at {plan['start']}."
+        self._record_schedule_event(
+            "replanned", "overnight_recommendation_updated", now=now,
+            previous_program=request.get("program"), previous_start=request.get("start"),
+            previous_cost_pence=request.get("cost_pence"), **plan,
+        )
+        return True
+
     def _automatic_decision(self, now: datetime) -> dict[str, Any]:
         if self.state.get("request") is not None:
             return {"action": "wait", "reason": "request_already_pending"}
@@ -503,25 +556,33 @@ class NativeOrchestrator:
         if reason := self._automatic_source_block():
             return {"action": "wait", "reason": reason}
         negative = self._recommendation("negative_price")
-        if (
-            self.state.get("auto_negative_price_enabled")
-            and negative
-            and negative.attributes.get("status") == "ready"
-            and negative.attributes.get("ready_to_start") is True
-            and self._recommendation_confident(negative)
-            and self._cooldown_elapsed("last_auto_negative_price_request", 30, now)
-        ):
-            return {
-                "action": "queue",
-                "mode": "negative_price",
-                "request_mode": "negative_price",
-                "program": negative.attributes.get("program") or negative.state,
-            }
+        negative_wait = None
+        if self.state.get("auto_negative_price_enabled"):
+            if not negative or negative.attributes.get("status") != "ready":
+                reported = negative.attributes.get("reason") if negative else None
+                reason = reported if reported in {
+                    "maximum_runs_per_window_reached", "negative_run_history_incomplete",
+                } else "negative_price_recommendation_not_ready"
+            elif negative.attributes.get("ready_to_start") is not True:
+                reason = "negative_window_not_started"
+            elif not self._recommendation_confident(negative):
+                reason = "negative_price_confidence_below_threshold"
+            elif self._negative_retry_after(now):
+                # Do not reserve an overnight request during a usable window's retry wait.
+                return {"action": "wait", "mode": "negative_price", "reason": "negative_price_retry_cooldown"}
+            else:
+                return {
+                    "action": "queue", "mode": "negative_price", "request_mode": "negative_price",
+                    "program": negative.attributes.get("program") or negative.state,
+                }
+            negative_wait = {"action": "wait", "mode": "negative_price", "reason": reason}
         overnight = self._recommendation("overnight")
         if not self.state.get("auto_mode_enabled"):
-            return {"action": "wait", "reason": "automatic_overnight_mode_off"}
+            return negative_wait or {"action": "wait", "reason": "automatic_overnight_mode_off"}
         if not self.state.get("door_opened_since_last_cycle"):
             return {"action": "wait", "reason": "door_not_opened_since_last_cycle"}
+        if reason := self._overnight_planning_block(overnight):
+            return {"action": "wait", "reason": reason}
         if not overnight or overnight.attributes.get("status") != "ready":
             return {"action": "wait", "reason": "overnight_recommendation_not_ready"}
         if not self._recommendation_confident(overnight):
@@ -661,7 +722,11 @@ class NativeOrchestrator:
             automatic = mode in {"automatic", "negative_price"}
         if recheck and not automatic:
             return True
-        reason = self._safety_block(mode, program, explicit_override=bool(request.get("explicit_program_override")))
+        # Automatic preflight prices this request; a published fit may describe another programme.
+        reason = self._safety_block(
+            mode, program, explicit_override=bool(request.get("explicit_program_override")),
+            check_negative_fit=not automatic,
+        )
         if not reason and automatic:
             reason = self._automatic_source_block()
             if not reason:
@@ -674,7 +739,7 @@ class NativeOrchestrator:
                         LOGGER.warning("Automatic source preflight failed (%s)", type(error).__name__)
                         reason = "automatic_preflight_unavailable"
             if not reason:
-                reason = self._safety_block(mode, program, explicit_override=False)
+                reason = self._safety_block(mode, program, explicit_override=False, check_negative_fit=False)
         if reason:
             self.state["request"] = None
             await self._async_outcome("blocked", mode, program, reason, reason.replace("_", " "))
@@ -700,6 +765,7 @@ class NativeOrchestrator:
         program: str | None,
         *,
         explicit_override: bool = False,
+        check_negative_fit: bool = True,
     ) -> str | None:
         if not program or str(program).lower() in UNKNOWN_STATES:
             return "program_missing"
@@ -718,7 +784,7 @@ class NativeOrchestrator:
             return "door_open"
         if door_state not in {"off", "closed"}:
             return "door_state_unavailable"
-        if mode == "negative_price":
+        if mode == "negative_price" and check_negative_fit:
             recommendation = self._recommendation("negative_price")
             if (
                 recommendation
@@ -880,6 +946,11 @@ class NativeOrchestrator:
         previous = self._parse_datetime(self.state.get(key))
         return previous is None or now >= previous + timedelta(minutes=minutes)
 
+    def _negative_retry_after(self, now: datetime) -> datetime | None:
+        previous = self._parse_datetime(self.state.get("last_auto_negative_price_request"))
+        eligible = previous + timedelta(minutes=30) if previous else None
+        return eligible if eligible and now < eligible else None
+
     def _overnight_window_unused(self, now: datetime) -> bool:
         previous = self._parse_datetime(self.state.get("last_auto_normal_request"))
         local_now = now.astimezone(ZoneInfo(self.hass.config.time_zone))
@@ -976,6 +1047,8 @@ class NativeOrchestrator:
             blockers.append(reason)
         if self._state("sensor.load_optimizer_1_status") != "ready":
             blockers.append("optimizer_not_ready")
+        if mode == "overnight" and (reason := self._overnight_planning_block(recommendation)):
+            blockers.append(reason)
         if recommendation is None or recommendation.attributes.get("status") != "ready":
             blockers.append("recommendation_not_ready")
         elif not self._recommendation_confident(recommendation):
@@ -992,9 +1065,9 @@ class NativeOrchestrator:
             mode == "negative_price"
             and recommendation
             and recommendation.attributes.get("reason")
-            == "maximum_runs_per_window_reached"
+            in {"maximum_runs_per_window_reached", "negative_run_history_incomplete"}
         ):
-            blockers.append("maximum_runs_per_window_reached")
+            blockers.append(recommendation.attributes["reason"])
         enabled_key = (
             "auto_mode_enabled"
             if mode == "overnight"
@@ -1016,6 +1089,9 @@ class NativeOrchestrator:
             and recommendation.attributes.get("ready_to_start") is not True
         ):
             warnings.append("negative_window_not_started")
+        retry_after = self._negative_retry_after(datetime.now(timezone.utc)) if mode == "negative_price" else None
+        if retry_after and self.state.get("auto_negative_price_enabled"):
+            warnings.append("negative_price_retry_cooldown")
         status = "red" if blockers else ("amber" if warnings else "green")
         return {
             "state": status,
@@ -1024,6 +1100,7 @@ class NativeOrchestrator:
             "program": recommendation.attributes.get("program") if recommendation else None,
             "start": recommendation.attributes.get("start") if recommendation else None,
             "confidence": recommendation.attributes.get("confidence") if recommendation else None,
+            "retry_eligible_after": retry_after.isoformat() if retry_after else None,
         }
 
     @property
@@ -1033,13 +1110,28 @@ class NativeOrchestrator:
         request = self.state.get("request") or {}
         decision = self._automatic_decision(now)
         reason = decision.get("reason", "automatic_request_available")
+        if request:
+            mode = "negative_price" if request.get("mode") == "negative_price" else "overnight"
+        else:
+            mode = decision.get("mode") or (
+                "negative_price" if self.state.get("auto_negative_price_enabled")
+                and not self.state.get("auto_mode_enabled") else "overnight"
+            )
         messages = {
             "power_source_unavailable": "Automatic starts are paused until valid appliance power readings return.",
             "blocked_window_source_unavailable": "Automatic starts are paused because a configured no-run source cannot be read. Restore the source or explicitly remove it from the configuration.",
             "automatic_overnight_mode_off": "Automatic overnight mode is off.",
             "door_not_opened_since_last_cycle": "Waiting for the dishwasher to be loaded: the door has not opened since the last wash.",
             "overnight_recommendation_not_ready": "Waiting for a fully priced, eligible overnight programme.",
+            "overnight_tariff_coverage_incomplete": "Waiting for prices covering the whole overnight search and possible cycle finishes before reserving a wash.",
+            "overnight_search_horizon_incomplete": "The configured search horizon does not cover the overnight window. Increase the search hours to compare the whole night.",
             "confidence_below_threshold": "The overnight programme's learning confidence is below the allowed threshold.",
+            "negative_price_confidence_below_threshold": "The free/negative-price programme's learning confidence is below the allowed threshold.",
+            "negative_price_recommendation_not_ready": "Waiting for a fully priced programme explicitly allowed for free/negative-price runs.",
+            "negative_window_not_started": "A free/negative-price opportunity is available later, but it is not ready to start now.",
+            "negative_price_retry_cooldown": "Waiting for the 30-minute automatic request interval before another free/negative-price run.",
+            "maximum_runs_per_window_reached": "The allowed programme runs for this free/negative-price window have been used. Waiting for another eligible programme or window.",
+            "negative_run_history_incomplete": "A finite run limit cannot be verified from the retained learning history. Automatic free/negative-price runs are paused for this opportunity.",
             "automatic_window_already_used": "No wash is queued. A previous automatic request has already reserved this overnight window.",
             "appliance_not_idle": "A cycle capture is active; no new automatic request will be created.",
             "automatic_request_available": "An automatic recommendation is available; a saved request has not yet been created.",
@@ -1053,6 +1145,8 @@ class NativeOrchestrator:
         elif request:
             state, reason = "scheduled", "request_queued"
             summary = f"{request.get('program', 'Programme')} is queued for a start-time safety check."
+            if request.get("mode") == "automatic" and request.get("automatic") is not False:
+                summary += " The plan can follow revised recommendations until two minutes before its saved start."
             if self._request_due(request, now):
                 state = "starting"
                 summary = "The queued start is due; check the execution result for confirmation."
@@ -1061,29 +1155,35 @@ class NativeOrchestrator:
             action_required = "Review the last request and result. Request a new overnight run explicitly if a wash is still needed."
         elif reason == "automatic_overnight_mode_off":
             state = "paused"
-        readiness = self.readiness("overnight")
-        recommendation = self._recommendation("overnight")
+        readiness = self.readiness(mode)
+        recommendation = self._recommendation(mode)
         attributes = recommendation.attributes if recommendation else {}
-        previous = self._parse_datetime(self.state.get("last_auto_normal_request"))
-        eligible_after = None
-        if previous and not self._overnight_window_unused(now):
+        last_request_key = "last_auto_negative_price_request" if mode == "negative_price" else "last_auto_normal_request"
+        previous = self._parse_datetime(self.state.get(last_request_key))
+        eligible_after = readiness.get("retry_eligible_after")
+        if mode == "overnight" and previous and not self._overnight_window_unused(now):
             local_now = now.astimezone(ZoneInfo(self.hass.config.time_zone))
             cutoff = local_now.replace(hour=16, minute=0, second=0, microsecond=0)
             if local_now >= cutoff:
                 cutoff += timedelta(days=1)
             eligible_after = max(cutoff.astimezone(timezone.utc), previous + timedelta(hours=12)).isoformat()
         return {
-            "state": state, "reason_code": reason, "summary": summary,
+            "state": state, "mode": mode, "reason_code": reason, "summary": summary,
             "action_required": action_required,
             "queued_program": request.get("program"), "queued_start": request.get("start"),
             "queued_finish": request.get("finish"),
+            "queued_cost_pence": request.get("cost_pence"),
+            "overnight_planning_coverage": (self._recommendation("overnight").attributes.get("overnight_planning_coverage", {})
+                                            if self._recommendation("overnight") else {}),
+            "plan_freeze_minutes": OVERNIGHT_PLAN_FREEZE_MINUTES,
+            "last_replanned_at": request.get("replanned_at"),
             "recommended_program": attributes.get("program"),
             "recommended_start": attributes.get("start"),
             "confidence": attributes.get("confidence"),
             "confidence_threshold": self._confidence_threshold(),
             "blockers": readiness["blockers"], "warnings": readiness["warnings"],
             "automatic_eligible_after": eligible_after,
-            "last_automatic_request": self.state.get("last_auto_normal_request"),
+            "last_automatic_request": self.state.get(last_request_key),
             "last_start_attempt": self.state.get("last_attempt"),
             "last_result": self.state.get("last_result"),
             "last_result_message": self.state.get("last_message"),
@@ -1119,7 +1219,9 @@ class NativeOrchestrator:
         elif self._request_due(request, datetime.now(timezone.utc)):
             status = "executing_or_verifying"
         else:
-            status = "protected"
+            start = self._parse_datetime(request.get("start"))
+            status = ("committed" if start and datetime.now(timezone.utc) >= start - timedelta(minutes=OVERNIGHT_PLAN_FREEZE_MINUTES)
+                      else "replanning_enabled")
         return {
             "state": status,
             "plan_mode": request.get("mode", "none"),
