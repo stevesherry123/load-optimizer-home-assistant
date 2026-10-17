@@ -128,7 +128,7 @@ class OptionalNarrative:
             self._set_state({"status": "pending", "text": None})
             digest = fingerprint(analysis)
             instructions = (
-                "Select one to three distinct finding IDs, ordered by usefulness, from findings below. "
+                "Choose one to three distinct finding IDs below, ordered by usefulness. "
                 "Return only the structured highlights list. Do not write prose, change facts, add IDs, "
                 "infer causes or issue appliance commands. The integration renders all wording and "
                 "always discloses coverage and historical warm-up, regardless of your selection. "
