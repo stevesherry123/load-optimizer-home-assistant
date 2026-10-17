@@ -76,6 +76,8 @@ class OptionalNarrative:
                 "The integration will prepend its authoritative date, prices, coverage and baseline status. "
                 "Do not repeat dates, numbers, units, clock times, coverage or historical-baseline status. "
                 "Do not use today, tomorrow, yesterday, midnight, noon, warming up, or claim when prices are available. "
+                "Only describe the supplied volatility and evening-peak classifications. Do not infer causes, "
+                "demand, supply, weather, or future changes; do not use speculative may/could/likely phrasing. "
                 "Do not invent prices, forecasts or recommendations. "
                 "Respect the target date, tariff timezone and forecast coverage. For partial-day analysis, "
                 "the integration's authoritative prefix will state that the trailing prices are unknown. "
@@ -97,6 +99,10 @@ class OptionalNarrative:
                              r"available|published|unpublished|unknown|remaining|trailing|hours?|"
                              r"today|tomorrow|yesterday)\b", text, re.IGNORECASE):
                     self._set_state({"status": "failed", "text": None, "reason": "unverified_narrative_facts"})
+                    return dict(self.state)
+                if re.search(r"\b(?:demand|supply|weather|because|caused?|driv\w*|forecast\w*|predict\w*|"
+                             r"expect\w*|likely|may|might|could|will|suggest\w*)\b", text, re.IGNORECASE):
+                    self._set_state({"status": "failed", "text": None, "reason": "unsupported_narrative_inference"})
                     return dict(self.state)
                 prefix = analysis.get("summary", "")
                 if analysis.get("tomorrow_date"):

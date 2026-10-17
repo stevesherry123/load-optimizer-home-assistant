@@ -71,6 +71,17 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["reason"], "unverified_narrative_facts")
             self.assertIsNone(result["text"])
 
+    async def test_real_provider_demand_speculation_is_rejected(self):
+        self.call.return_value = {"data": (
+            "Volatility remains moderate, indicating fluctuations in pricing that could impact decision-making. "
+            "The strong evening peak suggests that energy demand is likely to rise significantly, "
+            "which may drive prices higher during that period.")}
+        result = await self.narrative.async_generate(self.analysis, "ai_task.test")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["reason"], "unsupported_narrative_inference")
+        self.assertIsNone(result["text"])
+        self.assertEqual(self.call.await_count, 1)
+
     async def test_usable_partial_analysis_can_generate_with_explicit_scope(self):
         self.analysis.update(tomorrow_complete=False, forecast_usable=True, tomorrow_date="2026-10-09",
                              analysis_scope="published_hours", forecast_fingerprint="synthetic-rates-1",

@@ -35,7 +35,9 @@ implementation architecture in `docs/architecture.md`.
   analysis/date rollover passed. Live tail/revision observation remains.
 - Resolve the real-provider quality failure identified on 17 October: the
   single approved call connected, but misstated coverage and baseline warm-up.
-  An unreleased prose guard and authoritative facts prefix pass 421 unit tests.
+  An additional authorized retest preserved facts but introduced unsupported
+  demand speculation. The unreleased prose guard and authoritative facts prefix
+  now pass 422 unit tests, including both observed response failures.
   Review and deploy that correction, then obtain approval for another provider
   attempt. Controlled stale-text replay passed; natural revision observation
   remains open. See [provider acceptance](forecast-coverage-acceptance.md).

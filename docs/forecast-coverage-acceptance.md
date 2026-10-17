@@ -67,3 +67,25 @@ the previously approved single call has been used.
 
 Repeated real free-price execution is deferred at the owner's request until
 suitable opportunities occur in the coming days.
+
+### Additional Authorized Provider Test
+
+After the owner's instruction to continue, one additional dated real-tariff
+replay tested the corrected prose path. The integration rendered the date,
+23-hour coverage and average from deterministic analysis correctly. Controlled
+price and coverage revisions again hid the generated text without another call.
+
+The provider still added an unsupported explanation about future energy demand.
+Therefore the prose-quality gate remains open. A further unreleased correction
+rejects speculative causal or forecasting wording as
+`unsupported_narrative_inference` and requests only the supplied classifications.
+The observed response is covered by another regression test; all 422 unit tests
+pass. This conservative lexical guard can reject otherwise useful prose and
+does not establish general factual correctness. Two real provider calls were
+used across the two explicitly authorized attempts; no automatic retry occurred.
+
+Do not publish or install another beta claiming successful AI quality acceptance
+from these tests. Natural upstream revision observation and an end-to-end live
+service generation remain distinct from replay. Keep AI opt-in and experimental;
+further provider calls require approval. No additional beta was published or
+installed during this retest.
