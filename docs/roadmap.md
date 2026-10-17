@@ -33,9 +33,12 @@ implementation architecture in `docs/architecture.md`.
   disclose the unknown tail. The current beta.7 calendar-day gate is too strict
   for this pattern. The replacement is now installed as beta.8 and live partial
   analysis/date rollover passed. Live tail/revision observation remains.
-- finish the approved single manual AI provider test after the coverage-aware
-  behavior passes tests and a separately approved installation; no invented
-  prices, automatic provider calls or claimed complete-day analysis.
+- Resolve the real-provider quality failure identified on 17 October: the
+  single approved call connected, but misstated coverage and baseline warm-up.
+  An unreleased prose guard and authoritative facts prefix pass 421 unit tests.
+  Review and deploy that correction, then obtain approval for another provider
+  attempt. Controlled stale-text replay passed; natural revision observation
+  remains open. See [provider acceptance](forecast-coverage-acceptance.md).
 - observe the combined beta through normal partial publication, later tail
   completion/revisions, date rollover and appliance cycles before separately
   approved stable promotion; imported history now satisfies warm-up

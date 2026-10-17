@@ -16,7 +16,7 @@ spec.loader.exec_module(module)
 
 class NarrativeTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.call = AsyncMock(return_value={"data": "Tomorrow is typical; prices are lower overnight."})
+        self.call = AsyncMock(return_value={"data": "Prices vary moderately, with a pronounced evening peak."})
         self.hass = SimpleNamespace(services=SimpleNamespace(has_service=lambda *args: True, async_call=self.call))
         self.narrative = module.OptionalNarrative(self.hass)
         self.analysis = {"status": "ready", "tomorrow_complete": True, "timezone": "Europe/London",
@@ -45,6 +45,31 @@ class NarrativeTests(unittest.IsolatedAsyncioTestCase):
         result = await self.narrative.async_generate(self.analysis, "ai_task.test")
         self.assertEqual(result["status"], "waiting")
         self.call.assert_not_called()
+
+    async def test_authoritative_facts_are_rendered_from_analysis(self):
+        self.analysis["tomorrow_date"] = "2026-10-09"
+        result = await self.narrative.async_generate(self.analysis, "ai_task.test")
+        self.assertEqual(result["status"], "ready")
+        self.assertTrue(result["text"].startswith("2026-10-09. Tomorrow averages 20 p/kWh."))
+        self.assertIn("Prices vary moderately", result["text"])
+
+    async def test_real_provider_incorrect_coverage_is_rejected(self):
+        self.call.return_value = {"data": (
+            "On 17 October 2026, prices are warming up, averaging 33.47 p/kWh up to 22:00. "
+            "Prices are available from midnight to 12:00, while the trailing prices remain unknown.")}
+        result = await self.narrative.async_generate(self.analysis, "ai_task.test")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["reason"], "unverified_narrative_facts")
+        self.assertIsNone(result["text"])
+        self.assertEqual(self.call.await_count, 1)
+
+    async def test_spelled_out_coverage_and_warmup_claims_are_rejected(self):
+        for text in ("Prices are available until midnight.", "Prices are warming up.",
+                     "Only the morning hours are published."):
+            self.call.return_value = {"data": text}
+            result = await self.narrative.async_generate(self.analysis, "ai_task.test")
+            self.assertEqual(result["reason"], "unverified_narrative_facts")
+            self.assertIsNone(result["text"])
 
     async def test_usable_partial_analysis_can_generate_with_explicit_scope(self):
         self.analysis.update(tomorrow_complete=False, forecast_usable=True, tomorrow_date="2026-10-09",

@@ -36,3 +36,34 @@ household snapshots and detailed times are retained locally, not in this reposit
 
 Stable remains v1.5.7. This prerelease does not merge beta/next into main or
 change the HACS catalogue submission.
+
+## Provider Test 17 October 2026
+
+One real call through the owner's configured Home Assistant AI Task completed
+using an explicitly dated replay of genuine published tariff data. No live
+source prices, control settings or production analysis were replaced. The live
+next-day gate correctly remained closed because tomorrow's prices were absent.
+Retained runtime analysis snapshots were not available from Recorder, so this
+test does not establish retrospective live revision acceptance.
+
+Provider connectivity passed, but output quality failed: the returned prose
+contradicted the tariff-local coverage and confused historical baseline warm-up
+with a price trend. Do not mark the external-provider quality gate passed.
+
+An unreleased beta/next correction now prepends authoritative analysis facts
+and requests only qualitative provider commentary. Responses repeating numerical
+facts, coverage claims or warm-up wording fail closed with
+`unverified_narrative_facts`; no prose is exposed. This guard reduces the observed
+failure mode but is not proof that arbitrary AI commentary is factually correct.
+The real malformed response is covered by a privacy-safe regression fixture.
+All 421 unit tests pass. The correction is not installed in beta.8.
+
+The real generated narrative became stale and hid its text after controlled
+price-revision and tail-arrival replays, with exactly one provider call total.
+These are controlled acceptance checks, not observed upstream revisions.
+An end-to-end production-service generation and natural revision observation
+remain pending. Another provider attempt requires a new explicit request;
+the previously approved single call has been used.
+
+Repeated real free-price execution is deferred at the owner's request until
+suitable opportunities occur in the coming days.

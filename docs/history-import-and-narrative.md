@@ -78,6 +78,12 @@ only during rollback need a verified import. Appliance learning is unaffected.
 
 ## Optional Narrative
 
+17 October acceptance update: the single real provider replay connected but
+returned inaccurate coverage and warm-up prose. A tested, unreleased beta/next
+guard now supplies authoritative facts from deterministic analysis and rejects
+provider text that restates quantities or coverage. Installed beta.8 does not
+yet contain this guard. See [the acceptance record](forecast-coverage-acceptance.md).
+
 The following describes tested, unreleased `beta/next` behavior. Installed
 beta.7 still requires a complete next calendar day. The
 [published forecast coverage plan](forecast-coverage-plan.md) records acceptance
