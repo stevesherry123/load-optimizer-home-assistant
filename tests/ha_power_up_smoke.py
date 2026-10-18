@@ -18,7 +18,7 @@ async def main():
     with tempfile.TemporaryDirectory() as config_dir:
         hass = HomeAssistant(config_dir)
         loader.async_setup(hass)
-        async with hass:
+        try:
             hass.config.time_zone = "Europe/London"
             now = datetime.now(timezone.utc)
             event = {"start": now.isoformat(), "end": (now + timedelta(hours=1)).isoformat()}
@@ -59,6 +59,8 @@ async def main():
             hass.states.async_set("calendar.free", "unavailable")
             assert await runtime.async_automatic_start_block(options, request) == "free_window_source_unavailable"
             print("Real HA: Power Up grants zero-price eligibility; cancellation/unavailability veto; Power Down wins; learning unchanged")
+        finally:
+            await hass.async_stop(force=True)
 
 
 asyncio.run(main())
