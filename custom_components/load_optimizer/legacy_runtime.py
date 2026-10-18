@@ -289,7 +289,7 @@ class LegacyRuntime:
         for config in configs:
             instance = instances.get(str(config.get("instance_id")), {})
             end = max(end, app_runtime.planning_window_end(config, instance, now))
-            for key in ("green_window_entity", "blocked_window_entity"):
+            for key in ("green_window_entity", "blocked_window_entity", "free_window_entity"):
                 for entity_id in app_runtime.entity_list(config.get(key, "")):
                     if entity_id.startswith("calendar."):
                         calendar_ids.add(entity_id)
@@ -337,11 +337,13 @@ class LegacyRuntime:
         self._normalise_calendar_entities(config)
         entity_ids = app_runtime.entity_list(config.get("blocked_window_entity", ""))
         negative = request.get("mode") == "negative_price"
+        free_ids = app_runtime.entity_list(config.get("free_window_entity", "")) if negative else []
         summary = self._negative_program_summary(request) if negative else None
         if negative and summary is None:
             return "negative_price_program_unavailable"
         duration = None
-        if entity_ids:
+        calendars = {}
+        if entity_ids or free_ids:
             start = datetime.now(timezone.utc)
             planned_start = app_runtime.datetime_from_value(request.get("start"))
             planned_finish = app_runtime.datetime_from_value(request.get("finish"))
@@ -352,10 +354,9 @@ class LegacyRuntime:
                 duration = max(duration, timedelta(minutes=summary["expected_runtime_minutes"]))
             # Cover the bounded fetch latency as well as the whole cycle.
             fetch_end = start + duration + timedelta(seconds=10 * sum(
-                entity.startswith("calendar.") for entity in entity_ids
+                entity.startswith("calendar.") for entity in set(entity_ids + free_ids)
             ))
-            calendars = {}
-            for entity_id in entity_ids:
+            for entity_id in sorted(set(entity_ids + free_ids)):
                 if entity_id.startswith("calendar."):
                     calendars[entity_id] = await self._async_calendar_events(entity_id, start, fetch_end)
             start = datetime.now(timezone.utc)
@@ -368,7 +369,7 @@ class LegacyRuntime:
                 calendar_reader=calendars.get,
                 naive_timezone=self.hass.config.time_zone,
             )
-            if not diagnostic or not diagnostic.get("readable"):
+            if entity_ids and (not diagnostic or not diagnostic.get("readable")):
                 return "blocked_window_source_unavailable"
             if windows:
                 return "blocked_window_overlap"
@@ -377,7 +378,7 @@ class LegacyRuntime:
         if power is None or power < 0:
             return "power_source_unavailable"
         if negative:
-            return self._negative_price_start_block(config, request, datetime.now(timezone.utc), duration)
+            return self._negative_price_start_block(config, request, datetime.now(timezone.utc), duration, calendars)
         return None
 
     def _negative_program_summary(self, request: dict[str, Any]) -> dict | None:
@@ -395,6 +396,7 @@ class LegacyRuntime:
     def _negative_price_start_block(
         self, config: dict[str, Any], request: dict[str, Any], now: datetime,
         checked_duration: timedelta | None,
+        free_calendars: dict | None = None,
     ) -> str | None:
         """Reprice only the requested programme, after the last awaited source read."""
         summary = self._negative_program_summary(request)
@@ -432,6 +434,16 @@ class LegacyRuntime:
                           for item in periods}.values(), key=lambda item: item["start"])
         if any(first["end"] > second["start"] for first, second in zip(periods, periods[1:])):
             return "negative_price_tariff_invalid"
+        if config.get("free_window_entity"):
+            windows, diagnostic = app_runtime.free_windows_from_entity(
+                ADAPTER_MARKER, config["free_window_entity"], start=now,
+                end=now + timedelta(minutes=summary["expected_runtime_minutes"]),
+                state_reader=lambda entity: self._source_state(ADAPTER_MARKER, entity),
+                calendar_reader=(free_calendars or {}).get,
+            )
+            if not diagnostic["readable"]:
+                return "free_window_source_unavailable"
+            periods = app_runtime.overlay_free_windows(periods, windows)
         manual = app_runtime.special_price_window(
             ADAPTER_MARKER, timezone_name=config["tariff_timezone"], reference_utc=now,
         )

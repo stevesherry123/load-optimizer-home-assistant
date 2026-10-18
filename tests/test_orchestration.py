@@ -225,6 +225,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
             ("binary_sensor.remote_start", "off", "remote_start_disabled"),
             ("binary_sensor.connected", "off", "dishwasher_not_connected"),
             ("sensor.operation", namespace["RUNNING_OPERATION"], "appliance_already_running"),
+            ("sensor.operation", "BSH.Common.EnumType.OperationState.DelayedStart", "appliance_delayed_start_pending"),
         ):
             with self.subTest(reason=reason):
                 previous = self.values[sensor]

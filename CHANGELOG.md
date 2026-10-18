@@ -2,6 +2,13 @@
 
 ## 1.7.0-beta.9
 
+- Add explicit free-electricity calendar sources for learned-appliance pricing:
+  Power Up event intervals override effective rates to zero without modifying
+  contracted history or filling tariff gaps. Revalidate at automatic start;
+  Power Down remains a no-run constraint.
+- Distinguish Bosch delayed starts from washing. Exclude standby captures from
+  learning and protect native manual timers from optimiser start commands.
+
 - Replace optional AI prose with structured selection of verified finding IDs.
   Render all dates, prices, coverage and finding text locally; the provider can
   only choose which available findings to highlight and their order.

@@ -6,6 +6,11 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- Deploy [Power Up calendar pricing and delayed-start detection](power-up-pricing.md)
+  after all captures are idle. Today's verified event has a temporary native
+  zero-price override, but the permanent calendar setting is not yet installed.
+  Preserve the manually scheduled dishwasher wash and active washing-machine capture.
+
 - Observe repeated free-price washes before separately approved stable promotion.
   Automatic overnight completion and learning passed the 15 October live audit.
   Local unit and real-HA

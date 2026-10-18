@@ -76,6 +76,8 @@ jobs:
         run: python tests/ha_negative_price_smoke.py
       - name: Verify overnight late-publication replanning and manual request preservation
         run: python tests/ha_overnight_planning_smoke.py
+      - name: Verify Power Up free-price preflight and Power Down precedence
+        run: python tests/ha_power_up_smoke.py
       - name: Verify published forecast coverage, strict history and manual-only AI
         run: python tests/ha_forecast_coverage_smoke.py
       - name: Verify permissions, diagnostic privacy, safe imports and HTTP boundaries

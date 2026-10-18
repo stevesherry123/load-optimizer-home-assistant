@@ -43,6 +43,14 @@ class ConfigurationValidationTests(unittest.TestCase):
                 with self.assertRaises(ConfigurationError):
                     self.check(**{key: "calendar.first,not-an-entity"})
 
+    def test_free_electricity_sources_are_explicit_calendars(self):
+        sources = "calendar.first,calendar.second"
+        self.assertEqual(self.check(free_window_entity=sources).instances[0]["free_window_entity"], sources)
+        self.assertEqual(self.check([{**self.appliance, "free_window_entity": sources}]).instances[0]["free_window_entity"], sources)
+        for value in ("event.free", "sensor.prices", "calendar.good,event.other"):
+            with self.subTest(value=value), self.assertRaises(ConfigurationError):
+                self.check(free_window_entity=value)
+
     def test_validation_does_not_mutate_settings_or_enable_permissions(self):
         before = deepcopy(self.appliance)
         result = self.check()

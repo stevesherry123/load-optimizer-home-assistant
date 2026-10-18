@@ -58,6 +58,33 @@ class CaptureDataSafetyTests(unittest.TestCase):
                 self.assertEqual(self.status().args[3]["health_status"], "power_source_unavailable")
                 self.database = original
 
+    def test_delayed_start_clears_false_capture_without_learning_and_then_starts_fresh(self):
+        before_runs = self.database["instances"]["1"].get("runs", 0)
+        self.config["state_sensor"] = "sensor.operation"
+        self.sources["sensor.operation"] = {"state": "BSH.Common.EnumType.OperationState.DelayedStart"}
+        self.scan(7)
+        instance = self.database["instances"]["1"]
+        self.assertNotIn("cycle_start", instance)
+        self.assertEqual(instance.get("runs", 0), before_runs)
+        self.assertEqual(instance["last_discarded_cycle"]["exclusion_reason"], "delayed_start_not_washing")
+        cycle = next(c for c in reversed(self.publish_entity.call_args_list) if c.args[1].endswith("_cycle_state"))
+        self.assertEqual(cycle.args[2], "scheduled")
+        self.scan(8)
+        self.assertNotIn("cycle_start", instance)
+        self.sources["sensor.operation"]["state"] = "BSH.Common.EnumType.OperationState.Run"
+        self.scan(9)
+        self.assertEqual(instance["cycle_start"], (self.now + timedelta(minutes=9)).isoformat())
+        self.assertEqual(instance["samples"], 1)
+
+    def test_bosch_operation_fallback_does_not_change_unconfigured_appliances(self):
+        self.sources["input_text.load_optimizer_1_bosch_operation_state_sensor"] = {"state": "sensor.bosch_operation"}
+        self.sources["sensor.bosch_operation"] = {"state": "BSH.Common.EnumType.OperationState.DelayedStart"}
+        self.scan(7)
+        self.assertNotIn("cycle_start", self.database["instances"]["1"])
+        self.sources.pop("input_text.load_optimizer_1_bosch_operation_state_sensor")
+        self.scan(8)
+        self.assertIn("cycle_start", self.database["instances"]["1"])
+
     def test_outage_resets_low_power_debounce_and_recovery_excludes_learning(self):
         self.sources["sensor.power"]["state"] = "0"
         self.scan(7)

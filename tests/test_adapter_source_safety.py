@@ -109,6 +109,29 @@ class AdapterSourceSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.values["sensor.rates"].attributes["rates"][0]["price"] = 25
         self.assertEqual(await self.negative_check(), "power_hungry_window_outside_negative_price")
 
+    async def test_free_calendar_is_fetched_fresh_and_cancellation_vetoes_command(self):
+        self.negative_fixture()
+        self.options["free_window_entity"] = "calendar.free"
+        self.put("calendar.free", "on", start_time=self.now.isoformat(), end_time=(self.now + timedelta(hours=1)).isoformat())
+        self.values["sensor.rates"].attributes["rates"][0]["price"] = 25
+        events = [{"start": self.now.isoformat(), "end": (self.now + timedelta(hours=1)).isoformat()}]
+        self.hass.services.async_call.return_value = {"calendar.no_run": {"events": []}, "calendar.free": {"events": events}}
+        before = deepcopy(self.runtime.state)
+        self.assertIsNone(await self.negative_check())
+        self.assertEqual(self.runtime.state, before)
+        self.hass.services.async_call.return_value["calendar.free"]["events"] = []
+        self.assertEqual(await self.negative_check(), "power_hungry_window_outside_negative_price")
+
+    async def test_free_source_failure_and_power_down_take_precedence(self):
+        self.negative_fixture()
+        self.options["free_window_entity"] = "calendar.free"
+        self.put("calendar.free", "unavailable")
+        self.assertEqual(await self.negative_check(), "free_window_source_unavailable")
+        self.put("calendar.free", "on")
+        events = [{"start": self.now.isoformat(), "end": (self.now + timedelta(hours=1)).isoformat()}]
+        self.hass.services.async_call.return_value = {"calendar.no_run": {"events": events}, "calendar.free": {"events": events}}
+        self.assertEqual(await self.negative_check(), "blocked_window_overlap")
+
     async def test_negative_preflight_rejects_missing_unavailable_and_incomplete_tariffs(self):
         self.negative_fixture()
         self.values.pop("sensor.rates")

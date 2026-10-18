@@ -769,6 +769,8 @@ class NativeOrchestrator:
     ) -> str | None:
         if not program or str(program).lower() in UNKNOWN_STATES:
             return "program_missing"
+        if self._state(self.config.get("bosch_operation_state_sensor")) == "BSH.Common.EnumType.OperationState.DelayedStart":
+            return "appliance_delayed_start_pending"
         if self._is_running():
             return "appliance_already_running"
         checks = {

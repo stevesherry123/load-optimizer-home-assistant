@@ -537,6 +537,72 @@ def blocked_windows_from_entity(
     )
 
 
+def _free_event_time(value: object) -> datetime | None:
+    raw = value.get("dateTime") if isinstance(value, dict) else value
+    if not isinstance(raw, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc) if parsed.utcoffset() is not None else None
+
+
+def free_windows_from_entity(token: str, entity_ids: str, *, start: datetime, end: datetime,
+                             state_reader=None, calendar_reader=None) -> tuple[list[dict], dict]:
+    """Only a successful calendar event query can grant free electricity."""
+    windows, errors = [], []
+    for entity_id in entity_list(entity_ids):
+        entity = state_reader(entity_id) if state_reader else source_state(token, entity_id)
+        if (not entity_id.startswith("calendar.") or not entity
+                or str(entity.get("state", "")).lower() in {"unknown", "unavailable", "none", ""}):
+            errors.append("source_unavailable")
+            continue
+        events = (calendar_reader(entity_id) if calendar_reader else api_request(
+            token, f"/calendars/{quote(entity_id, safe='.')}?" + urlencode({"start": start.isoformat(), "end": end.isoformat()})))
+        if not isinstance(events, list):
+            errors.append("calendar_events_unavailable")
+            continue
+        for event in events:
+            if not isinstance(event, dict):
+                errors.append("invalid_calendar_event")
+                continue
+            if event.get("status") == "cancelled":
+                continue
+            a = _free_event_time(event.get("start"))
+            b = _free_event_time(event.get("end"))
+            if a is None or b is None or b <= a:
+                errors.append("invalid_calendar_event")
+                continue
+            if a < end and b > start:
+                windows.append({"start": max(a, start), "end": min(b, end), "summary": "Free electricity", "entity_id": entity_id})
+    return ([] if errors else _deduplicate_windows(windows)), {
+        "readable": not errors, "source": "free_electricity_calendar", "errors": sorted(set(errors)),
+        "windows": 0 if errors else len(windows),
+    }
+
+
+def overlay_free_windows(periods: list[dict], windows: list[dict]) -> list[dict]:
+    """Split only existing priced periods; free events cannot fill tariff gaps."""
+    result = [dict(period) for period in periods]
+    for window in windows:
+        updated = []
+        for period in result:
+            a, b = max(period["start"], window["start"]), min(period["end"], window["end"])
+            if b <= a:
+                updated.append(period)
+                continue
+            if period["start"] < a:
+                updated.append({**period, "end": a})
+            updated.append({**period, "start": a, "end": b, "price_p_per_kwh": 0.0,
+                            "contracted_price_p_per_kwh": period.get("contracted_price_p_per_kwh", period["price_p_per_kwh"]),
+                            "source": "free_electricity_calendar", "is_free_electricity_window": True})
+            if b < period["end"]:
+                updated.append({**period, "start": b})
+        result = updated
+    return sorted(result, key=lambda item: item["start"])
+
+
 def tariff_state_from_entity(token: str, entity_id: str) -> dict | None:
     state = source_state(token, entity_id)
     if state is None:
@@ -1227,6 +1293,7 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
         "green_window_entity": str(_option_or_env(options, f"{prefix}_green_window_entity", options.get("green_window_entity", ""))).strip(),
         "blocked_window_entity": str(_option_or_env(options, f"{prefix}_blocked_window_entity", options.get("blocked_window_entity", ""))).strip(),
+        "free_window_entity": str(_option_or_env(options, f"{prefix}_free_window_entity", options.get("free_window_entity", ""))).strip(),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
         "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
@@ -1274,6 +1341,7 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
         "green_window_entity": str(entry.get("green_window_entity", options.get("green_window_entity", ""))).strip(),
         "blocked_window_entity": str(entry.get("blocked_window_entity", options.get("blocked_window_entity", ""))).strip(),
+        "free_window_entity": str(entry.get("free_window_entity", options.get("free_window_entity", ""))).strip(),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
         "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
@@ -1681,6 +1749,9 @@ def publish_cost_entities(
         "blocked_window_candidate_count": result.get("blocked_window_candidate_count", 0),
         "blocked_window_source_ready": result.get("blocked_window_source_ready", True),
         "automatic_block_reason": result.get("automatic_block_reason"),
+        "free_window_entity": result.get("free_window_entity"),
+        "free_window_count": result.get("free_window_count", 0),
+        "free_window_source_ready": result.get("free_window_diagnostic", {}).get("readable", True),
         "special_price_window": result.get("special_price_window"),
         "operational_overnight_start": result.get("operational_overnight_start"),
         "operational_overnight_end": result.get("operational_overnight_end"),
@@ -2305,11 +2376,19 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     energy_entity = source_state(token, config["energy_sensor"])
     program_entity = source_state(token, config["program_sensor"])
     device_state_entity = source_state(token, config["state_sensor"])
+    if not config["state_sensor"] and instance_id == "1":
+        operation_helper = source_state(token, "input_text.load_optimizer_1_bosch_operation_state_sensor")
+        operation_entity_id = str((operation_helper or {}).get("state") or "")
+        if operation_entity_id.startswith("sensor."):
+            device_state_entity = source_state(token, operation_entity_id)
     power = numeric_state(power_entity)
     energy = numeric_state(energy_entity)
     if power is not None and power < 0:
         power = None
     operation_state_finished = operation_state_indicates_cycle_complete(device_state_entity)
+    delayed_start = str((device_state_entity or {}).get("state") or "").strip().casefold() in {
+        "delayedstart", "delayed_start", "bsh.common.enumtype.operationstate.delayedstart",
+    }
     publish_entity(token, f"{prefix}_power", power if power is not None else "unavailable", {
         "friendly_name": f"{name} Power", "device_class": "power", "unit_of_measurement": "W",
         "state_class": "measurement", "source_entity": config["power_sensor"] or None,
@@ -2333,7 +2412,16 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     elif power is not None:
         instance.pop("power_source_missing_since", None)
 
-    active = power is not None and power >= config["active_power_threshold"]
+    if delayed_start and instance.get("cycle_start"):
+        instance["last_discarded_cycle"] = {
+            "program": instance.get("program") or program, "start": instance["cycle_start"],
+            "finish": now.isoformat(), "exclusion_reason": "delayed_start_not_washing",
+        }
+        for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold",
+                    "finish_candidate", "program", "capture_interrupted", "capture_interrupted_at",
+                    "capture_power_gap", "power_source_missing_since"):
+            instance.pop(key, None)
+    active = power is not None and power >= config["active_power_threshold"] and not delayed_start
     if active and not operation_state_finished:
         if not instance.get("cycle_start"):
             instance.update(cycle_start=now.isoformat(), start_energy=energy, peak_power=power, samples=0, profile=[], below_threshold=0)
@@ -2422,7 +2510,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     if instance.get("cycle_start") and program not in ("unknown", "unavailable", ""):
         instance["program"] = program
 
-    cycle_state = "running" if instance.get("cycle_start") else "idle"
+    cycle_state = "running" if instance.get("cycle_start") else "scheduled" if delayed_start else "idle"
     missing_since = datetime_from_value(instance.get("power_source_missing_since"))
     outage_minutes = round((now - missing_since).total_seconds() / 60, 1) if missing_since else None
     publish_entity(token, f"{prefix}_status", (
@@ -2560,6 +2648,11 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                         })
                 if not periods:
                     raise ValueError("No configured tariff entity produced a supported future-rate attribute")
+                free_entity = config.get("free_window_entity", "")
+                free_windows, free_diagnostic = free_windows_from_entity(
+                    token, free_entity, start=now.astimezone(timezone.utc), end=window_end,
+                ) if free_entity else ([], {"readable": True, "windows": 0})
+                periods = overlay_free_windows(periods, free_windows)
                 if manual_window["applied"]:
                     periods = overlay_price_window(
                         periods,
@@ -2621,6 +2714,9 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "schedule_earliest_start_entity": earliest_start_entity,
                     "schedule_latest_finish_entity": latest_finish_entity,
                     "green_window_entity": green_window_entity,
+                    "free_window_entity": free_entity,
+                    "free_window_diagnostic": free_diagnostic,
+                    "free_window_count": len(free_windows),
                     "green_window_diagnostic": green_window_diagnostic,
                     "blocked_window_entity": blocked_window_entity,
                     "blocked_window_diagnostic": blocked_window_diagnostic,
