@@ -1,5 +1,25 @@
 # Optional Dashboard
 
+## Experimental EV Review
+
+Unreleased, dedicated `feature/ev-charger-control` branch only. The read-only
+template is `custom_components/load_optimizer/ev_dashboard.yaml`; it does not
+replace the main dashboard or operate the charger. See the
+[development notes and hardware-free preview](ev-control-development.md#read-only-dashboard-and-offline-review).
+
+After an explicitly approved installation, find **Charging Review** and
+**Charging Chart Horizon** on the EV device. Replace every occurrence of
+`sensor.ev_charging_review` and `sensor.ev_charging_chart_horizon` in a customised
+copy with their actual registered entity IDs. Paste into a new storage dashboard,
+or merge the view into an existing dashboard; do not overwrite existing views.
+Keep customised YAML outside `custom_components/` so updates cannot replace it.
+
+Battery/plan, selected slots, control/delivery and source readiness use standard
+cards. Only the tariff/selected-slot chart needs ApexCharts Card, installed and
+registered separately through HACS. It uses tariff-local time and a 24/48-hour
+horizon. Missing readings stay unknown, not zero. Estimates are not guarantees
+of delivered energy or profit; source availability alone is not control readiness.
+
 ## Start With One Appliance
 
 For the [new-install guide](getting-started.md), start with

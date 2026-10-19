@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add dedicated-branch read-only EV review sensors/dashboard and a hardware-free
+  step-through replay using the actual planner/controller with fictional prices.
+  Retain session delivery across separated slots, detect a meter that stops
+  progressing after initial confirmation, and preserve final totals/stop reasons.
+  No live installation, charger commands or release accompany this review tool.
 - Isolated EV-control prototype: selectable charger switch and metered feedback,
   disabled-by-default ownership-aware control, restart disarm and delivery checks.
   Include partial current slots in charging plans and reject conflicting tariff

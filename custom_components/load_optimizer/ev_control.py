@@ -25,6 +25,7 @@ class EVChargeController:
         self.plan = {}
         self.generated_at = None
         self.reason = "disabled"
+        self.last_stop_reason = None
         self._pending = None
         self._retry_after = None
         self._lock = asyncio.Lock()
@@ -41,6 +42,7 @@ class EVChargeController:
                 "charger_switch": self.config.get("ev_charger_switch"),
                 "owns_charger": bool(self.owned_target), "pending_command": self._pending[0] if self._pending else None,
                 "delivery": self.monitor.result,
+                "last_stop_reason": self.last_stop_reason,
                 "plan_generated_at": self.generated_at.isoformat() if self.generated_at else None}
 
     def set_plan(self, plan, generated_at):
@@ -81,6 +83,8 @@ class EVChargeController:
         state = self.hass.states.get(target)
         if state is None or state.state != "off":
             raise HomeAssistantError("The charger must be available and off before enabling control")
+        self.monitor = EVDeliveryMonitor()
+        self.last_stop_reason = None
         self.enabled = True
         await self.async_tick()
 
@@ -93,8 +97,6 @@ class EVChargeController:
             return "disabled"
         if not self.generated_at or not 0 <= (now - self.generated_at).total_seconds() <= 90:
             return "plan_stale"
-        if self.plan.get("status") != "ready":
-            return "plan_not_ready"
         config = self.config
         for other in self.hass.data.get("load_optimizer_ev_controls", {}).values():
             if other is not self and (other.enabled or other.owned_target) and other.config.get("ev_charger_switch") == config.get("ev_charger_switch"):
@@ -119,6 +121,8 @@ class EVChargeController:
             return "telemetry_invalid"
         if battery >= target:
             return "target_reached"
+        if self.plan.get("status") != "ready":
+            return "plan_not_ready"
         feedback = self._feedback()
         if (feedback["capacity"] is None or not math.isfinite(feedback["capacity"]) or feedback["capacity"] <= 0
                 or not math.isfinite(feedback["efficiency"]) or not 0.1 <= feedback["efficiency"] <= 1):
@@ -155,6 +159,10 @@ class EVChargeController:
                 return
             feedback = self._feedback()
             self.monitor.start(now, feedback["battery"], feedback["energy"])
+        if desired == "off":
+            if self.last_stop_reason is None or self.reason != "disabled":
+                self.last_stop_reason = self.reason
+            self.monitor.record_totals(**self._feedback())
         self._pending = (desired, now)
         try:
             async with asyncio.timeout(10):

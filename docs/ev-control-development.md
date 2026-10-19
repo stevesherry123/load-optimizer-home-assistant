@@ -40,6 +40,36 @@ points of SOC delay/quantisation, plus the configured relative tolerance.
 This is discrepancy detection, not proof of battery health, usable capacity,
 or charge retention after driving or disconnecting.
 
+## Read-Only Dashboard And Offline Review
+
+This branch adds native **Charging Review** and **Charging Chart Horizon**
+sensors, plus an optional [EV dashboard template](dashboard.md#experimental-ev-review).
+They show battery inputs, tariff and selected slots, remaining wall energy,
+estimated cost/finish, actual power/meter readings, ownership, last stop reason
+and source freshness. The dashboard has no charger-control actions.
+Neither the template nor the private household mapping has been installed.
+
+For review without Home Assistant or a physical plug:
+
+```sh
+python dev/ev_replay.py --output .local/ev-review.html --json-output .local/ev-replay.json
+```
+
+Open the generated HTML directly; no development server is required. It contains
+fictional data and blocks network connections with a content-security policy.
+Use Next Step or the timeline slider to inspect the actual planner, controller
+and delivery monitor against fake state/service objects. The normal scenario
+needs six charging hours within twelve hours of negative prices and alternates
+selected and excluded half-hours. Other scenarios exercise no charging,
+a stalled meter, disconnection and a stale plan. The chart retains the initial
+plan for comparison; the table shows the remaining plan at each step.
+
+Delivery totals span separate charging bursts in the same enabled session;
+each new burst has its own confirmation grace period. Continued meter progress
+is checked after initial confirmation, and final totals/stop reason remain visible
+when charging ends. A new enable resets the session. This replay verifies logic,
+not real command timing, charging taper, telemetry cadence or physical compatibility.
+
 ## Owner Mapping
 
 A read-only entity audit found all required input roles. The proposed household
@@ -62,7 +92,8 @@ normal charging speed. Do not bypass missing telemetry to get a trial running.
 2. Review charger suitability for interruption, power-loss behaviour, competing
    manufacturer schedules, source update cadence, command latency and ownership.
 3. Add a full-entry persisted reload/restart/failure test, configurable command
-   dwell/backoff and explicit dashboard readiness/notification guidance.
+   dwell/backoff and notification guidance. The read-only review dashboard and
+   isolated normal/fault replay are implemented, not physically accepted.
 4. Restore the owner's plug and fresh telemetry; confirm wall power, capacity
    assumptions and telemetry thresholds. Preview the full 12-hour/6-hour schedule.
 5. Agree an owner-only test installation/selected commit and obtain explicit

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>EV Charging Logic Review</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6f7;color:#202b32;font:15px/1.5 system-ui,sans-serif;letter-spacing:0}header{background:#fff;border-bottom:1px solid #d9dfe3;padding:18px 24px;display:flex;gap:20px;align-items:center;justify-content:space-between}h1{font-size:22px;margin:0}h2{font-size:17px;margin:0 0 12px}p{margin:4px 0}.badge{font-size:12px;font-weight:700;color:#855600;background:#fff0c8;padding:5px 9px;border-radius:4px}main{max-width:1240px;margin:auto;padding:22px 24px}.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid #d9dfe3}button,select{font:inherit;background:#fff;border:1px solid #b7c2c9;border-radius:4px;padding:8px 12px;color:inherit}button{cursor:pointer}button:disabled{opacity:.4;cursor:default}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #077e9b;outline-offset:2px}.scrub{display:flex;gap:12px;align-items:center;margin:14px 0}input[type=range]{flex:1;min-width:80px;accent-color:#077e9b}#time{font-weight:600;font-variant-numeric:tabular-nums;min-width:170px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;padding:16px 0}.metric{border-left:3px solid #a0bac3;padding:4px 12px}.metric span{display:block;color:#59666f;font-size:12px}.metric strong{font-size:23px;font-weight:650}.graph{position:relative;height:250px;background:white;border:1px solid #d9dfe3;border-radius:6px;padding:12px}canvas{width:100%;height:100%;display:block}.legend{display:flex;gap:20px;font-size:12px;color:#59666f;margin:6px 0 22px}.legend i{display:inline-block;width:12px;height:8px;background:#84949d;margin-right:6px}.legend .selected{background:#159957}.legend .now{background:#0088ad}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}section{padding:18px 0;border-top:1px solid #d9dfe3;min-width:0}dl{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;margin:0}dt{color:#59666f}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}#reason{font-weight:600;color:#07738e;margin:0 0 14px}table{border-collapse:collapse;width:100%;font-size:13px}th{text-align:left;color:#59666f;font-size:12px}td,th{padding:8px 6px;border-bottom:1px solid #e2e7e9}td:not(:first-child),th:not(:first-child){text-align:right}#slots{max-height:360px;overflow:auto}small{color:#59666f}footer{padding:16px 0;color:#59666f;font-size:12px}#initial{font-size:13px;color:#59666f}button:hover:enabled{background:#eef5f7}@media(max-width:680px){header{padding:14px 16px;align-items:flex-start;flex-direction:column;gap:6px}main{padding:14px 16px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.layout{grid-template-columns:1fr;gap:0}.toolbar{gap:8px}select{width:100%}.graph{height:220px}#time{min-width:140px;font-size:13px}h1{font-size:20px}}
+.legend{flex-wrap:wrap;gap:8px 16px}.legend span{white-space:nowrap}
+</style>
+<header><div><h1>EV Charging Logic Review</h1><p id="initial">12 hours of negative prices. Six hours of charging required.</p></div><span class="badge">SIMULATION ONLY - NO LIVE CHARGER</span></header>
+<main>
+  <div class="toolbar"><label for="scenario">Scenario</label><select id="scenario"><option value="normal">Normal: cheapest six hours</option><option value="no_charge">Plug on, but charging not confirmed</option><option value="energy_stall">Power reported, but energy meter stalled</option><option value="disconnect">Vehicle disconnects during charging</option><option value="stale_plan">Price plan becomes stale</option></select><button id="previous" title="Previous recorded step">Previous</button><button id="next" title="Next recorded step">Next step</button><button id="reset" title="Return to the first recorded step">Reset</button></div>
+  <div class="scrub"><input id="step" type="range" min="0" value="0" aria-label="Simulation step"><span id="time"></span></div>
+  <div class="metrics"><div class="metric"><span>Battery / target</span><strong id="battery"></strong></div><div class="metric"><span>Plug / actual power</span><strong id="power"></strong></div><div class="metric"><span>Delivered this simulation</span><strong id="delivered"></strong></div><div class="metric"><span>Remaining selected time</span><strong id="remaining"></strong></div></div>
+  <div class="graph"><canvas id="chart" role="img" aria-label="Initial negative tariff prices with selected half-hour slots and the current simulation time"></canvas></div>
+  <div class="legend"><span><i></i>Initial tariff</span><span><i class="selected"></i>Initially selected charging</span><span><i class="now"></i>Current step</span></div>
+  <div class="layout"><section><h2>Controller Decision</h2><p id="reason"></p><dl id="control"></dl></section><section><h2>Delivery Verification</h2><dl id="delivery"></dl></section><section><h2>Remaining Proposed Slots</h2><div id="slots"><table><thead><tr><th>Home time</th><th>p/kWh</th><th>kWh</th></tr></thead><tbody id="rows"></tbody></table></div><p id="empty" hidden>No slots selected.</p></section><section><h2>Input Readiness</h2><table><thead><tr><th>Input</th><th>Status</th></tr></thead><tbody id="sources"></tbody></table></section></div>
+  <footer>Fictional 60 kWh battery, 20% initial charge, 70% target, 5 kW wall power and 100% test efficiency. Frames are recorded from the repository's planner, controller and monitoring code with synthetic services. Nothing on this page can contact Home Assistant.</footer>
+</main>
+<script id="data" type="application/json">__SIMULATION_DATA__</script>
+<script>
+const replay=JSON.parse(document.getElementById('data').textContent);
+if(replay.simulation!==true||replay.physical_services_possible!==false)throw new Error('Simulation data required');
+const $=id=>document.getElementById(id), names={normal:'Normal',no_charge:'No charging',energy_stall:'Meter stalled',disconnect:'Disconnected',stale_plan:'Stale plan'};
+const human=value=>String(value??'not available').replaceAll('_',' ');
+const fmt=(value,digits=2)=>Number.isFinite(value)?Number(value).toFixed(digits):'not available';
+const time=value=>new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(value));
+let index=0,scenario=replay.scenarios[0];
+function list(id,entries){const node=$(id);node.replaceChildren();for(const [key,value] of entries){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=key;dd.textContent=String(value);node.append(dt,dd)}}
+function table(id,rows){const node=$(id);node.replaceChildren();for(const row of rows){const tr=document.createElement('tr');for(const text of row){const td=document.createElement('td');td.textContent=String(text);tr.append(td)}node.append(tr)}}
+function draw(){
+  const canvas=$('chart'),rect=canvas.getBoundingClientRect(),ratio=window.devicePixelRatio||1;
+  canvas.width=rect.width*ratio;canvas.height=rect.height*ratio;
+  const c=canvas.getContext('2d');c.scale(ratio,ratio);
+  const w=rect.width,h=rect.height,p=34;
+  const original=scenario.frames[0].snapshot,rates=original.chart_price_periods,slots=original.selected_slots;
+  const min=Math.min(...rates.map(r=>r[2]),0)-2,a=rates[0][0],b=rates.at(-1)[1];
+  const x=t=>p+(t-a)/(b-a)*(w-p-6),y=v=>16+(0-v)/(0-min)*(h-52);
+  c.strokeStyle='#d7dfe3';c.beginPath();c.moveTo(p,y(0));c.lineTo(w,y(0));c.stroke();
+  for(const row of rates){
+    const selected=slots.some(s=>Date.parse(s.start)<=row[0]&&Date.parse(s.end)>=row[1]);
+    c.fillStyle=selected?'#159957':'#a4b0b7';
+    c.fillRect(x(row[0])+1,y(0),Math.max(1,x(row[1])-x(row[0])-2),y(row[2])-y(0));
+  }
+  c.fillStyle='#59666f';c.font='11px system-ui';
+  const ticks=Math.min(6,Math.max(2,Math.floor((w-p-10)/60)));
+  for(let i=0;i<=ticks;i++){
+    const t=a+(b-a)*i/ticks;
+    c.fillText(time(t),Math.min(w-38,x(t)-12),h-4);
+  }
+  c.fillText('0p',0,y(0)+4);c.fillText(min.toFixed(0)+'p',0,h-26);
+  const now=Date.parse(scenario.frames[index].time);
+  c.strokeStyle='#0088ad';c.lineWidth=2;c.beginPath();c.moveTo(x(now),6);c.lineTo(x(now),h-20);c.stroke();
+  const stop=scenario.frames[index].snapshot.control.last_stop_reason;
+  if(stop&&scenario.frames[index].snapshot.control.reason==='disabled')$('reason').textContent='Stopped: '+human(stop);
+}
+function render(){const frame=scenario.frames[index],r=frame.snapshot,control=r.control,d=control.delivery||{};$('step').max=scenario.frames.length-1;$('step').value=index;$('time').textContent=time(frame.time)+' BST | '+(index+1)+' / '+scenario.frames.length;$('previous').disabled=index===0;$('next').disabled=index===scenario.frames.length-1;$('battery').textContent=fmt(r.battery_percent,1)+' / '+r.target_percent+'%';$('power').textContent=human(r.charger_state)+' / '+fmt(r.actual_power_w,0)+' W';$('delivered').textContent=fmt(frame.simulated_delivered_kwh)+' kWh';$('remaining').textContent=fmt(r.planned_charging_minutes/60,2)+' h';$('reason').textContent=human(control.reason);list('control',[['Automatic control',control.state],['Owns switch',control.owns_charger?'yes':'no'],['Plan status',human(r.plan_status)],['Commands so far',frame.commands.length],['Last command',frame.commands.at(-1)?.service||'none'],['Remaining estimated cost',fmt(r.estimated_cost_pence)+' p']]);list('delivery',[['Verification',human(d.status)],['Meter total',fmt(r.meter_energy_kwh)+' kWh'],['Session wall energy',fmt(d.delivered_wall_kwh)+' kWh'],['Expected battery gain',fmt(d.expected_battery_gain_percent)+' pp'],['Observed battery gain',fmt(d.observed_battery_gain_percent)+' pp'],['Vehicle status',human(r.charging_status)]]);table('rows',r.selected_slots.map(s=>[time(s.start)+' to '+time(s.end),fmt(s.price_p_per_kwh),fmt(s.energy_kwh)]));$('empty').hidden=r.selected_slots.length>0;table('sources',r.sources.map(s=>[human(s.role.replace('ev_','').replace('_entity','')),human(s.status)]));draw()}
+$('next').onclick=()=>{index=Math.min(index+1,scenario.frames.length-1);render()};$('previous').onclick=()=>{index=Math.max(index-1,0);render()};$('reset').onclick=()=>{index=0;render()};$('step').oninput=e=>{index=Number(e.target.value);render()};$('scenario').onchange=e=>{scenario=replay.scenarios.find(s=>s.id===e.target.value);index=0;render()};window.addEventListener('resize',draw);render();
+</script>
+</html>

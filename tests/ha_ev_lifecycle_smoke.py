@@ -193,7 +193,7 @@ async def run(config_dir: Path, phase: str, serve: bool = False) -> None:
             actual_analysis_ids = {key for key in before_ids
                                    if key.startswith(f"{entry.entry_id}_tariff_intelligence_")}
             assert actual_analysis_ids == analysis_ids, before_ids
-            assert len(before_ids) == 9 + len(analysis_ids), before_ids
+            assert len(before_ids) == 11 + len(analysis_ids), before_ids
             assert len(before_devices) == (2 if analysis_ids else 1), before_devices
             assert not any(key.startswith(("switch.", "button."))
                            for key in before_ids.values()), "EV must remain advisory"

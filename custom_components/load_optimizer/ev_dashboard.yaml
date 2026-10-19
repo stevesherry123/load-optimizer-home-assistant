@@ -1,0 +1,162 @@
+title: EV Charging Review
+views:
+  - title: EV Charging
+    path: ev-charging-review
+    icon: mdi:ev-station
+    cards:
+      - type: markdown
+        title: Battery And Plan
+        content: |-
+          {% set r = states.sensor.ev_charging_review.attributes if has_value('sensor.ev_charging_review') else {} %}
+          {% macro value(key) -%}{{ r.get(key) if r.get(key) is not none else 'n/a' }}{%- endmacro %}
+          **{{ (r.get('plan_status') or 'unavailable') | replace('_', ' ') | title }}**
+          {% if r.get('plan_reason') %}{{ r.plan_reason | replace('_', ' ') }}{% endif %}
+
+          | Battery | Plan |
+          |---|---|
+          | Charge | {{ value('battery_percent') }}% to {{ value('target_percent') }}% |
+          | Reported capacity | {{ value('battery_capacity_kwh') }} kWh |
+          | Needed in battery | {{ value('needed_battery_kwh') }} kWh |
+          | Needed from supply | {{ value('wall_energy_kwh') }} kWh |
+          | Planned charging | {{ value('planned_charging_minutes') }} min |
+          | Estimated cost | {{ value('estimated_cost_pence') }} p |
+          | Estimated profit | {{ value('estimated_profit_pence') }} p |
+          | Estimated finish | {{ (as_datetime(r.get('estimated_finish')) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(r.get('estimated_finish'), none) else 'Not available' }} |
+      - &ev_chart
+        type: custom:apexcharts-card
+        visibility:
+          - condition: state
+            entity: sensor.ev_charging_chart_horizon
+            state: "24h"
+        header:
+          show: true
+          title: Tariff And Selected Charging
+        graph_span: 24h
+        span:
+          start: day
+        update_interval: 30s
+        apex_config:
+          chart:
+            height: 280
+          stroke:
+            curve: stepline
+          xaxis:
+            labels:
+              formatter: |
+                EVAL:function(value, timestamp) {
+                  return new Intl.DateTimeFormat('en-GB', {weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(timestamp));
+                }
+          yaxis:
+            title:
+              text: Price (p/kWh)
+          tooltip:
+            shared: true
+          annotations:
+            yaxis:
+              - y: 0
+                borderColor: "#888888"
+        series:
+          - entity: sensor.ev_charging_review
+            name: Tariff price
+            color: "#64748b"
+            stroke_width: 2
+            data_generator: |
+              const r = entity.attributes;
+              const timezone = r.timezone || 'Europe/London';
+              const displayTime = timestamp => {
+                if (hass.locale?.time_zone === 'server') return timestamp;
+                const date = new Date(timestamp);
+                const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+                  timeZone: timezone, year:'numeric',month:'2-digit',day:'2-digit',
+                  hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'
+                }).formatToParts(date).map(p => [p.type,p.value]));
+                const wall = Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second);
+                return wall + date.getTimezoneOffset()*60000;
+              };
+              const rows = r.chart_price_periods || [];
+              const points = new Map();
+              rows.forEach(([a,b,p], i) => {
+                points.set(displayTime(a), [displayTime(a),p]);
+                points.set(displayTime(b), [displayTime(b),p]);
+                if (!rows[i+1] || rows[i+1][0] > b) points.set(displayTime(b)+1,[displayTime(b)+1,null]);
+              });
+              return [...points.values()].sort((a,b) => a[0]-b[0]);
+          - entity: sensor.ev_charging_review
+            name: Selected charging
+            color: "#159957"
+            stroke_width: 5
+            data_generator: |
+              const r = entity.attributes;
+              const timezone = r.timezone || 'Europe/London';
+              const displayTime = timestamp => {
+                if (hass.locale?.time_zone === 'server') return timestamp;
+                const date = new Date(timestamp);
+                const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+                  timeZone: timezone, year:'numeric',month:'2-digit',day:'2-digit',
+                  hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'
+                }).formatToParts(date).map(p => [p.type,p.value]));
+                const wall = Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second);
+                return wall + date.getTimezoneOffset()*60000;
+              };
+              const points = [];
+              for (const slot of r.selected_slots || []) {
+                const a = displayTime(Date.parse(slot.start));
+                const b = displayTime(Date.parse(slot.end));
+                const p = slot.price_p_per_kwh;
+                points.push([a,p],[b-1,p],[b,null]);
+              }
+              return points;
+      - <<: *ev_chart
+        graph_span: 48h
+        visibility:
+          - condition: state
+            entity: sensor.ev_charging_chart_horizon
+            state: "48h"
+      - type: markdown
+        title: Selected Slots
+        content: |-
+          {% set r = states.sensor.ev_charging_review.attributes if has_value('sensor.ev_charging_review') else {} %}
+          {% set slots = r.get('selected_slots', []) %}
+          {% if not slots %}No charging slots are currently selected.{% else %}
+          | Home time | Price | Energy | Cost |
+          |---|---:|---:|---:|
+          {% for slot in slots %}
+          | {{ (as_datetime(slot.start) | as_local).strftime('%a %H:%M') }} to {{ (as_datetime(slot.end) | as_local).strftime('%H:%M %Z') }} | {{ slot.price_p_per_kwh }} p/kWh | {{ slot.energy_kwh }} kWh | {{ slot.cost_pence }} p |
+          {% endfor %}
+          {% endif %}
+          {% if r.get('selected_slots_truncated') %}**Partial table:** {{ slots | count }} of {{ r.selected_slot_count }} selected intervals shown.{% endif %}
+          {% if r.get('chart_price_status') not in [none, 'ready'] %}**Price chart:** {{ r.chart_price_status | replace('_', ' ') }}.{% endif %}
+      - type: markdown
+        title: Control And Delivery
+        content: |-
+          {% set r = states.sensor.ev_charging_review.attributes if has_value('sensor.ev_charging_review') else {} %}
+          {% set c = r.get('control') or {} %}
+          {% set d = c.get('delivery') or {} %}
+          {% macro value(mapping, key) -%}{{ mapping.get(key) if mapping.get(key) is not none else 'n/a' }}{%- endmacro %}
+          **Control:** {{ (c.get('state') or 'advisory') | replace('_', ' ') }}
+
+          **Decision:** {{ (c.get('reason') or 'not available') | replace('_', ' ') }}
+
+          {% if c.get('last_stop_reason') %}**Last stop:** {{ c.last_stop_reason | replace('_', ' ') }}{% endif %}
+
+          | Feedback | Reading |
+          |---|---|
+          | Plug | {{ r.get('charger_state', 'unknown') }} |
+          | Vehicle charging | {{ r.get('charging_status', 'unknown') }} |
+          | Actual power | {{ value(r, 'actual_power_w') }} W |
+          | Cumulative supply meter | {{ value(r, 'meter_energy_kwh') }} kWh |
+          | Owns this charging session | {{ 'yes' if c.get('owns_charger') else 'no' }} |
+          | Pending command | {{ c.get('pending_command') or 'none' }} |
+          | Delivery verification | {{ (d.get('status') or 'not started') | replace('_', ' ') }} |
+          | Controlled-session supply energy | {{ value(d, 'delivered_wall_kwh') }} kWh |
+          | Expected battery gain | {{ value(d, 'expected_battery_gain_percent') }} percentage points |
+          | Observed battery gain | {{ value(d, 'observed_battery_gain_percent') }} percentage points |
+      - type: markdown
+        title: Source Readiness
+        content: |-
+          {% set r = states.sensor.ev_charging_review.attributes if has_value('sensor.ev_charging_review') else {} %}
+          | Input | Status | Age |
+          |---|---|---:|
+          {% for source in r.get('sources', []) %}
+          | {{ source.role | replace('ev_', '') | replace('_entity', '') | replace('_', ' ') }} | {{ source.status | replace('_', ' ') }} | {{ source.age_seconds if source.age_seconds is not none else 'n/a' }} s |
+          {% endfor %}

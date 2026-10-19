@@ -11,6 +11,9 @@ implementation architecture in `docs/architecture.md`.
   The household mapping is private; unavailable plug telemetry and unverified
   charging-power/capacity assumptions block a supervised trial. No live control
   or installation is authorised by local synthetic tests.
+  The branch includes a read-only EV dashboard, bounded review sensors and an
+  offline actual-engine replay for the twelve-hour/six-hour negative-price case
+  and four stop/fault scenarios. Review these together before a physical trial.
 
 - Observe the next real Power Up and native delayed-start transition following
   the verified [beta.9 deployment](power-up-pricing.md#deployment-acceptance-19-october-2026).

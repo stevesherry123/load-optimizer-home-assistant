@@ -113,6 +113,25 @@ async def main():
             rendered = template.async_render(parse_result=False)
             assert "Scheduling status is unavailable" in rendered
             print(f"{path}: scheduling reasons, native timer, cooldowns, timezone and older-version fallback passed")
+        ev = yaml.safe_load((ROOT / "custom_components/load_optimizer/ev_dashboard.yaml").read_text())
+        ev_cards = [card for card in cards(ev) if card.get("type") == "markdown"]
+        for state, attributes in (
+            ("unavailable", {}),
+            ("ready", {"plan_status": "ready", "battery_percent": 0, "target_percent": 70,
+                       "actual_power_w": 0, "meter_energy_kwh": None,
+                       "selected_slots": [{"start": "2026-10-19T08:30:00+00:00", "end": "2026-10-19T09:00:00+00:00",
+                                           "price_p_per_kwh": -15, "energy_kwh": 2.5, "cost_pence": -37.5}],
+                       "sources": [{"role": "battery_entity", "status": "available", "age_seconds": 0}],
+                       "control": {"state": "disabled", "reason": "disabled", "last_stop_reason": "charging_not_confirmed",
+                                   "delivery": {"status": "charging_not_confirmed"}}}),
+        ):
+            hass.states.async_set("sensor.ev_charging_review", state, attributes)
+            rendered = "\n".join(Template(card["content"], hass).async_render(parse_result=False) for card in ev_cards)
+            assert "None" not in rendered, rendered
+            if state == "ready":
+                for text in ("0% to 70%", "09:30", "BST", "-15 p/kWh", "charging not confirmed", "0 W"):
+                    assert text in rendered, (text, rendered)
+        print("EV dashboard: ready/absent data, zero values, selected slots, home timezone and retained stop reasons passed")
     assert styles[0] == styles[1], "Public and full dashboards must compare prices identically"
     assert scheduling_templates[0] == scheduling_templates[1], "Scheduling explanations must match across dashboards"
 

@@ -161,7 +161,28 @@ async def async_setup_entry(
     async_add_entities(
         [LoadOptimizerSensor(coordinator, description) for description in SENSOR_DESCRIPTIONS]
         + [LoadOptimizerPriceCapSensor(coordinator)]
+        + [EVReviewSensor(coordinator, False), EVReviewSensor(coordinator, True)]
     )
+
+
+class EVReviewSensor(LoadOptimizerEntity, SensorEntity):
+    """Read-only dashboard data and a 24/48-hour visibility signal."""
+
+    _attr_icon = "mdi:ev-station"
+
+    def __init__(self, coordinator, horizon):
+        self.horizon = horizon
+        super().__init__(coordinator, "ev_chart_horizon" if horizon else "ev_charging_review",
+                         "Charging Chart Horizon" if horizon else "Charging Review")
+
+    @property
+    def native_value(self):
+        review = self.coordinator.data.get("ev_review", {})
+        return review.get("chart_horizon", "24h") if self.horizon else review.get("plan_status", "not_ready")
+
+    @property
+    def extra_state_attributes(self):
+        return None if self.horizon else self.coordinator.data.get("ev_review", {})
 
 
 class LoadOptimizerIntelligenceSensor(LoadOptimizerEntity, SensorEntity):

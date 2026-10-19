@@ -10,12 +10,13 @@ def measurement(state, quantity):
     if not state:
         return None
     try:
-        value = float(state.state)
+        value = float(state.get("state") if isinstance(state, dict) else state.state)
     except (TypeError, ValueError):
         return None
     if not math.isfinite(value) or value < 0:
         return None
-    unit = state.attributes.get("unit_of_measurement")
+    attributes = state.get("attributes", {}) if isinstance(state, dict) else state.attributes
+    unit = attributes.get("unit_of_measurement")
     factors = {"power": {"W": 1, "kW": 1000}, "energy": {"Wh": 0.001, "kWh": 1}}
     return value * factors[quantity][unit] if unit in factors[quantity] else None
 
@@ -27,10 +28,24 @@ class EVDeliveryMonitor:
         self.started_at = None
         self.battery_start = None
         self.energy_start = None
+        self.last_energy = None
+        self.last_progress_at = None
         self.result = {"status": "not_started"}
 
     def start(self, now, battery, energy):
-        self.started_at, self.battery_start, self.energy_start = now, battery, energy
+        self.started_at = now
+        if self.battery_start is None:
+            self.battery_start, self.energy_start = battery, energy
+        self.last_energy, self.last_progress_at = energy, now
+
+    def record_totals(self, *, battery, capacity, efficiency, power, energy, charging_status):
+        if self.energy_start is None or any(value is None or not math.isfinite(value)
+                for value in (battery, capacity, efficiency, energy)) or capacity <= 0 or energy < self.energy_start:
+            return
+        delivered = energy - self.energy_start
+        self.result.update(delivered_wall_kwh=round(delivered, 4),
+            expected_battery_gain_percent=round(delivered * efficiency / capacity * 100, 3),
+            observed_battery_gain_percent=round(battery - self.battery_start, 3))
 
     def update(self, now, *, battery, capacity, efficiency, power, energy, charging_status,
                minimum_power=100, confirmation_seconds=120, tolerance_percent=30):
@@ -48,6 +63,9 @@ class EVDeliveryMonitor:
             return "energy_meter_reset"
         expected_gain = delivered * efficiency / capacity * 100
         actual_gain = battery - self.battery_start
+        if energy > self.last_energy + 0.0001:
+            self.last_progress_at = now
+        self.last_energy = energy
         self.result = {"status": "confirming", "delivered_wall_kwh": round(delivered, 4),
                        "expected_battery_gain_percent": round(expected_gain, 3),
                        "observed_battery_gain_percent": round(actual_gain, 3),
@@ -57,7 +75,7 @@ class EVDeliveryMonitor:
         if power < minimum_power or charging_status != "charging":
             self.result["status"] = "charging_not_confirmed"
             return "charging_not_confirmed"
-        if delivered < 0.001:
+        if (now - self.last_progress_at).total_seconds() >= confirmation_seconds:
             self.result["status"] = "energy_not_increasing"
             return "charging_energy_not_increasing"
         # SOC is coarse and cloud-delayed; allow at least five percentage points.

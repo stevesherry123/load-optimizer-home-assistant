@@ -45,6 +45,7 @@ from .price_cap import PriceCapManager
 from .tariff_intelligence import get_service
 from .narrative import OptionalNarrative
 from .ev_control import EVChargeController
+from .optimizer.ev_review import review_snapshot
 
 LOGGER = logging.getLogger(__name__)
 
@@ -180,8 +181,13 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             plan["tariff_error"] = tariff_error
         if self.ev_controller:
             self.ev_controller.set_plan(plan, now)
+        review_sources = {entity_id: self._state_payload(entity_id) for key, entity_id in data.items()
+                          if key.endswith("_entity") or key == "ev_charger_switch" if isinstance(entity_id, str) and entity_id}
+        review = review_snapshot(data, plan, periods, review_sources,
+                                 self.ev_controller.status if self.ev_controller else None, now)
         return {
             "plan": plan,
+            "ev_review": review,
             "tariff_period_count": len(periods),
             "last_updated": now.isoformat(),
             "price_cap": price_cap,
@@ -206,9 +212,12 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "state": state.state,
             "attributes": dict(state.attributes),
             "entity_id": entity_id,
+            "last_reported": (getattr(state, "last_reported", None) or state.last_updated).isoformat(),
         }
 
     def _publish_ev_control(self):
+        if self.data and self.ev_controller and "ev_review" in self.data:
+            self.data["ev_review"]["control"] = self.ev_controller.status
         self.async_update_listeners()
 
     def _orchestration_legacy_state(self, entity_id: str) -> dict[str, Any] | None:
