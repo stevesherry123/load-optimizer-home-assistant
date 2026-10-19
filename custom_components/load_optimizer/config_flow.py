@@ -244,7 +244,7 @@ def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
                 options=PRICE_UNITS, mode=selector.SelectSelectorMode.DROPDOWN,
             )),
             vol.Required(CONF_CHARGE_POWER_KW, **power_default):
-                vol.All(vol.Coerce(float), vol.Range(min=0.1, max=50)),
+                vol.All(vol.Coerce(float), vol.Range(min=0.001, max=50)),
             vol.Optional(
                 CONF_TARGET_PERCENT,
                 default=existing.get(CONF_TARGET_PERCENT, DEFAULT_TARGET_PERCENT),

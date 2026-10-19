@@ -16,6 +16,22 @@ SPEC.loader.exec_module(ev_charging)
 
 
 class IntegrationEvChargePlannerTests(unittest.TestCase):
+    def test_small_test_load_uses_real_prices_without_a_hundred_watt_floor(self):
+        start = datetime(2026, 10, 19, 0, tzinfo=timezone.utc)
+        periods = [{"start": start + timedelta(minutes=30 * i),
+                    "end": start + timedelta(minutes=30 * (i + 1)), "price_p_per_kwh": price}
+                   for i, price in enumerate([20, -5, 10, -10])]
+        plan = ev_charging.plan_ev_charge(periods=periods, battery_percent=20,
+            battery_capacity_kwh=0.06, target_percent=80, charge_power_kw=0.06,
+            charger_efficiency=1, reference_utc=start)
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual([slot["price_p_per_kwh"] for slot in plan["selected_slots"]], [-5, -10])
+        self.assertEqual(plan["wall_energy_kwh"], 0.036)
+        for power in (0, -0.01, 0.0001, float("nan")):
+            invalid = ev_charging.plan_ev_charge(periods=periods, battery_percent=20,
+                battery_capacity_kwh=0.06, charge_power_kw=power, reference_utc=start)
+            self.assertEqual(invalid["status"], "not_ready")
+
     def test_selects_cheapest_slots_for_required_energy(self):
         start = datetime(2026, 9, 24, 0, 0, tzinfo=timezone.utc)
         periods = [

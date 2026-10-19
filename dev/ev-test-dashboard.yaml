@@ -1,0 +1,28 @@
+title: Charging Test Bench
+views:
+  - title: Test Bench
+    path: charging-test
+    icon: mdi:battery-charging
+    cards:
+      - type: markdown
+        content: |-
+          ## Charging Test Bench
+          **Simulated battery. Real socket and tariff.**
+          No battery reading here measures the laptop's actual charge.
+      - type: entities
+        title: Simulated Battery Inputs
+        show_header_toggle: false
+        entities:
+          - input_number.ev_trial_battery_percent
+          - input_number.ev_trial_capacity_kwh
+          - input_number.ev_trial_target_percent
+          - input_boolean.ev_trial_connected
+      - type: entities
+        title: Real Load And Automatic Control
+        show_header_toggle: false
+        entities:
+          - switch.ev_trial_load
+          - sensor.ev_trial_load_power
+          - sensor.ev_trial_load_energy
+          - sensor.ev_trial_charging_status
+          - switch.ev_trial_automatic_charging_control

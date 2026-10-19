@@ -72,6 +72,32 @@ not real command timing, charging taper, telemetry cadence or physical compatibi
 
 ## Owner Mapping
 
+### Small-Load Test Bench
+
+`dev/ev-test-package.yaml` provides explicitly simulated battery percentage,
+capacity, target and connection helpers, bridged to sensor inputs for a separate
+EV entry. `dev/ev-test-dashboard.yaml` exposes these controls alongside the real
+socket/meter and automatic-control switch. Replace the generic load source IDs
+with a confirmed test socket and its measured power and cumulative energy source;
+never attach this package to the car entry. Merge the EV review cards into this
+test dashboard using the new entry's actual sensor IDs.
+
+The example's 0.6 kWh capacity is fictional, not the laptop's battery specification.
+Use an explicitly assumed or measured expected power (for example 0.06 kW = 60 W),
+not an EV-sized power value. Small loads down to 1 W are valid planner inputs.
+The example connection resets off on restart, and the controller remains off.
+Enabling control requires the real socket to be off first; existing manual-on
+power is never adopted. No dashboard installation should toggle the socket.
+
+Move the simulated battery slider to model charging progress. Its periodically
+refreshed sensor is a declared synthetic input, not evidence of real battery
+health. Real power and energy checks are not bypassed. If the slider does not
+increase as measured energy predicts, the existing shortfall protection stops
+owned charging; a full laptop drawing too little power also fails confirmation.
+The template's charging status is inferred from real socket power, not a vehicle
+API. Prefer a lifetime energy meter; a daily/monthly meter resetting during a
+trial deliberately fails closed. Review thresholds and keep trials supervised.
+
 A read-only entity audit found all required input roles. The proposed household
 mapping is stored privately in the ignored `.local/ev-proposed-settings.json`,
 not published in Git. The plug and local metering were unavailable, vehicle

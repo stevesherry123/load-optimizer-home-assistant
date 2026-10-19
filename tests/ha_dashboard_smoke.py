@@ -132,6 +132,28 @@ async def main():
                 for text in ("0% to 70%", "09:30", "BST", "-15 p/kWh", "charging not confirmed", "0 W"):
                     assert text in rendered, (text, rendered)
         print("EV dashboard: ready/absent data, zero values, selected slots, home timezone and retained stop reasons passed")
+        from homeassistant.components import input_boolean, input_number
+        package = yaml.safe_load((ROOT / "dev/ev-test-package.yaml").read_text())
+        input_number.CONFIG_SCHEMA({"input_number": package["input_number"]})
+        input_boolean.CONFIG_SCHEMA({"input_boolean": package["input_boolean"]})
+        hass.states.async_set("input_number.ev_trial_battery_percent", "0")
+        hass.states.async_set("input_number.ev_trial_capacity_kwh", "0.6")
+        hass.states.async_set("input_number.ev_trial_target_percent", "80")
+        hass.states.async_set("input_boolean.ev_trial_connected", "off")
+        hass.states.async_set("switch.ev_trial_load", "off")
+        hass.states.async_set("sensor.ev_trial_load_power", "0")
+        sensors = package["template"][0]["sensor"]
+        values = {s["name"]: str(Template(s["state"], hass).async_render(parse_result=False)) for s in sensors}
+        assert values["EV Trial Battery"] == "0"
+        assert values["EV Trial Connection"] == "disconnected"
+        assert values["EV Trial Charging Status"] == "idle"
+        hass.states.async_set("switch.ev_trial_load", "on")
+        hass.states.async_set("sensor.ev_trial_load_power", "60")
+        status = next(s for s in sensors if s["name"] == "EV Trial Charging Status")
+        assert Template(status["state"], hass).async_render(parse_result=False) == "charging"
+        hass.states.async_set("sensor.ev_trial_load_power", "unavailable")
+        assert not Template(status["availability"], hass).async_render()
+        print("EV test helpers: safe defaults, zero battery, real-power status and unavailable source checks passed")
     assert styles[0] == styles[1], "Public and full dashboards must compare prices identically"
     assert scheduling_templates[0] == scheduling_templates[1], "Scheduling explanations must match across dashboards"
 

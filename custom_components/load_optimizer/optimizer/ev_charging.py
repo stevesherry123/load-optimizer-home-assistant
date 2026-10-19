@@ -186,7 +186,7 @@ def _validate_inputs(
         return "invalid_target_percent"
     if not 0 < battery_capacity_kwh <= 1000:
         return "invalid_battery_capacity"
-    if not 0.1 <= charge_power_kw <= 1000:
+    if not 0.001 <= charge_power_kw <= 1000:
         return "invalid_charge_power"
     if not 0.1 <= charger_efficiency <= 1:
         return "invalid_charger_efficiency"

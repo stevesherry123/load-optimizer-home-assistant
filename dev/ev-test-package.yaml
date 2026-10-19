@@ -1,0 +1,82 @@
+# Optional owner test package. Replace the three ev_trial_load source IDs.
+# This does not contain a start action or enable automatic charging control.
+input_number:
+  ev_trial_battery_percent:
+    name: EV Trial Simulated Battery
+    min: 0
+    max: 100
+    step: 1
+    initial: 20
+    unit_of_measurement: "%"
+    mode: slider
+  ev_trial_capacity_kwh:
+    name: EV Trial Simulated Capacity
+    min: 0.001
+    max: 100
+    step: 0.001
+    initial: 0.6
+    unit_of_measurement: kWh
+    mode: box
+  ev_trial_target_percent:
+    name: EV Trial Target
+    min: 1
+    max: 100
+    step: 1
+    initial: 80
+    unit_of_measurement: "%"
+    mode: slider
+input_boolean:
+  ev_trial_connected:
+    name: EV Trial Simulated Connection
+    initial: false
+template:
+  - trigger:
+      - platform: time_pattern
+        seconds: "/30"
+      - platform: homeassistant
+        event: start
+      - platform: state
+        entity_id:
+          - input_number.ev_trial_battery_percent
+          - input_number.ev_trial_capacity_kwh
+          - input_number.ev_trial_target_percent
+          - input_boolean.ev_trial_connected
+          - switch.ev_trial_load
+          - sensor.ev_trial_load_power
+    sensor:
+      - name: EV Trial Battery
+        unique_id: load_optimizer_ev_trial_battery
+        unit_of_measurement: "%"
+        availability: "{{ has_value('input_number.ev_trial_battery_percent') }}"
+        state: "{{ states('input_number.ev_trial_battery_percent') }}"
+        attributes:
+          simulated: true
+          sampled_at: "{{ now().isoformat() }}"
+      - name: EV Trial Capacity
+        unique_id: load_optimizer_ev_trial_capacity
+        unit_of_measurement: kWh
+        availability: "{{ has_value('input_number.ev_trial_capacity_kwh') }}"
+        state: "{{ states('input_number.ev_trial_capacity_kwh') }}"
+        attributes:
+          simulated: true
+      - name: EV Trial Target
+        unique_id: load_optimizer_ev_trial_target
+        unit_of_measurement: "%"
+        availability: "{{ has_value('input_number.ev_trial_target_percent') }}"
+        state: "{{ states('input_number.ev_trial_target_percent') }}"
+        attributes:
+          simulated: true
+      - name: EV Trial Connection
+        unique_id: load_optimizer_ev_trial_connection
+        availability: "{{ has_value('input_boolean.ev_trial_connected') }}"
+        state: "{{ 'connected' if is_state('input_boolean.ev_trial_connected', 'on') else 'disconnected' }}"
+        attributes:
+          simulated: true
+          sampled_at: "{{ now().isoformat() }}"
+      - name: EV Trial Charging Status
+        unique_id: load_optimizer_ev_trial_charging_status
+        availability: "{{ has_value('switch.ev_trial_load') and is_number(states('sensor.ev_trial_load_power')) }}"
+        state: "{{ 'charging' if is_state('switch.ev_trial_load', 'on') and states('sensor.ev_trial_load_power') | float(0) >= 5 else 'idle' }}"
+        attributes:
+          inferred_from_socket_power: true
+          sampled_at: "{{ now().isoformat() }}"
