@@ -8,9 +8,9 @@ templates. Do not advertise the combined `beta/next` history, analysis, import
 or AI features as stable. Publishing does not require retiring the separate Octopus
 Intelligence reference app or promoting its unobserved replacement features.
 
-The 19 October pre-deployment read-only audit verified v1.7.0-beta.8.
-The owner is deploying beta.9 separately; consult the deployment acceptance
-record before claiming its installation has been verified. Beta code is
+The approved 19 October deployment installed and verified v1.7.0-beta.9;
+see the [deployment acceptance record](power-up-pricing.md#deployment-acceptance-19-october-2026).
+Later dashboard/explanation changes remain unreleased. Beta code is
 separate from published stable v1.5.7. The only active branches are
 `main` and `beta/next`; merging and stable publication require separate approval.
 See [release channels](release-channels.md) for the current branch/release model.
@@ -38,8 +38,9 @@ Keep the following boundaries in any public announcement:
 - An unfamiliar-user onboarding trial, privacy-safe screenshots and issue forms
   remain open. Automated examples and the owner's completed washes do not
   substitute for testing another household's setup.
-- Before promoting the combined beta, verify its deployment, natural forecast
-  revision/tail handling and repeated real free-price execution. Structured AI
+- Before promoting the combined beta, observe natural forecast revision/tail
+  handling and repeated real free-price execution. Beta.9 deployment is verified.
+  Structured AI
   selection has passed one real-provider replay, not a new live service test
   after installation. Do not imply approval for another paid call.
 

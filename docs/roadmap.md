@@ -6,11 +6,15 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- Deploy [Power Up calendar pricing and delayed-start detection](power-up-pricing.md)
-  after all captures are idle. The owner is handling beta.9 installation
-  separately on 19 October; this follow-up must not issue another restart.
-  The 18 October temporary zero-price override has expired. Verify the permanent
-  calendar setting and deployment independently before marking this complete.
+- Observe the next real Power Up and native delayed-start transition following
+  the verified [beta.9 deployment](power-up-pricing.md#deployment-acceptance-19-october-2026).
+  Permanent calendar pricing is configured and the expired manual override is
+  disabled. Do not start a wash or restart merely to complete these observations.
+- Repair optional blank entity-selector validation in appliance tariff settings.
+  HA rejected the saved blank primary selector during the 19 October edit; using
+  an existing tariff source allowed the reviewed change without altering the
+  effective source pair or history. Show effective legacy calendar mappings in
+  the source review so retired aliases do not produce misleading warnings.
 
 - Observe repeated free-price washes before separately approved stable promotion.
   Automatic overnight completion and learning passed the 15 October live audit.
@@ -36,19 +40,20 @@ implementation architecture in `docs/architecture.md`.
   confirmed that a normal approximately 16:00 publication covers most of the
   next day, with the tail supplied later. Separate usable forecast analysis/AI
   readiness from complete-day storage; match historical comparison coverage and
-  disclose the unknown tail. The current beta.7 calendar-day gate is too strict
-  for this pattern. The replacement is now installed as beta.8 and live partial
-  analysis/date rollover passed. Live tail/revision observation remains.
-- Resolve the real-provider quality failure identified on 17 October: the
-  single approved call connected, but misstated coverage and baseline warm-up.
+  disclose the unknown tail. The beta.7 calendar-day gate was too strict for
+  this pattern. The replacement shipped in beta.8 and is retained in beta.9;
+  live partial analysis/date rollover passed. Tail/revision observation remains.
+- Observe the constrained AI replacement after its verified beta.9 deployment.
+  The first approved 17 October call misstated coverage and baseline warm-up.
   An additional authorized retest preserved facts but introduced unsupported
   demand speculation. The unreleased prose guard and authoritative facts prefix
   were superseded by constrained finding selection. The replacement renders all
   prose from local deterministic templates and passed one separately authorized
   real structured-provider replay on 17 October. The complete beta.9 code passed
-  440 unit tests and all five CI jobs. Deploy that correction; further paid calls
-  require fresh approval. Controlled stale-text replay passed; natural revision observation
-  remains open. See [provider acceptance](forecast-coverage-acceptance.md).
+  440 unit tests and all five CI jobs and was installed on 19 October. Further
+  paid calls require fresh approval. Controlled stale-text replay passed;
+  natural revision observation remains open. See
+  [provider acceptance](forecast-coverage-acceptance.md).
 - observe the combined beta through normal partial publication, later tail
   completion/revisions, date rollover and appliance cycles before separately
   approved stable promotion; imported history now satisfies warm-up
@@ -73,6 +78,15 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Published and installed beta.9 from `cd7eed6` on 19 October with one idle-time
+  restart. Configured permanent Power Up calendar pricing through the reviewed
+  options flow and disabled the expired temporary override. Verified unchanged
+  identities, devices, learning, both dashboards, tariff history and controls;
+  calendar sources were readable and no current integration errors were logged.
+  AI remains disabled. See [deployment acceptance](power-up-pricing.md#deployment-acceptance-19-october-2026).
+  Later branch changes are not included in this release; main, stable v1.5.7
+  and the upstream HACS submission are unchanged.
 
 - Reviewed publication and scheduling explanations on 19 October. An unreleased
   follow-up distinguishes native delayed-start timers, shows automatic-only

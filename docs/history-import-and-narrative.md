@@ -81,11 +81,12 @@ only during rollback need a verified import. Appliance learning is unaffected.
 17 October acceptance update: two real provider replays exposed inaccurate
 coverage and unsupported causal speculation. The replacement on beta/next uses
 constrained selection of verified findings rather than provider-written prose.
-Installed beta.8 still has the original free-text path. See
+One separately authorized constrained-provider replay passed on 17 October;
+beta.9 was installed and verified on 19 October. See
 [the acceptance record](forecast-coverage-acceptance.md).
 
-The following describes the `beta/next` replacement. Installed beta.8 supports
-partial-day analysis but does not contain constrained selection. The
+The following describes the constrained selection included in installed beta.9.
+The older beta.8 supports partial-day analysis but not constrained selection. The
 [published forecast coverage plan](forecast-coverage-plan.md) records acceptance
 of explicitly scoped partial-day summaries without waiting for the trailing
 hour. Strict historical-day import validation is unaffected.

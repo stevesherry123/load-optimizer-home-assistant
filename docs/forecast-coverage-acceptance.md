@@ -110,4 +110,16 @@ intentionally supplied no historical baseline; live retained history was not
 modified. Controlled price-revision and tail-arrival replays hid the result
 without another provider call. This establishes real provider/schema compatibility
 for the new contract, not natural upstream revision observation or an end-to-end
-production-service call. The approved beta.9 deployment is the next step.
+production-service call.
+
+### Beta.9 Deployment: 19 October 2026
+
+The approved beta.9 was published from
+`cd7eed663bd3b08ac281897805ac3e7928a13f87` and installed through HACS with one
+idle-time restart. The final live check preserved learning, identities,
+dashboards, controls and all 101 historical days, with no integration errors.
+AI remains disabled and no additional provider call was made. See the
+[Power Up deployment record](power-up-pricing.md#deployment-acceptance-19-october-2026)
+for calendar configuration and complete preservation checks. Natural upstream
+revision/tail observation and a separately approved production-service AI call
+remain distinct acceptance gates.

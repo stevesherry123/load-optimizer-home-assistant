@@ -1,6 +1,7 @@
 # Free-Electricity Calendar Pricing
 
-Status: implemented on beta/next; not yet installed in the owner's beta.8.
+Status: published and installed as `v1.7.0-beta.9` on 19 October 2026.
+Stable `v1.5.7` is unchanged.
 
 In learned-appliance tariff settings, set **Free-electricity calendars (Power
 Up)** to the calendar provided for an account eligible for those sessions:
@@ -52,5 +53,36 @@ reported running. The exact triggering power sample was not retained by Recorder
 The false capture cleared naturally before the manually scheduled wash. A
 verified 14:00-15:00 BST Power Up was applied through the existing native manual
 price controls; the effective price reached zero without a restart or appliance
-command. Permanent calendar and delayed-start fixes still require idle-time
-deployment; they were not hot-patched into the active capture.
+command. The permanent fixes were subsequently installed while idle; they were
+not hot-patched into the active capture.
+
+## Deployment Acceptance: 19 October 2026
+
+Published the prerelease from validated commit
+`cd7eed663bd3b08ac281897805ac3e7928a13f87`, after 440 unit tests and all five
+CI jobs passed, including minimum-HA calendar cancellation and Power Down
+precedence checks. HACS installed the selected beta; one idle-time restart
+loaded it. Nabu Casa temporarily returned 502 while reconnecting; no second
+restart was issued.
+
+Before/after checks preserved all 222 registered entity identities, seven
+devices, both dashboard configurations, 18 learning-data entities, 101 retained
+tariff days and existing orchestration controls. The permanent Power Up calendar
+was then saved through the reviewed options flow while still idle. The complete
+appliance document and other fields were preserved, except that the blank
+single-tariff selector was populated with an entity already in the configured
+source pair to satisfy HA validation. Effective tariff sources and the history
+store identity remained unchanged. The expired 18 October manual price override
+was disabled; its dates were retained.
+
+The final live check confirmed beta.9, readable Power Up sources for all three
+appliances, the existing dishwasher Power Down mapping and 46 tariff periods.
+Both provider calendars had no upcoming events at the check, so normal contracted
+prices applied; no synthetic event or real appliance command was sent. Learning,
+dashboards and history remained intact, AI stayed disabled and the current
+integration log contained no errors. Private household evidence is retained
+locally, not committed.
+
+A real future Power Up, delayed-start transition and repeated free-price washes
+remain observation gates; isolated automated tests do not prove those future
+physical events. Stable promotion remains separately approved.

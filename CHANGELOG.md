@@ -23,7 +23,7 @@
 - Reject unknown, contradictory, duplicate, oversized or malformed selections
   and additional provider fields. Always show partial-coverage and historical
   warm-up notices; preserve manual-only generation and stale-result protection.
-- Validate with 428 unit tests and one real structured-provider replay using
+- Validate with 440 unit tests and one real structured-provider replay using
   genuine published tariff data. Natural upstream revision observation and
   repeated free-price execution remain separate acceptance items.
 
