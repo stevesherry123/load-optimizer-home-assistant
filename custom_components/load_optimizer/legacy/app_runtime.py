@@ -603,6 +603,32 @@ def overlay_free_windows(periods: list[dict], windows: list[dict]) -> list[dict]
     return sorted(result, key=lambda item: item["start"])
 
 
+def price_chart_bounds(now: datetime, timezone_name: str) -> tuple[datetime, datetime]:
+    """Two tariff-local calendar days, including 23/25-hour DST days."""
+    start = now.astimezone(ZoneInfo(timezone_name)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return start.astimezone(timezone.utc), (start + timedelta(days=2)).astimezone(timezone.utc)
+
+
+def price_chart_data(periods: list[dict], *, now: datetime, timezone_name: str) -> dict:
+    """Publish bounded plotting data without losing free-window boundaries."""
+    start, end = price_chart_bounds(now, timezone_name)
+    rows = set()
+    for period in periods:
+        a, b = max(start, period["start"]), min(end, period["end"])
+        if b <= a:
+            continue
+        price = float(period["price_p_per_kwh"])
+        if not math.isfinite(price):
+            return {"chart_price_periods": [], "chart_price_status": "invalid_price"}
+        rows.add((round(a.timestamp() * 1000), round(b.timestamp() * 1000), price))
+        if len(rows) > 256:
+            return {"chart_price_periods": [], "chart_price_status": "too_many_periods"}
+    data = sorted(rows)
+    if len(json.dumps(data, separators=(",", ":"))) > 12000:
+        return {"chart_price_periods": [], "chart_price_status": "too_many_periods"}
+    return {"chart_price_periods": data, "chart_price_status": "ready" if data else "no_prices"}
+
+
 def tariff_state_from_entity(token: str, entity_id: str) -> dict | None:
     state = source_state(token, entity_id)
     if state is None:
@@ -1785,6 +1811,10 @@ def publish_cost_entities(
         "current_price_p_per_kwh": current_price_attribute,
         "current_price_start": result.get("current_price_start"),
         "current_price_end": result.get("current_price_end"),
+        "chart_price_periods": result.get("chart_price_periods", []),
+        "chart_price_status": result.get("chart_price_status", "no_prices"),
+        "chart_price_basis": "effective_import_price",
+        "chart_price_period_format": ["start_utc_ms", "end_utc_ms", "price_p_per_kwh"],
         **common,
     })
     publish_entity(token, f"{prefix}_cost_status", status, {
@@ -2649,11 +2679,23 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 if not periods:
                     raise ValueError("No configured tariff entity produced a supported future-rate attribute")
                 free_entity = config.get("free_window_entity", "")
+                chart_start, chart_end = price_chart_bounds(now, config["tariff_timezone"])
+                chart_windows, _ = free_windows_from_entity(
+                    token, free_entity, start=chart_start, end=chart_end,
+                ) if free_entity else ([], {})
+                chart_periods = overlay_free_windows(periods, chart_windows)
                 free_windows, free_diagnostic = free_windows_from_entity(
                     token, free_entity, start=now.astimezone(timezone.utc), end=window_end,
                 ) if free_entity else ([], {"readable": True, "windows": 0})
                 periods = overlay_free_windows(periods, free_windows)
                 if manual_window["applied"]:
+                    chart_periods = overlay_price_window(
+                        chart_periods,
+                        start=manual_window["start_datetime"],
+                        end=manual_window["end_datetime"],
+                        price_p_per_kwh=manual_window["price_p_per_kwh"],
+                        label=manual_window["label"],
+                    )
                     periods = overlay_price_window(
                         periods,
                         start=manual_window["start_datetime"],
@@ -2698,6 +2740,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     excluded_programs=blocked_remote_start_programs,
                 )
                 cost_result.update({
+                    **price_chart_data(chart_periods, now=now, timezone_name=config["tariff_timezone"]),
                     "overnight_planning_coverage": overnight_planning_coverage(
                         config, summaries, policies, periods, now, earliest_start_utc, latest_finish_utc,
                     ),

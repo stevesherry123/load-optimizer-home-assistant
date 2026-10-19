@@ -284,6 +284,7 @@ class LegacyRuntime:
 
     async def _async_prefetch_calendar_events(self, configs: list[dict[str, Any]], now: datetime) -> None:
         calendar_ids: set[str] = set()
+        chart_ranges: dict[str, tuple[datetime, datetime]] = {}
         end = now + timedelta(hours=24)
         instances = (self.state or {}).get("instances", {})
         for config in configs:
@@ -293,11 +294,16 @@ class LegacyRuntime:
                 for entity_id in app_runtime.entity_list(config.get(key, "")):
                     if entity_id.startswith("calendar."):
                         calendar_ids.add(entity_id)
+                        if key == "free_window_entity":
+                            a, b = app_runtime.price_chart_bounds(now, config.get("tariff_timezone", "Europe/London"))
+                            previous = chart_ranges.get(entity_id, (a, b))
+                            chart_ranges[entity_id] = (min(a, previous[0]), max(b, previous[1]))
         self.calendar_events = {}
         if not calendar_ids:
             return
         for entity_id in sorted(calendar_ids):
-            events = await self._async_calendar_events(entity_id, now, end)
+            a, b = chart_ranges.get(entity_id, (now, end))
+            events = await self._async_calendar_events(entity_id, min(now, a), max(end, b))
             if events is not None:
                 self.calendar_events[entity_id] = events
 

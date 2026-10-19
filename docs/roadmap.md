@@ -93,6 +93,11 @@ implementation architecture in `docs/architecture.md`.
   cooldown dates and translates pricing/source blockers in both templates.
   This does not modify control decisions or install a dashboard on the owner's
   instance. The read-only household audit is retained privately, not published.
+- Added an unreleased effective-price chart feed and full-dashboard plotting
+  for verified Power Up events. Exact event edges, calendar cancellation,
+  unavailable-source fallback, tariff gaps and travel-timezone behavior have
+  regression coverage; raw tariff history and the 24/48-hour layout are retained.
+  Deployment and adopting the customised dashboard remain separate actions.
 
 - Published and installed beta.8 after owner approval. The 16 October audit
   verified preserved identities, learning, dashboards, history and queued wash;

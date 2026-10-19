@@ -172,8 +172,8 @@ views:
               unit: p/kWh
               float_precision: 2
             series:
-              - entity: sensor.load_optimizer_status
-                name: Import price
+              - entity: sensor.load_optimizer_1_current_energy_price
+                name: Effective import price
                 stroke_width: 2
                 show:
                   in_header: false
@@ -225,6 +225,23 @@ views:
                     const browserOffset = -date.getTimezoneOffset() * 60 * 1000;
                     return timestamp + tariffOffset - browserOffset;
                   };
+                  const chartRates = entity?.attributes?.chart_price_periods;
+                  if (Array.isArray(chartRates)) {
+                    const intervals = chartRates.filter((row) =>
+                      Array.isArray(row) && row.length === 3
+                      && row.every(Number.isFinite) && row[1] > row[0]
+                    ).sort((left, right) => left[0] - right[0]);
+                    const points = new Map();
+                    intervals.forEach(([start, end, price], index) => {
+                      points.set(displayTimestamp(start), [displayTimestamp(start), price]);
+                      points.set(displayTimestamp(end), [displayTimestamp(end), price]);
+                      const next = intervals[index + 1];
+                      if (!next || next[0] > end) {
+                        points.set(displayTimestamp(end) + 1, [displayTimestamp(end) + 1, null]);
+                      }
+                    });
+                    return Array.from(points.values()).sort((left, right) => left[0] - right[0]);
+                  }
                   const rawEntities = sourceState?.attributes?.tariff_entities
                     || sourceState?.attributes?.tariff_entity
                     || '';

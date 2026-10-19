@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Plot effective import prices in the full dashboard, including verified future
+  Power Up zero-price intervals and manual price overrides. Preserve raw tariff
+  history, exact event boundaries, missing-rate gaps and the 24/48-hour layout.
 - Explain a dishwasher's native delayed-start timer separately from an active
   learning capture or queued optimizer request, without changing either request.
 - Show automatic-only programme cooldown dates and readable pricing/source

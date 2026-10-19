@@ -138,3 +138,28 @@ tariff-day view aligned when opened while travelling. It shows today's 24 hours
 until next-day data arrives, then today and tomorrow across 48 hours. The Ofgem
 benchmark and Now lines use the same tariff-local time basis. These richer
 examples are not automatically installed by HACS.
+
+## Power Up Prices On The Chart
+
+The next unreleased full-dashboard template plots **Effective import price**
+from `sensor.load_optimizer_1_current_energy_price`'s `chart_price_periods`
+attribute. Verified configured Power Up intervals appear at zero, including
+future events and events that start partway through a tariff slot. The chart
+uses tariff-local today/tomorrow boundaries and retains the existing 24/48-hour
+layout, Ofgem reference and Now marker.
+
+The integration supplies already normalised p/kWh prices; the browser does not
+interpret calendar states as free electricity or apply a second GBP conversion.
+Calendar changes/cancellations refresh the data at the integration scan and the
+chart's one-minute refresh. Failed calendar reads remove promotional pricing,
+not the contracted rates. Free events cannot fill missing tariff periods. Manual
+special-price controls keep their existing precedence. This is effective
+planning cost, not a supplier billing statement; raw tariff history is unchanged.
+
+The compact chart feed is limited to two tariff-local days and a bounded payload.
+It retains every accepted event boundary rather than downsampling zero-price
+intervals. An oversized feed is withheld with an explicit `chart_price_status`,
+not drawn partially. An older backend without this attribute retains the prior
+raw-rate chart; an explicitly empty new feed does not fall back to stale rates.
+Both integration code and the customised full-dashboard chart must be updated
+to use this feature. Packaged template changes do not overwrite an existing copy.

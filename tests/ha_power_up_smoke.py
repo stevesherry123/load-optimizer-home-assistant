@@ -23,8 +23,10 @@ async def main():
             now = datetime.now(timezone.utc)
             event = {"start": now.isoformat(), "end": (now + timedelta(hours=1)).isoformat()}
             events = {"calendar.free": [event], "calendar.blocked": []}
+            calls = []
             async def calendar_service(call):
                 entity = call.data["entity_id"]
+                calls.append(dict(call.data))
                 return {entity: {"events": events[entity]}}
             hass.services.async_register("calendar", "get_events", calendar_service, supports_response=SupportsResponse.ONLY)
             for entity in events:
@@ -45,6 +47,13 @@ async def main():
                     "finish": (now - timedelta(days=1)).isoformat(),
                     "power_profile": [{"offset_seconds": 0, "power_w": 1400}, {"offset_seconds": 1800, "power_w": 1400}]})
             runtime.state = {"instances": {"1": instance}}
+            await runtime._async_prefetch_calendar_events(app.instance_configs(options), now)
+            chart_start, chart_end = app.price_chart_bounds(now, "Europe/London")
+            free_call = next(call for call in calls if call["entity_id"] == "calendar.free")
+            blocked_call = next(call for call in calls if call["entity_id"] == "calendar.blocked")
+            assert datetime.fromisoformat(free_call["start_date_time"]) == chart_start
+            assert datetime.fromisoformat(free_call["end_date_time"]) >= chart_end
+            assert datetime.fromisoformat(blocked_call["start_date_time"]) == now
             request = {"mode": "negative_price", "program": "Quick45", "automatic": True,
                        "start": now.isoformat(), "finish": (now + timedelta(minutes=30)).isoformat()}
             before = deepcopy(runtime.state)
@@ -58,7 +67,7 @@ async def main():
             events["calendar.blocked"] = []
             hass.states.async_set("calendar.free", "unavailable")
             assert await runtime.async_automatic_start_block(options, request) == "free_window_source_unavailable"
-            print("Real HA: Power Up grants zero-price eligibility; cancellation/unavailability veto; Power Down wins; learning unchanged")
+            print("Real HA: Power Up calendar covers both chart days; zero-price eligibility; cancellation/unavailability veto; Power Down wins; learning unchanged")
         finally:
             await hass.async_stop(force=True)
 
