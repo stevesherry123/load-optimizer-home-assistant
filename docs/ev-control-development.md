@@ -1,7 +1,9 @@
 # Experimental EV Control
 
 Development branch: `feature/ev-charger-control`, isolated in its own checkout.
-Not released, installed or approved for unsupervised use. Stable and the
+Not released or approved for unsupervised use. An explicitly approved owner-only
+small-load trial was installed on 19 October 2026; the real EV entry was not
+reconfigured. Stable and the
 existing beta deployment remain independent. No production charger commands
 are part of development acceptance.
 
@@ -47,7 +49,8 @@ sensors, plus an optional [EV dashboard template](dashboard.md#experimental-ev-r
 They show battery inputs, tariff and selected slots, remaining wall energy,
 estimated cost/finish, actual power/meter readings, ownership, last stop reason
 and source freshness. The dashboard has no charger-control actions.
-Neither the template nor the private household mapping has been installed.
+The owner trial has a separate test dashboard using simulated battery inputs;
+the private real-EV household mapping has not been applied.
 
 For review without Home Assistant or a physical plug:
 
@@ -110,6 +113,30 @@ Reported battery capacity is available as an entity; do not replace it with an
 assumed model specification. Its usable-versus-nominal meaning and expected wall
 charging power still require confirmation. Zero/offline power cannot establish
 normal charging speed. Do not bypass missing telemetry to get a trial running.
+
+## Owner Trial Acceptance: 19 October 2026
+
+Installed runtime commit `e34441c2604b1eec949ad0b59f2e6fedb9512418` directly
+from this branch, with dashboard-only polish from `869229d`. No tag, GitHub
+release, main merge or HACS distribution was created. The version label remains
+the existing beta.9; `_owner_trial_build.json` records the exact owner build.
+Only one integration-source rollback copy was retained; HA configuration stores
+and learned data were not replaced. The configuration check and all five CI
+jobs passed before one idle-time restart.
+
+A separate **Charging Test Bench** entry uses real current/next-day tariffs and
+the confirmed small-load socket's power/monthly-energy readings, with a fictional
+0.6 kWh battery and assumed 60 W expected charging power. Automatic control was
+left off. Live helper tests moved battery charge 20 -> 100 -> 20: the plan cleared
+at target and rebuilt on restoring the deficit. No physical switch commands were
+sent. This is not a physical charging or stop-acknowledgement acceptance.
+
+Verified the existing 222 entity identities, both original dashboards, learning
+counts and queued dishwasher request. The washing-machine count included a cycle
+completed before deployment, not a restart-generated run. No current integration
+errors were logged. Household mappings and the detailed verification report are
+private, ignored local files. The test dashboard is available at
+`/charging-test-bench/charging-test`; existing dashboards remain independent.
 
 ## Refinement And Deployment Gates
 
