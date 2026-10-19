@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE
 from .coordinator import LoadOptimizerCoordinator
 from .orchestration_entity import OrchestrationEntity
+from .entity import LoadOptimizerEntity
 
 SWITCHES = (
     ("auto_mode_enabled", "Automatic Overnight Mode", "mdi:robot"),
@@ -32,6 +33,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     if entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
+        coordinator: LoadOptimizerCoordinator = hass.data[DOMAIN][entry.entry_id]
+        if coordinator.ev_controller:
+            async_add_entities([EVChargingControlSwitch(coordinator)])
         return
     coordinator: LoadOptimizerCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
@@ -69,3 +73,26 @@ class NativeOrchestrationSwitch(OrchestrationEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         await self.orchestrator.async_set(self._key, False)
+
+
+class EVChargingControlSwitch(LoadOptimizerEntity, SwitchEntity):
+    """Explicit opt-in, deliberately not restored as enabled after a restart."""
+
+    _attr_icon = "mdi:ev-station"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator, "ev_automatic_control", "Automatic Charging Control")
+
+    @property
+    def is_on(self):
+        return self.coordinator.ev_controller.enabled
+
+    @property
+    def extra_state_attributes(self):
+        return self.coordinator.ev_controller.status
+
+    async def async_turn_on(self, **kwargs):
+        await self.coordinator.ev_controller.async_enable()
+
+    async def async_turn_off(self, **kwargs):
+        await self.coordinator.ev_controller.async_disable()

@@ -402,6 +402,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _async_claim_native_status_entity_ids(hass, entry)
     if coordinator.orchestrator:
         await coordinator.orchestrator.async_start()
+    if coordinator.ev_controller:
+        await coordinator.ev_controller.async_start()
     return True
 
 
@@ -413,6 +415,8 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a Load Optimizer config entry."""
     coordinator = hass.data[DOMAIN].get(entry.entry_id)
+    if coordinator and coordinator.ev_controller:
+        await coordinator.ev_controller.async_stop()
     if coordinator and coordinator.orchestrator:
         await coordinator.orchestrator.async_stop()
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

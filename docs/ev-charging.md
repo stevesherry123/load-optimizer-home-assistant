@@ -1,5 +1,10 @@
 # Advisory EV Planning
 
+Released EV planning remains advisory. The isolated, unreleased
+[`feature/ev-charger-control` prototype](ev-control-development.md) adds opt-in
+switch control and metered delivery checks; it is not yet physically accepted
+or installed. Its extra fields must not be assumed available in existing releases.
+
 Add a separate entry and choose `ev_charging`. This calculates charging slots;
 it does **not** operate a charger, car or plug. Any separate charger automation
 needs its own safety checks and explicit opt-in.

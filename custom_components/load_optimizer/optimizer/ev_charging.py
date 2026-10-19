@@ -105,16 +105,22 @@ def plan_ev_charge(
     slot_hours = slot_minutes / 60
     slot_energy_kwh = charge_power_kw * slot_hours
     slots_needed = math.ceil(wall_energy_kwh / slot_energy_kwh)
-    candidate_slots = _candidate_slots(
-        periods=periods,
-        reference_utc=reference_utc,
-        deadline_utc=deadline_utc,
-        slot_minutes=slot_minutes,
-        slot_energy_kwh=slot_energy_kwh,
-    )
-    selected = sorted(candidate_slots, key=lambda slot: (slot["price_p_per_kwh"], slot["start"]))[:slots_needed]
+    try:
+        candidate_slots = _candidate_slots(
+            periods=periods, reference_utc=reference_utc, deadline_utc=deadline_utc,
+            slot_minutes=slot_minutes, slot_energy_kwh=slot_energy_kwh,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return _not_ready("invalid_tariff_periods")
+    selected = []
+    selected_energy = 0.0
+    for slot in sorted(candidate_slots, key=lambda slot: (slot["price_p_per_kwh"], slot["start"])):
+        if selected_energy + 1e-9 >= wall_energy_kwh:
+            break
+        selected.append(slot)
+        selected_energy += slot["energy_kwh"]
     selected.sort(key=lambda slot: slot["start"])
-    ready = len(selected) >= slots_needed
+    ready = selected_energy + 1e-9 >= wall_energy_kwh
     estimated_cost = sum(slot["cost_pence"] for slot in selected)
     charge_now = any(slot["start"] <= reference_utc < slot["end"] for slot in selected)
 
@@ -199,22 +205,32 @@ def _candidate_slots(
 ) -> list[dict]:
     slots = []
     duration = timedelta(minutes=slot_minutes)
+    unique = {}
     for period in periods:
+        start, end, price = period["start"], period["end"], float(period["price_p_per_kwh"])
+        if start.utcoffset() is None or end.utcoffset() is None or end <= start or not math.isfinite(price):
+            raise ValueError("Invalid tariff interval")
+        unique[(start, end, price)] = period
+    ordered = sorted(unique.values(), key=lambda period: period["start"])
+    if any(left["end"] > right["start"] for left, right in zip(ordered, ordered[1:])):
+        raise ValueError("Overlapping tariff intervals")
+    for period in ordered:
         period_start = period["start"].astimezone(timezone.utc)
         period_end = min(period["end"].astimezone(timezone.utc), reference_utc + timedelta(days=7))
-        cursor = max(_round_up(reference_utc, slot_minutes), period_start)
-        cursor = _round_up(cursor, slot_minutes)
-        while cursor + duration <= period_end:
-            end = cursor + duration
+        cursor = max(reference_utc, period_start)
+        while cursor < period_end:
+            end = _round_up(cursor + timedelta(microseconds=1), slot_minutes)
+            end = min(end, period_end)
             if deadline_utc and end > deadline_utc:
                 break
             price = float(period["price_p_per_kwh"])
+            energy = slot_energy_kwh * (end - cursor).total_seconds() / duration.total_seconds()
             slots.append({
                 "start": cursor,
                 "end": end,
                 "price_p_per_kwh": price,
-                "energy_kwh": slot_energy_kwh,
-                "cost_pence": price * slot_energy_kwh,
+                "energy_kwh": energy,
+                "cost_pence": price * energy,
             })
             cursor = end
     return slots

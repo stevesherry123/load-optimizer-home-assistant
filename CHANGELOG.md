@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Isolated EV-control prototype: selectable charger switch and metered feedback,
+  disabled-by-default ownership-aware control, restart disarm and delivery checks.
+  Include partial current slots in charging plans and reject conflicting tariff
+  overlaps. This dedicated-branch work is not physically accepted or deployed.
 - Plot effective import prices in the full dashboard, including verified future
   Power Up zero-price intervals and manual price overrides. Preserve raw tariff
   history, exact event boundaries, missing-rate gaps and the 24/48-hour layout.

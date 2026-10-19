@@ -6,6 +6,12 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- Refine opt-in EV charger control on the separate `feature/ev-charger-control`
+  branch, not `beta/next`. See [EV development gates](ev-control-development.md).
+  The household mapping is private; unavailable plug telemetry and unverified
+  charging-power/capacity assumptions block a supervised trial. No live control
+  or installation is authorised by local synthetic tests.
+
 - Observe the next real Power Up and native delayed-start transition following
   the verified [beta.9 deployment](power-up-pricing.md#deployment-acceptance-19-october-2026).
   Permanent calendar pricing is configured and the expired manual override is

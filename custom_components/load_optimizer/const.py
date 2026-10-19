@@ -23,6 +23,12 @@ CONF_CHARGER_EFFICIENCY = "charger_efficiency"
 CONF_TARGET_PERCENT = "target_percent"
 CONF_SLOT_MINUTES = "slot_minutes"
 CONF_READY_BY = "ready_by"
+EV_CONTROL_ENTITY_FIELDS = (
+    ("ev_charger_switch", "switch"),
+    ("ev_charge_power_entity", "sensor"),
+    ("ev_charge_energy_entity", "sensor"),
+    ("ev_charging_status_entity", "sensor"),
+)
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_INSTANCES_YAML = "instances_yaml"
 CONF_TARIFF_ENTITIES = "tariff_entities"

@@ -14,6 +14,7 @@ from homeassistant.const import CONF_NAME
 from homeassistant.helpers import selector
 
 from .const import (
+    EV_CONTROL_ENTITY_FIELDS,
     CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_ENTITY,
     CONF_BOSCH_CONNECTED_SENSOR,
@@ -202,6 +203,7 @@ def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
         (CONF_BATTERY_CAPACITY_ENTITY, True, "sensor"),
         (CONF_TARGET_PERCENT_ENTITY, False, "sensor"),
         (CONF_CONNECTION_STATUS_ENTITY, False, "sensor"),
+        *((key, False, domain) for key, domain in EV_CONTROL_ENTITY_FIELDS),
     ):
         value = existing.get(key)
         kwargs = {}
@@ -222,6 +224,15 @@ def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
     )
     schema.update(
         {
+            vol.Optional(CONF_TARIFF_ENTITIES, default=existing.get(CONF_TARIFF_ENTITIES, "")): str,
+            vol.Optional("ev_telemetry_max_age_minutes", default=existing.get("ev_telemetry_max_age_minutes", 15)):
+                vol.All(vol.Coerce(float), vol.Range(min=1, max=120)),
+            vol.Optional("ev_min_charging_power_w", default=existing.get("ev_min_charging_power_w", 100)):
+                vol.All(vol.Coerce(float), vol.Range(min=1, max=10000)),
+            vol.Optional("ev_charge_confirmation_seconds", default=existing.get("ev_charge_confirmation_seconds", 120)):
+                vol.All(vol.Coerce(int), vol.Range(min=30, max=600)),
+            vol.Optional("ev_delivery_tolerance_percent", default=existing.get("ev_delivery_tolerance_percent", 30)):
+                vol.All(vol.Coerce(float), vol.Range(min=5, max=100)),
             vol.Optional(
                 CONF_TARIFF_TIMEZONE,
                 default=existing.get(CONF_TARIFF_TIMEZONE, DEFAULT_TARIFF_TIMEZONE),
@@ -267,7 +278,8 @@ def _ev_input_errors(values: dict[str, Any]) -> dict[str, str]:
     except (ZoneInfoNotFoundError, ValueError, TypeError):
         errors[CONF_TARIFF_TIMEZONE] = "invalid_timezone"
     for key in (CONF_CHARGE_POWER_KW, CONF_TARGET_PERCENT, CONF_CHARGER_EFFICIENCY,
-                CONF_SLOT_MINUTES):
+                CONF_SLOT_MINUTES, "ev_telemetry_max_age_minutes", "ev_min_charging_power_w",
+                "ev_charge_confirmation_seconds", "ev_delivery_tolerance_percent"):
         if key not in values:
             continue
         try:
@@ -460,6 +472,8 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
             if CONF_SLOT_MINUTES in updates:
                 updates[CONF_SLOT_MINUTES] = int(updates[CONF_SLOT_MINUTES])
             for field in (CONF_TARGET_PERCENT_ENTITY, CONF_CONNECTION_STATUS_ENTITY, CONF_READY_BY):
+                updates.setdefault(field, "")
+            for field, _ in EV_CONTROL_ENTITY_FIELDS:
                 updates.setdefault(field, "")
             return self._save_section(updates)
         return self.async_show_form(

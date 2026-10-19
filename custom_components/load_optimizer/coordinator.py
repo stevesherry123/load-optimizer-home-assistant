@@ -25,6 +25,7 @@ from .const import (
     CONF_TARGET_PERCENT,
     CONF_TARGET_PERCENT_ENTITY,
     CONF_TARIFF_ENTITY,
+    CONF_TARIFF_ENTITIES,
     CONF_TARIFF_PRICE_UNIT,
     CONF_TARIFF_TIMEZONE,
     DEFAULT_SCAN_INTERVAL,
@@ -38,10 +39,12 @@ from .legacy_runtime import LegacyRuntime
 from .orchestration import NativeOrchestrator
 from .orchestration_migration import OrchestrationMigration
 from .optimizer.ev_charging import connection_is_available, deadline_from_ready_by, plan_ev_charge, state_float
-from .optimizer.tariffs import tariff_periods_from_entity
+from .optimizer.tariffs import TariffDataUnavailable, tariff_periods_from_entity
+from .legacy.app_runtime import entity_list
 from .price_cap import PriceCapManager
 from .tariff_intelligence import get_service
 from .narrative import OptionalNarrative
+from .ev_control import EVChargeController
 
 LOGGER = logging.getLogger(__name__)
 
@@ -63,6 +66,10 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=update_interval,
         )
         self.config_entry = entry
+        self.ev_controller = (EVChargeController(hass, entry, self._publish_ev_control)
+                              if data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE and data.get("ev_charger_switch") else None)
+        if self.ev_controller and data.get("ev_charger_switch"):
+            self.update_interval = timedelta(seconds=30)
         self.price_cap_manager = PriceCapManager(hass, entry)
         self.tariff_intelligence = get_service(hass, data)
         self.narrative = OptionalNarrative(hass, self.async_publish_narrative)
@@ -122,14 +129,21 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "tariff_intelligence": intelligence,
             }
 
-        tariff_entity = self._state_payload(data.get(CONF_TARIFF_ENTITY))
+        tariff_entities = list(dict.fromkeys(entity_list(data.get(CONF_TARIFF_ENTITY, ""))
+                                            + entity_list(data.get(CONF_TARIFF_ENTITIES, ""))))
         try:
-            periods = tariff_periods_from_entity(
-                tariff_entity or {},
-                reference_utc=now,
-                timezone_name=data.get(CONF_TARIFF_TIMEZONE),
-                price_unit=data.get(CONF_TARIFF_PRICE_UNIT),
-            )
+            periods = []
+            for entity_id in tariff_entities:
+                source = self._state_payload(entity_id)
+                if not source or source["state"] in {"unknown", "unavailable"}:
+                    raise ValueError("Configured EV tariff source is unavailable")
+                try:
+                    periods.extend(tariff_periods_from_entity(source, reference_utc=now,
+                        timezone_name=data.get(CONF_TARIFF_TIMEZONE), price_unit=data.get(CONF_TARIFF_PRICE_UNIT)))
+                except TariffDataUnavailable:
+                    continue
+            if not periods:
+                raise ValueError("No configured EV tariff source contains future prices")
             tariff_error = None
         except (TypeError, ValueError) as error:
             periods = []
@@ -164,6 +178,8 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if tariff_error and plan.get("reason") == "no_tariff_periods":
             plan["reason"] = "tariff_error"
             plan["tariff_error"] = tariff_error
+        if self.ev_controller:
+            self.ev_controller.set_plan(plan, now)
         return {
             "plan": plan,
             "tariff_period_count": len(periods),
@@ -172,6 +188,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "tariff_intelligence": intelligence,
             "entities": {
                 "tariff": data.get(CONF_TARIFF_ENTITY),
+                "additional_tariffs": data.get(CONF_TARIFF_ENTITIES, ""),
                 "battery": data.get(CONF_BATTERY_ENTITY),
                 "battery_capacity": data.get(CONF_BATTERY_CAPACITY_ENTITY),
                 "target_percent": data.get(CONF_TARGET_PERCENT_ENTITY),
@@ -190,6 +207,9 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "attributes": dict(state.attributes),
             "entity_id": entity_id,
         }
+
+    def _publish_ev_control(self):
+        self.async_update_listeners()
 
     def _orchestration_legacy_state(self, entity_id: str) -> dict[str, Any] | None:
         if not self.orchestrator or not self.orchestrator.state.get("active"):
