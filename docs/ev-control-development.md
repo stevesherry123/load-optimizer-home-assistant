@@ -3,8 +3,9 @@
 Development branch: `feature/ev-charger-control`, isolated in its own checkout.
 Not released or approved for unsupervised use. An explicitly approved owner-only
 small-load trial was installed on 19 October 2026; the real EV entry was not
-reconfigured. Stable and the
-existing beta deployment remain independent. No production charger commands
+reconfigured. Stable and other beta development remain independent; this RPi
+uses a private overlay on beta.9, which a later HACS update can replace.
+No production charger commands
 are part of development acceptance.
 
 ## First Implementation

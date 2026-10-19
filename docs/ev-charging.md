@@ -2,11 +2,12 @@
 
 Released EV planning remains advisory. The isolated, unreleased
 [`feature/ev-charger-control` prototype](ev-control-development.md) adds opt-in
-switch control and metered delivery checks; it is not yet physically accepted
-or installed. Its extra fields must not be assumed available in existing releases.
+switch control and metered delivery checks; real-EV physical acceptance remains
+open. An approved owner-only installation uses a separate simulated-battery,
+small-load test entry. Its extra fields are not available in existing releases.
 That branch also includes a read-only review dashboard and a
 [hardware-free step-through preview](ev-control-development.md#read-only-dashboard-and-offline-review)
-with fictional negative prices; neither changes your Home Assistant installation.
+with fictional negative prices; the offline preview cannot change Home Assistant.
 
 Add a separate entry and choose `ev_charging`. This calculates charging slots;
 it does **not** operate a charger, car or plug. Any separate charger automation
