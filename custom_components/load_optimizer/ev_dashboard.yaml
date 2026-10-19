@@ -120,7 +120,7 @@ views:
           {% if not slots %}No charging slots are currently selected.{% else %}
           | Home time | Price | Energy | Cost |
           |---|---:|---:|---:|
-          {% for slot in slots %}
+          {% for slot in slots -%}
           | {{ (as_datetime(slot.start) | as_local).strftime('%a %H:%M') }} to {{ (as_datetime(slot.end) | as_local).strftime('%H:%M %Z') }} | {{ slot.price_p_per_kwh }} p/kWh | {{ slot.energy_kwh }} kWh | {{ slot.cost_pence }} p |
           {% endfor %}
           {% endif %}
@@ -157,6 +157,6 @@ views:
           {% set r = states.sensor.ev_charging_review.attributes if has_value('sensor.ev_charging_review') else {} %}
           | Input | Status | Age |
           |---|---|---:|
-          {% for source in r.get('sources', []) %}
+          {% for source in r.get('sources', []) -%}
           | {{ source.role | replace('ev_', '') | replace('_entity', '') | replace('_', ' ') }} | {{ source.status | replace('_', ' ') }} | {{ source.age_seconds if source.age_seconds is not none else 'n/a' }} s |
           {% endfor %}

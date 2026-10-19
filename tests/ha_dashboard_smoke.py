@@ -132,6 +132,8 @@ async def main():
                 for text in ("0% to 70%", "09:30", "BST", "-15 p/kWh", "charging not confirmed", "0 W"):
                     assert text in rendered, (text, rendered)
         print("EV dashboard: ready/absent data, zero values, selected slots, home timezone and retained stop reasons passed")
+        readiness = next(card for card in ev_cards if card.get("title") == "Source Readiness")
+        assert "|---|---|---:|\n| battery |" in Template(readiness["content"], hass).async_render(parse_result=False), "Whitespace must not split the Markdown table"
         from homeassistant.components import input_boolean, input_number
         package = yaml.safe_load((ROOT / "dev/ev-test-package.yaml").read_text())
         input_number.CONFIG_SCHEMA({"input_number": package["input_number"]})
