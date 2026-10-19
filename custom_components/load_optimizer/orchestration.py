@@ -1077,7 +1077,10 @@ class NativeOrchestrator:
         )
         if not self.state.get(enabled_key):
             warnings.append("automatic_mode_off")
-        if self._state("sensor.load_optimizer_1_cycle_state") != "idle":
+        delayed_start = self._state(self.config.get("bosch_operation_state_sensor")) == "BSH.Common.EnumType.OperationState.DelayedStart"
+        if delayed_start:
+            blockers.append("appliance_delayed_start_pending")
+        elif self._state("sensor.load_optimizer_1_cycle_state") != "idle":
             warnings.append("appliance_not_idle")
         if self.state.get("request"):
             warnings.append("request_already_pending")
@@ -1144,6 +1147,12 @@ class NativeOrchestrator:
         if not self.state.get("active"):
             state, reason = "inactive", "native_orchestration_inactive"
             summary = "Native automatic control is inactive; recommendations will not start the dishwasher."
+        elif self._state(self.config.get("bosch_operation_state_sensor")) == "BSH.Common.EnumType.OperationState.DelayedStart":
+            state, reason = "appliance_scheduled", "appliance_delayed_start_pending"
+            summary = "The dishwasher's own delayed-start timer is set. It is waiting, not washing."
+            action_required = "Use the dishwasher controls to change its timer. Load Optimizer will not replace it with a new start command."
+            if request:
+                action_required += " A separate optimizer request is still queued and remains subject to start-time safety checks."
         elif request:
             state, reason = "scheduled", "request_queued"
             summary = f"{request.get('program', 'Programme')} is queued for a start-time safety check."
@@ -1157,6 +1166,9 @@ class NativeOrchestrator:
             action_required = "Review the last request and result. Request a new overnight run explicitly if a wash is still needed."
         elif reason == "automatic_overnight_mode_off":
             state = "paused"
+        elif reason == "appliance_not_idle":
+            state = "capturing"
+            summary = "An appliance cycle is being monitored; no new automatic request will be created."
         readiness = self.readiness(mode)
         recommendation = self._recommendation(mode)
         attributes = recommendation.attributes if recommendation else {}

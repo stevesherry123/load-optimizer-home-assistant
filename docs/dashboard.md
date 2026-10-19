@@ -75,6 +75,15 @@ events are bounded to the most recent 20 and stored with the native controls,
 so diagnosis does not depend on Recorder being enabled for optimizer sensors.
 Existing history is not reconstructed or guessed during an upgrade.
 
+The next unreleased explanation update distinguishes the dishwasher's own
+delayed-start timer from a wash in progress. A separate optimizer request, if
+present, is still displayed; the explanation does not cancel or modify it.
+Automatic programme cooldowns list their next eligible home-time dates. These
+do not restrict explicit selected-programme manual requests, which still require
+the normal physical safety checks. Missing power, no-run and free-electricity
+calendar sources have separate messages; unavailable promotional pricing must
+not be treated as a confirmed free session.
+
 Dates use Home Assistant's configured home timezone, including its timezone
 abbreviation, even when the dashboard is opened while travelling. The card falls
 back to the existing queue and attempt records on older integration versions.

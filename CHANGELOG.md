@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Explain a dishwasher's native delayed-start timer separately from an active
+  learning capture or queued optimizer request, without changing either request.
+- Show automatic-only programme cooldown dates and readable pricing/source
+  blockers in both dashboard templates. Keep manual-start safety checks intact.
+- Refresh publication guidance and record the outstanding beta acceptance gates.
+
 ## 1.7.0-beta.9
 
 - Add explicit free-electricity calendar sources for learned-appliance pricing:

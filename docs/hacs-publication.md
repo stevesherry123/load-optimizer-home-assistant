@@ -8,12 +8,43 @@ templates. Do not advertise the combined `beta/next` history, analysis, import
 or AI features as stable. Publishing does not require retiring the separate Octopus
 Intelligence reference app or promoting its unobserved replacement features.
 
-The installed owner testing release is v1.7.0-beta.7, verified on 14 October.
-Its code is separate from published stable v1.5.7. The only active branches are
+The 19 October pre-deployment read-only audit verified v1.7.0-beta.8.
+The owner is deploying beta.9 separately; consult the deployment acceptance
+record before claiming its installation has been verified. Beta code is
+separate from published stable v1.5.7. The only active branches are
 `main` and `beta/next`; merging and stable publication require separate approval.
 See [release channels](release-channels.md) for the current branch/release model.
 The dated acceptance evidence below is historical, not a direction to open a
 new HACS submission or install an older beta.
+
+## Publication Review: 19 October 2026
+
+The README and linked setup, compatibility, control, EV, dashboard,
+troubleshooting and privacy guides describe the stable product separately from
+beta development. Installation, source configuration, completed learning,
+recommendation eligibility and optional control activation are distinct steps.
+The documented examples are executable tests, not borrowed household settings.
+
+Keep the following boundaries in any public announcement:
+
+- HACS catalogue review is still pending; custom-repository installation works
+  independently. Do not open another submission or post progress comments.
+- Stable v1.5.7 does not include beta tariff history/AI or the beta.9 Power Up and
+  delayed-start changes. A branch push does not deploy them to existing users.
+- EV charging is advisory; native start control is limited to the documented
+  ID `1` Home Connect dishwasher. Nothing starts automatically after setup.
+- Dashboards are optional templates. Custom copies are not automatically
+  replaced; chart and colour enhancements have their documented dependencies.
+- An unfamiliar-user onboarding trial, privacy-safe screenshots and issue forms
+  remain open. Automated examples and the owner's completed washes do not
+  substitute for testing another household's setup.
+- Before promoting the combined beta, verify its deployment, natural forecast
+  revision/tail handling and repeated real free-price execution. Structured AI
+  selection has passed one real-provider replay, not a new live service test
+  after installation. Do not imply approval for another paid call.
+
+No release, production configuration change or upstream HACS edit is performed
+by this documentation review. See [the roadmap](roadmap.md) for remaining work.
 
 ## Repository Preflight (9 October 2026)
 

@@ -193,6 +193,45 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         Clock.current += timedelta(minutes=1)
         self.assertEqual(self.scheduler._automatic_decision(Clock.current)["mode"], "negative_price")
 
+    async def test_explanation_distinguishes_native_timer_from_running_capture(self):
+        self.put("sensor.operation", "BSH.Common.EnumType.OperationState.DelayedStart")
+        for cycle_state in ("idle", "scheduled", "running"):
+            with self.subTest(cycle_state=cycle_state):
+                self.put("sensor.load_optimizer_1_cycle_state", cycle_state)
+                explanation = self.scheduler.automation_explanation
+                self.assertEqual(explanation["state"], "appliance_scheduled")
+                self.assertEqual(explanation["reason_code"], "appliance_delayed_start_pending")
+                self.assertIn("waiting, not washing", explanation["summary"])
+                self.assertIn("dishwasher controls", explanation["action_required"])
+                for mode in ("overnight", "negative_price"):
+                    readiness = self.scheduler.readiness(mode)
+                    self.assertIn("appliance_delayed_start_pending", readiness["blockers"])
+                    self.assertNotIn("appliance_not_idle", readiness["warnings"])
+        self.hass.services.async_call.assert_not_awaited()
+        self.scheduler.store.async_save.assert_not_awaited()
+
+    async def test_native_timer_explanation_preserves_and_discloses_optimizer_queue(self):
+        request = {"mode": "overnight", "automatic": False, "program": "MixedLoad",
+                   "start": (Clock.current + timedelta(hours=1)).isoformat()}
+        self.scheduler.state["request"] = dict(request)
+        self.put("sensor.operation", "BSH.Common.EnumType.OperationState.DelayedStart")
+        explanation = self.scheduler.automation_explanation
+        self.assertEqual(explanation["state"], "appliance_scheduled")
+        self.assertEqual(explanation["queued_program"], "MixedLoad")
+        self.assertIn("separate optimizer request", explanation["action_required"])
+        self.assertEqual(self.scheduler.state["request"], request)
+        self.hass.services.async_call.assert_not_awaited()
+        self.scheduler.store.async_save.assert_not_awaited()
+
+    async def test_explanation_keeps_inactive_and_running_states_distinct(self):
+        self.put("sensor.load_optimizer_1_cycle_state", "running")
+        self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+        self.assertEqual(self.scheduler.automation_explanation["state"], "capturing")
+        self.scheduler.state["active"] = False
+        self.put("sensor.operation", "BSH.Common.EnumType.OperationState.DelayedStart")
+        self.assertEqual(self.scheduler.automation_explanation["state"], "inactive")
+        self.hass.services.async_call.assert_not_awaited()
+
     async def test_negative_only_waits_distinguish_future_confidence_and_exhausted_limits(self):
         self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=True)
         for attributes, expected in (

@@ -7,9 +7,10 @@ implementation architecture in `docs/architecture.md`.
 ## Near-Term Priorities
 
 - Deploy [Power Up calendar pricing and delayed-start detection](power-up-pricing.md)
-  after all captures are idle. Today's verified event has a temporary native
-  zero-price override, but the permanent calendar setting is not yet installed.
-  Preserve the manually scheduled dishwasher wash and active washing-machine capture.
+  after all captures are idle. The owner is handling beta.9 installation
+  separately on 19 October; this follow-up must not issue another restart.
+  The 18 October temporary zero-price override has expired. Verify the permanent
+  calendar setting and deployment independently before marking this complete.
 
 - Observe repeated free-price washes before separately approved stable promotion.
   Automatic overnight completion and learning passed the 15 October live audit.
@@ -42,10 +43,11 @@ implementation architecture in `docs/architecture.md`.
   single approved call connected, but misstated coverage and baseline warm-up.
   An additional authorized retest preserved facts but introduced unsupported
   demand speculation. The unreleased prose guard and authoritative facts prefix
-  were superseded by constrained finding selection. The replacement passes
-  428 unit tests and renders all prose from local deterministic templates.
-  Review and deploy that correction, then obtain approval for another provider
-  attempt. Controlled stale-text replay passed; natural revision observation
+  were superseded by constrained finding selection. The replacement renders all
+  prose from local deterministic templates and passed one separately authorized
+  real structured-provider replay on 17 October. The complete beta.9 code passed
+  440 unit tests and all five CI jobs. Deploy that correction; further paid calls
+  require fresh approval. Controlled stale-text replay passed; natural revision observation
   remains open. See [provider acceptance](forecast-coverage-acceptance.md).
 - observe the combined beta through normal partial publication, later tail
   completion/revisions, date rollover and appliance cycles before separately
@@ -72,11 +74,17 @@ implementation architecture in `docs/architecture.md`.
 
 ## Completed Recently
 
+- Reviewed publication and scheduling explanations on 19 October. An unreleased
+  follow-up distinguishes native delayed-start timers, shows automatic-only
+  cooldown dates and translates pricing/source blockers in both templates.
+  This does not modify control decisions or install a dashboard on the owner's
+  instance. The read-only household audit is retained privately, not published.
+
 - Published and installed beta.8 after owner approval. The 16 October audit
   verified preserved identities, learning, dashboards, history and queued wash;
   real partial-forecast analysis and the subsequent automatic wash passed.
-  See [deployment acceptance](forecast-coverage-acceptance.md). External AI is
-  still pending suitable next-day data; stable remains v1.5.7.
+  See [deployment acceptance](forecast-coverage-acceptance.md). The subsequent
+  authorized structured-provider replay passed; stable remains v1.5.7.
 
 - Implemented scoped partial-forecast analysis and manual narrative eligibility
   on `beta/next`, with matched historical intervals, DST handling and stale-text

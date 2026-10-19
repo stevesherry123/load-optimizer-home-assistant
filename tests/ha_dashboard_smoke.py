@@ -3,10 +3,12 @@
 import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from zoneinfo import ZoneInfo
 
 import yaml
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.template import Template
+from homeassistant.util import dt as dt_util
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +33,7 @@ CASES = (
 
 def cards(value):
     if isinstance(value, dict):
-        if value.get("type") == "tile":
+        if "type" in value:
             yield value
         for child in value.values():
             yield from cards(child)
@@ -42,6 +44,8 @@ def cards(value):
 
 async def main():
     styles = []
+    scheduling_templates = []
+    dt_util.set_default_time_zone(ZoneInfo("Europe/London"))
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
         for path in (
@@ -62,7 +66,55 @@ async def main():
                 rendered = template.async_render({"config": current}, parse_result=False)
                 assert "background: " + expected in rendered, (path, price, benchmark, rendered)
             print(f"{path}: {len(CASES)} colour/fallback cases passed")
+            content = next(card["content"] for card in tiles if card.get("title") == "Automatic Scheduling")
+            scheduling_templates.append(content)
+            template = Template(content, hass)
+            explanation = "sensor.load_optimizer_1_automation_explanation"
+            orchestration = "sensor.load_optimizer_1_orchestration_status"
+            cost = "sensor.load_optimizer_1_cost_status"
+            hass.states.async_set(explanation, "waiting", {
+                "summary": "Waiting for prices through the whole overnight window.",
+                "blockers": ["power_source_unavailable", "blocked_window_source_unavailable"],
+                "warnings": ["negative_price_retry_cooldown"],
+            })
+            hass.states.async_set(cost, "ready", {
+                "free_window_source_ready": False,
+                "decision_policy": {"cooldown_programs": [
+                    {"program": "MixedLoad", "cooldown_until": "2026-10-20T13:54:00+00:00"},
+                    {"program": "Quick45", "cooldown_until": "invalid"},
+                ]},
+            })
+            rendered = template.async_render(parse_result=False)
+            for expected in ("automatic starts are paused", "30-minute automatic request interval",
+                             "Free-electricity pricing unavailable", "MixedLoad", "Tue 20 Oct 14:54 BST",
+                             "These cooldowns apply to automatic runs only", "None recorded"):
+                assert expected in rendered, (path, expected, rendered)
+            assert "power_source_unavailable" not in rendered
+            assert "blocked_window_source_unavailable" not in rendered
+            hass.states.async_set(explanation, "appliance_scheduled", {
+                "summary": "The dishwasher's own delayed-start timer is set. It is waiting, not washing.",
+                "action_required": "Use the dishwasher controls to change its timer.",
+                "blockers": ["appliance_delayed_start_pending"],
+            })
+            hass.states.async_set(cost, "ready", {"free_window_source_ready": True})
+            rendered = template.async_render(parse_result=False)
+            assert "waiting, not washing" in rendered
+            assert "Use the dishwasher controls" in rendered
+            assert "The dishwasher is waiting on its own delayed-start timer" in rendered
+            assert "Automatic programme cooldowns" not in rendered
+            assert "Free-electricity pricing unavailable" not in rendered
+            hass.states.async_remove(explanation)
+            hass.states.async_remove(cost)
+            hass.states.async_set(orchestration, "queued", {"request": {"program": "Eco50"}})
+            rendered = template.async_render(parse_result=False)
+            assert "Eco50 is queued for a start-time safety check" in rendered
+            assert "Automatic programme cooldowns" not in rendered
+            hass.states.async_remove(orchestration)
+            rendered = template.async_render(parse_result=False)
+            assert "Scheduling status is unavailable" in rendered
+            print(f"{path}: scheduling reasons, native timer, cooldowns, timezone and older-version fallback passed")
     assert styles[0] == styles[1], "Public and full dashboards must compare prices identically"
+    assert scheduling_templates[0] == scheduling_templates[1], "Scheduling explanations must match across dashboards"
 
 
 asyncio.run(main())
