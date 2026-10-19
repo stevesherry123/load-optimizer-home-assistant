@@ -65,10 +65,15 @@ normal charging speed. Do not bypass missing telemetry to get a trial running.
    dwell/backoff and explicit dashboard readiness/notification guidance.
 4. Restore the owner's plug and fresh telemetry; confirm wall power, capacity
    assumptions and telemetry thresholds. Preview the full 12-hour/6-hour schedule.
-5. Obtain explicit approval for an isolated branch prerelease, installation and
-   supervised physical switching. Verify actual power, energy and SOC change,
+5. Agree an owner-only test installation/selected commit and obtain explicit
+   approval for installation and supervised physical switching. A dedicated
+   branch is not a separate HACS release channel: a published EV prerelease can
+   be offered to unrelated prerelease users, so do not publish one implicitly.
+   Verify actual power, energy and SOC change,
    missed acknowledgements, loss of data and manual intervention.
 6. Observe repeat sessions and only then separately approve stable promotion.
 
 The current first slice is a refinement prototype, not a completed physical
 charger acceptance or permission to alter the owner's installation.
+It does not yet inherit learned-appliance Power Up calendar overlays or provide
+a battery-health/parked-retention diagnosis. These need separately tested design.
