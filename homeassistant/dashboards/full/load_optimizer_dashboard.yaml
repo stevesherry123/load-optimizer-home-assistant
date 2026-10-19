@@ -172,8 +172,8 @@ views:
               unit: p/kWh
               float_precision: 2
             series:
-              - entity: sensor.load_optimizer_status
-                name: Import price
+              - entity: sensor.load_optimizer_1_current_energy_price
+                name: Effective import price
                 stroke_width: 2
                 show:
                   in_header: false
@@ -225,6 +225,23 @@ views:
                     const browserOffset = -date.getTimezoneOffset() * 60 * 1000;
                     return timestamp + tariffOffset - browserOffset;
                   };
+                  const chartRates = entity?.attributes?.chart_price_periods;
+                  if (Array.isArray(chartRates)) {
+                    const intervals = chartRates.filter((row) =>
+                      Array.isArray(row) && row.length === 3
+                      && row.every(Number.isFinite) && row[1] > row[0]
+                    ).sort((left, right) => left[0] - right[0]);
+                    const points = new Map();
+                    intervals.forEach(([start, end, price], index) => {
+                      points.set(displayTimestamp(start), [displayTimestamp(start), price]);
+                      points.set(displayTimestamp(end), [displayTimestamp(end), price]);
+                      const next = intervals[index + 1];
+                      if (!next || next[0] > end) {
+                        points.set(displayTimestamp(end) + 1, [displayTimestamp(end) + 1, null]);
+                      }
+                    });
+                    return Array.from(points.values()).sort((left, right) => left[0] - right[0]);
+                  }
                   const rawEntities = sourceState?.attributes?.tariff_entities
                     || sourceState?.attributes?.tariff_entity
                     || '';
@@ -426,6 +443,16 @@ views:
                 'confidence_relaxed_for_cooldown_rotation': 'Lower confidence allowed during programme cooldown rotation',
                 'optimizer_not_ready': 'Optimizer is not ready',
                 'appliance_not_idle': 'A cycle capture is active',
+                'appliance_delayed_start_pending': 'The dishwasher is waiting on its own delayed-start timer',
+                'power_source_unavailable': 'Appliance power readings are unavailable; automatic starts are paused',
+                'blocked_window_source_unavailable': 'The no-run calendar is unavailable; automatic starts are paused',
+                'free_window_source_unavailable': 'The free-electricity calendar could not be verified',
+                'overnight_tariff_coverage_incomplete': 'Waiting for prices through the whole overnight window and cycle finish',
+                'overnight_search_horizon_incomplete': 'The search hours do not yet cover the whole overnight window',
+                'negative_window_not_started': 'The free or negative-price opportunity is later, not ready now',
+                'negative_price_retry_cooldown': 'Waiting for the 30-minute automatic request interval',
+                'maximum_runs_per_window_reached': 'The programme has reached its allowed runs in this free-price window',
+                'negative_run_history_incomplete': 'Retained history cannot verify the configured run limit',
                 'connected': 'Appliance is disconnected',
                 'remote_control': 'Remote control is disabled',
                 'remote_start': 'Remote start is disabled'
@@ -436,6 +463,23 @@ views:
               {% set confidence = state_attr(explanation, 'confidence') if available else none %}
               {% if confidence is not none %}**Learning confidence:** {{ confidence }}% (normal threshold {{ state_attr(explanation, 'confidence_threshold') }}%).{% endif %}
 
+              {% set cost = 'sensor.load_optimizer_1_cost_status' %}
+              {% if state_attr(cost, 'free_window_source_ready') is sameas false %}
+              **Free-electricity pricing unavailable:** the configured calendar could not be verified. Do not assume a promotional zero price.
+              {% endif %}
+              {% set policy = state_attr(cost, 'decision_policy') or {} %}
+              {% set cooling = policy.get('cooldown_programs', []) %}
+              {% if cooling %}
+              **Automatic programme cooldowns**
+
+              | Programme | Eligible again (home time) |
+              |---|---|
+              {% for item in cooling %}
+              | {{ item.program }} | {{ local_time(item.cooldown_until) }} |
+              {% endfor %}
+
+              These cooldowns apply to automatic runs only. A selected-programme manual request still requires the normal safety checks.
+              {% endif %}
 
               **Last scheduler result:** {{ (state_attr(orchestration, 'last_result') or 'None recorded') | replace('_', ' ') }}.
               {{ (state_attr(orchestration, 'last_message') or '').split('; operation=')[0] }}
@@ -451,7 +495,7 @@ views:
               {% if events %}
               **Recent scheduling events**
               {% for item in events[:5] %}
-              - {{ local_time(item.timestamp) }}: {{ item.event | replace('_', ' ') }}; {{ item.reason | replace('_', ' ') }}.
+              - {{ local_time(item.timestamp) }}: {{ item.event | replace('_', ' ') }}; {{ labels.get(item.reason, item.reason | replace('_', ' ')) }}.
               {% endfor %}
               {% endif %}
           - type: entities

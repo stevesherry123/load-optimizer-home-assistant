@@ -47,6 +47,7 @@
           "tariff_price_unit": "Tariff price unit",
           "green_window_entity": "Green window entity",
           "blocked_window_entity": "Blocked window entity",
+          "free_window_entity": "Free-electricity calendars (Power Up)",
           "cost_search_hours": "Cost search hours",
           "cost_forecast_hours": "Cost forecast hours",
           "cost_forecast_interval": "Cost forecast interval",
@@ -110,7 +111,8 @@
           "tariff_timezone": "Tariff timezone",
           "tariff_price_unit": "Tariff price unit",
           "green_window_entity": "Preferred green-window calendar",
-          "blocked_window_entity": "Blocked-window calendar"
+          "blocked_window_entity": "Blocked-window calendar",
+          "free_window_entity": "Free-electricity calendars (Power Up)"
         }
       },
       "appliance_review": {

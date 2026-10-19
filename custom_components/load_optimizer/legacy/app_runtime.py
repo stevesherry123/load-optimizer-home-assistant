@@ -17,13 +17,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .config_validation import ConfigurationError, appliance_document
 
 try:
-    from .costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from .costing import TariffDataUnavailable, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from .observability import EventEngine, configure_logging as configure_event_logging
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
-    from costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from costing import TariffDataUnavailable, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.5.7"
+APP_VERSION = "1.7.0-beta.9"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -537,6 +537,98 @@ def blocked_windows_from_entity(
     )
 
 
+def _free_event_time(value: object) -> datetime | None:
+    raw = value.get("dateTime") if isinstance(value, dict) else value
+    if not isinstance(raw, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc) if parsed.utcoffset() is not None else None
+
+
+def free_windows_from_entity(token: str, entity_ids: str, *, start: datetime, end: datetime,
+                             state_reader=None, calendar_reader=None) -> tuple[list[dict], dict]:
+    """Only a successful calendar event query can grant free electricity."""
+    windows, errors = [], []
+    for entity_id in entity_list(entity_ids):
+        entity = state_reader(entity_id) if state_reader else source_state(token, entity_id)
+        if (not entity_id.startswith("calendar.") or not entity
+                or str(entity.get("state", "")).lower() in {"unknown", "unavailable", "none", ""}):
+            errors.append("source_unavailable")
+            continue
+        events = (calendar_reader(entity_id) if calendar_reader else api_request(
+            token, f"/calendars/{quote(entity_id, safe='.')}?" + urlencode({"start": start.isoformat(), "end": end.isoformat()})))
+        if not isinstance(events, list):
+            errors.append("calendar_events_unavailable")
+            continue
+        for event in events:
+            if not isinstance(event, dict):
+                errors.append("invalid_calendar_event")
+                continue
+            if event.get("status") == "cancelled":
+                continue
+            a = _free_event_time(event.get("start"))
+            b = _free_event_time(event.get("end"))
+            if a is None or b is None or b <= a:
+                errors.append("invalid_calendar_event")
+                continue
+            if a < end and b > start:
+                windows.append({"start": max(a, start), "end": min(b, end), "summary": "Free electricity", "entity_id": entity_id})
+    return ([] if errors else _deduplicate_windows(windows)), {
+        "readable": not errors, "source": "free_electricity_calendar", "errors": sorted(set(errors)),
+        "windows": 0 if errors else len(windows),
+    }
+
+
+def overlay_free_windows(periods: list[dict], windows: list[dict]) -> list[dict]:
+    """Split only existing priced periods; free events cannot fill tariff gaps."""
+    result = [dict(period) for period in periods]
+    for window in windows:
+        updated = []
+        for period in result:
+            a, b = max(period["start"], window["start"]), min(period["end"], window["end"])
+            if b <= a:
+                updated.append(period)
+                continue
+            if period["start"] < a:
+                updated.append({**period, "end": a})
+            updated.append({**period, "start": a, "end": b, "price_p_per_kwh": 0.0,
+                            "contracted_price_p_per_kwh": period.get("contracted_price_p_per_kwh", period["price_p_per_kwh"]),
+                            "source": "free_electricity_calendar", "is_free_electricity_window": True})
+            if b < period["end"]:
+                updated.append({**period, "start": b})
+        result = updated
+    return sorted(result, key=lambda item: item["start"])
+
+
+def price_chart_bounds(now: datetime, timezone_name: str) -> tuple[datetime, datetime]:
+    """Two tariff-local calendar days, including 23/25-hour DST days."""
+    start = now.astimezone(ZoneInfo(timezone_name)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return start.astimezone(timezone.utc), (start + timedelta(days=2)).astimezone(timezone.utc)
+
+
+def price_chart_data(periods: list[dict], *, now: datetime, timezone_name: str) -> dict:
+    """Publish bounded plotting data without losing free-window boundaries."""
+    start, end = price_chart_bounds(now, timezone_name)
+    rows = set()
+    for period in periods:
+        a, b = max(start, period["start"]), min(end, period["end"])
+        if b <= a:
+            continue
+        price = float(period["price_p_per_kwh"])
+        if not math.isfinite(price):
+            return {"chart_price_periods": [], "chart_price_status": "invalid_price"}
+        rows.add((round(a.timestamp() * 1000), round(b.timestamp() * 1000), price))
+        if len(rows) > 256:
+            return {"chart_price_periods": [], "chart_price_status": "too_many_periods"}
+    data = sorted(rows)
+    if len(json.dumps(data, separators=(",", ":"))) > 12000:
+        return {"chart_price_periods": [], "chart_price_status": "too_many_periods"}
+    return {"chart_price_periods": data, "chart_price_status": "ready" if data else "no_prices"}
+
+
 def tariff_state_from_entity(token: str, entity_id: str) -> dict | None:
     state = source_state(token, entity_id)
     if state is None:
@@ -868,6 +960,49 @@ def planning_window_end(config: dict, instance: dict, now: datetime) -> datetime
         raise ValueError("Learned cycle duration exceeds the planning date range") from error
 
 
+def overnight_planning_coverage(config: dict, summaries: list[dict], policies: list[dict],
+                                periods: list[dict], now: datetime,
+                                earliest: datetime | None = None,
+                                latest: datetime | None = None) -> dict:
+    """Require the whole operational night, including possible cycle tails."""
+    window_start, window_end = operational_overnight_window(
+        now, config.get("schedule_overnight_start", "20:00"),
+        config.get("schedule_overnight_end", "08:00"),
+        config.get("tariff_timezone", "Europe/London"),
+    )
+    allowed = {p["program"] for p in policies if p.get("enabled") and p.get("allow_normal_recommendation")}
+    runtimes = [float(m["expected_runtime_minutes"]) for m in summaries
+                if m.get("program") in allowed and m.get("expected_runtime_minutes") is not None]
+    start = max(now, window_start, earliest or now)
+    end = window_end + timedelta(minutes=max(runtimes, default=0))
+    if latest:
+        end = min(end, latest)
+    search_complete = now + timedelta(hours=config["cost_search_hours"]) >= min(window_end, latest or window_end)
+    result = {"complete": False, "window_start": window_start.isoformat(),
+              "window_end": window_end.isoformat(), "required_start": start.isoformat(),
+              "required_end": end.isoformat(), "search_complete": search_complete,
+              "reason": "overnight_tariff_coverage_incomplete"}
+    if not search_complete:
+        result["reason"] = "overnight_search_horizon_incomplete"
+        return result
+    if start >= min(window_end, latest or window_end) or not runtimes:
+        return result
+    relevant = sorted({(p["start"], p["end"], p["price_p_per_kwh"])
+                       for p in periods if p["end"] > start and p["start"] < end})
+    cursor = start
+    previous_end = None
+    for first, last, price in relevant:
+        if (not math.isfinite(price) or last <= first or first > cursor
+                or previous_end is not None and first < previous_end):
+            return result
+        cursor = max(cursor, last)
+        previous_end = last
+    result["covered_until"] = min(cursor, end).isoformat()
+    result["complete"] = cursor >= end
+    result["reason"] = "overnight_tariff_coverage_complete" if result["complete"] else result["reason"]
+    return result
+
+
 def bounded_cost_breakdown(rows: object) -> tuple[list[dict], int, bool]:
     """Publish enough cost detail for a dashboard without retaining a long history."""
     if not isinstance(rows, list):
@@ -1184,6 +1319,7 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
         "green_window_entity": str(_option_or_env(options, f"{prefix}_green_window_entity", options.get("green_window_entity", ""))).strip(),
         "blocked_window_entity": str(_option_or_env(options, f"{prefix}_blocked_window_entity", options.get("blocked_window_entity", ""))).strip(),
+        "free_window_entity": str(_option_or_env(options, f"{prefix}_free_window_entity", options.get("free_window_entity", ""))).strip(),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
         "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
@@ -1231,6 +1367,7 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "tariff_price_unit": str(options.get("tariff_price_unit", "p_per_kwh")),
         "green_window_entity": str(entry.get("green_window_entity", options.get("green_window_entity", ""))).strip(),
         "blocked_window_entity": str(entry.get("blocked_window_entity", options.get("blocked_window_entity", ""))).strip(),
+        "free_window_entity": str(entry.get("free_window_entity", options.get("free_window_entity", ""))).strip(),
         "cost_search_hours": int(options.get("cost_search_hours", 24)),
         "cost_forecast_hours": int(options.get("cost_forecast_hours", 12)),
         "cost_forecast_interval": int(options.get("cost_forecast_interval", 30)),
@@ -1638,9 +1775,13 @@ def publish_cost_entities(
         "blocked_window_candidate_count": result.get("blocked_window_candidate_count", 0),
         "blocked_window_source_ready": result.get("blocked_window_source_ready", True),
         "automatic_block_reason": result.get("automatic_block_reason"),
+        "free_window_entity": result.get("free_window_entity"),
+        "free_window_count": result.get("free_window_count", 0),
+        "free_window_source_ready": result.get("free_window_diagnostic", {}).get("readable", True),
         "special_price_window": result.get("special_price_window"),
         "operational_overnight_start": result.get("operational_overnight_start"),
         "operational_overnight_end": result.get("operational_overnight_end"),
+        "overnight_planning_coverage": result.get("overnight_planning_coverage", {}),
         "decision_policy": result.get("decision_policy"),
     }
     if publish_diagnostics:
@@ -1670,6 +1811,10 @@ def publish_cost_entities(
         "current_price_p_per_kwh": current_price_attribute,
         "current_price_start": result.get("current_price_start"),
         "current_price_end": result.get("current_price_end"),
+        "chart_price_periods": result.get("chart_price_periods", []),
+        "chart_price_status": result.get("chart_price_status", "no_prices"),
+        "chart_price_basis": "effective_import_price",
+        "chart_price_period_format": ["start_utc_ms", "end_utc_ms", "price_p_per_kwh"],
         **common,
     })
     publish_entity(token, f"{prefix}_cost_status", status, {
@@ -2261,11 +2406,19 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     energy_entity = source_state(token, config["energy_sensor"])
     program_entity = source_state(token, config["program_sensor"])
     device_state_entity = source_state(token, config["state_sensor"])
+    if not config["state_sensor"] and instance_id == "1":
+        operation_helper = source_state(token, "input_text.load_optimizer_1_bosch_operation_state_sensor")
+        operation_entity_id = str((operation_helper or {}).get("state") or "")
+        if operation_entity_id.startswith("sensor."):
+            device_state_entity = source_state(token, operation_entity_id)
     power = numeric_state(power_entity)
     energy = numeric_state(energy_entity)
     if power is not None and power < 0:
         power = None
     operation_state_finished = operation_state_indicates_cycle_complete(device_state_entity)
+    delayed_start = str((device_state_entity or {}).get("state") or "").strip().casefold() in {
+        "delayedstart", "delayed_start", "bsh.common.enumtype.operationstate.delayedstart",
+    }
     publish_entity(token, f"{prefix}_power", power if power is not None else "unavailable", {
         "friendly_name": f"{name} Power", "device_class": "power", "unit_of_measurement": "W",
         "state_class": "measurement", "source_entity": config["power_sensor"] or None,
@@ -2289,7 +2442,16 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     elif power is not None:
         instance.pop("power_source_missing_since", None)
 
-    active = power is not None and power >= config["active_power_threshold"]
+    if delayed_start and instance.get("cycle_start"):
+        instance["last_discarded_cycle"] = {
+            "program": instance.get("program") or program, "start": instance["cycle_start"],
+            "finish": now.isoformat(), "exclusion_reason": "delayed_start_not_washing",
+        }
+        for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold",
+                    "finish_candidate", "program", "capture_interrupted", "capture_interrupted_at",
+                    "capture_power_gap", "power_source_missing_since"):
+            instance.pop(key, None)
+    active = power is not None and power >= config["active_power_threshold"] and not delayed_start
     if active and not operation_state_finished:
         if not instance.get("cycle_start"):
             instance.update(cycle_start=now.isoformat(), start_energy=energy, peak_power=power, samples=0, profile=[], below_threshold=0)
@@ -2378,7 +2540,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
     if instance.get("cycle_start") and program not in ("unknown", "unavailable", ""):
         instance["program"] = program
 
-    cycle_state = "running" if instance.get("cycle_start") else "idle"
+    cycle_state = "running" if instance.get("cycle_start") else "scheduled" if delayed_start else "idle"
     missing_since = datetime_from_value(instance.get("power_source_missing_since"))
     outage_minutes = round((now - missing_since).total_seconds() / 60, 1) if missing_since else None
     publish_entity(token, f"{prefix}_status", (
@@ -2499,6 +2661,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
             try:
                 periods = []
                 tariff_parse_errors = []
+                published_tariff_invalid = False
                 for tariff_state in tariff_states:
                     try:
                         periods.extend(tariff_periods_from_entity(
@@ -2508,13 +2671,31 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                             price_unit=config["tariff_price_unit"],
                         ))
                     except (TypeError, ValueError) as error:
+                        published_tariff_invalid |= not isinstance(error, TariffDataUnavailable)
                         tariff_parse_errors.append({
                             "entity_id": tariff_state.get("entity_id"),
                             "reason": str(error),
                         })
                 if not periods:
                     raise ValueError("No configured tariff entity produced a supported future-rate attribute")
+                free_entity = config.get("free_window_entity", "")
+                chart_start, chart_end = price_chart_bounds(now, config["tariff_timezone"])
+                chart_windows, _ = free_windows_from_entity(
+                    token, free_entity, start=chart_start, end=chart_end,
+                ) if free_entity else ([], {})
+                chart_periods = overlay_free_windows(periods, chart_windows)
+                free_windows, free_diagnostic = free_windows_from_entity(
+                    token, free_entity, start=now.astimezone(timezone.utc), end=window_end,
+                ) if free_entity else ([], {"readable": True, "windows": 0})
+                periods = overlay_free_windows(periods, free_windows)
                 if manual_window["applied"]:
+                    chart_periods = overlay_price_window(
+                        chart_periods,
+                        start=manual_window["start_datetime"],
+                        end=manual_window["end_datetime"],
+                        price_p_per_kwh=manual_window["price_p_per_kwh"],
+                        label=manual_window["label"],
+                    )
                     periods = overlay_price_window(
                         periods,
                         start=manual_window["start_datetime"],
@@ -2559,6 +2740,10 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     excluded_programs=blocked_remote_start_programs,
                 )
                 cost_result.update({
+                    **price_chart_data(chart_periods, now=now, timezone_name=config["tariff_timezone"]),
+                    "overnight_planning_coverage": overnight_planning_coverage(
+                        config, summaries, policies, periods, now, earliest_start_utc, latest_finish_utc,
+                    ),
                     "tariff_entity": ", ".join(tariff_entities),
                     "tariff_entities": tariff_entities,
                     "tariff_periods": len(periods),
@@ -2572,6 +2757,9 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "schedule_earliest_start_entity": earliest_start_entity,
                     "schedule_latest_finish_entity": latest_finish_entity,
                     "green_window_entity": green_window_entity,
+                    "free_window_entity": free_entity,
+                    "free_window_diagnostic": free_diagnostic,
+                    "free_window_count": len(free_windows),
                     "green_window_diagnostic": green_window_diagnostic,
                     "blocked_window_entity": blocked_window_entity,
                     "blocked_window_diagnostic": blocked_window_diagnostic,
@@ -2585,6 +2773,10 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     "remote_start_blocked_programs": blocked_remote_start_programs,
                     "special_price_window": manual_window_public,
                 })
+                if published_tariff_invalid:
+                    cost_result["overnight_planning_coverage"].update(
+                        complete=False, reason="published_tariff_invalid",
+                    )
             except (TypeError, ValueError) as error:
                 cost_result = {
                     "status": "tariff_invalid",

@@ -18,6 +18,148 @@ from legacy.costing import (
 )
 
 
+class NegativePriceSchedulingTests(unittest.TestCase):
+    def setUp(self):
+        self.start = datetime(2026, 10, 10, 8, 30, tzinfo=timezone.utc)
+        self.reference = self.start + timedelta(seconds=54, microseconds=183546)
+        self.model = {
+            "program": "Quick45",
+            "representative_profile_w": [100, 100],
+            "expected_runtime_minutes": 28.4,
+            "expected_energy_kwh": 0.6739,
+            "confidence": 88,
+            "recent_cycles": [],
+        }
+        self.policy = {
+            "program": "Quick45", "enabled": True,
+            "allow_normal_recommendation": False,
+            "allow_negative_price_run": True, "preference_rank": 50,
+            "negative_price_priority": 50, "maximum_runs_per_window": 2,
+        }
+        self.periods = [
+            {"start": self.start, "end": self.start + timedelta(hours=1), "price_p_per_kwh": -1},
+            {"start": self.start + timedelta(hours=1), "end": self.start + timedelta(hours=3), "price_p_per_kwh": -5},
+        ]
+
+    def recommend(self, **kwargs):
+        options = {"reference_utc": self.reference, "search_hours": 2,
+                   "candidate_interval_minutes": 5, "forecast_hours": 0}
+        options.update(kwargs)
+        return recommend_cycle([self.model], [self.policy], self.periods, **options)
+
+    def test_off_grid_scan_can_start_in_an_active_negative_window(self):
+        negative = self.recommend()["negative_price_recommendation"]
+        self.assertTrue(negative["ready_to_start"])
+        self.assertEqual(negative["start"], self.reference.isoformat())
+        self.assertEqual(negative["program_options"][0]["start"], negative["start"])
+
+    def test_active_opportunity_is_not_deferred_to_a_cheaper_future_window(self):
+        negative = self.recommend(reference_utc=self.start)["negative_price_recommendation"]
+        self.assertEqual(negative["start"], self.start.isoformat())
+        self.assertTrue(negative["ready_to_start"])
+        self.assertEqual(negative["energy_cost_pence"], -0.6739)
+
+    def test_zero_price_window_can_start_between_candidate_boundaries(self):
+        self.periods[0]["price_p_per_kwh"] = 0
+        negative = self.recommend()["negative_price_recommendation"]
+        self.assertTrue(negative["ready_to_start"])
+        self.assertEqual(negative["energy_cost_pence"], 0)
+
+    def test_ready_programme_is_not_starved_by_a_future_higher_priority_programme(self):
+        later = {**self.model, "program": "Later", "expected_runtime_minutes": 150,
+                 "representative_profile_w": [100, 100]}
+        later_policy = {**self.policy, "program": "Later", "negative_price_priority": 100}
+        periods = [self.periods[0],
+            {"start": self.start + timedelta(hours=1), "end": self.start + timedelta(hours=2), "price_p_per_kwh": 20},
+            {"start": self.start + timedelta(hours=2), "end": self.start + timedelta(hours=5), "price_p_per_kwh": -5}]
+        result = recommend_cycle([self.model, later], [self.policy, later_policy], periods,
+            reference_utc=self.reference, search_hours=3, candidate_interval_minutes=5,
+            forecast_hours=0)
+        self.assertEqual(result["negative_price_recommendation"]["program"], "Quick45")
+        self.assertTrue(result["negative_price_recommendation"]["ready_to_start"])
+
+    def test_short_remaining_window_does_not_allow_an_overrunning_high_power_section(self):
+        reference = self.start + timedelta(hours=2, minutes=50, seconds=54)
+        result = self.recommend(reference_utc=reference)
+        self.assertFalse(result.get("negative_price_recommendation", {}).get("ready_to_start", False))
+
+    def test_separate_window_has_its_own_run_allowance(self):
+        self.periods = [
+            {"start": self.start, "end": self.start + timedelta(hours=1), "price_p_per_kwh": -1},
+            {"start": self.start + timedelta(hours=1), "end": self.start + timedelta(hours=2), "price_p_per_kwh": 20},
+            {"start": self.start + timedelta(hours=2), "end": self.start + timedelta(hours=3), "price_p_per_kwh": 0},
+        ]
+        self.policy["maximum_runs_per_window"] = 1
+        self.model["recent_cycles"] = [{"finish": (self.start + timedelta(minutes=30)).isoformat(),
+                                        "runtime_minutes": 28.4}]
+        negative = self.recommend(reference_utc=self.reference + timedelta(hours=2))["negative_price_recommendation"]
+        self.assertTrue(negative["ready_to_start"])
+        self.assertEqual(negative["negative_window_runs"], 0)
+
+    def test_positive_current_price_does_not_become_ready_for_a_future_window(self):
+        self.periods[0]["price_p_per_kwh"] = 20
+        negative = self.recommend()["negative_price_recommendation"]
+        self.assertFalse(negative["ready_to_start"])
+        self.assertGreater(datetime.fromisoformat(negative["start"]), self.reference)
+
+    def test_second_run_is_ready_after_completion_despite_normal_cooldown(self):
+        finish = self.reference + timedelta(minutes=28.4)
+        self.model.update(last_seen=finish.isoformat(), recent_cycles=[{
+            "finish": finish.isoformat(), "runtime_minutes": 28.4}])
+        self.policy.update(allow_normal_recommendation=True, minimum_hours_between_runs=96)
+        negative = self.recommend(reference_utc=finish + timedelta(minutes=2))["negative_price_recommendation"]
+        self.assertTrue(negative["ready_to_start"])
+        self.assertTrue(negative["cooldown_bypassed_for_negative_price"])
+        self.assertEqual(negative["negative_window_runs"], 1)
+        self.assertEqual(negative["maximum_runs_per_window"], 2)
+
+    def test_per_programme_limit_rotates_to_another_negative_enabled_programme(self):
+        first_finish = self.reference + timedelta(minutes=28.4)
+        self.model["recent_cycles"] = [{"finish": first_finish.isoformat(), "runtime_minutes": 28.4}]
+        self.policy["maximum_runs_per_window"] = 1
+        maintenance = {**self.model, "program": "MachineCare", "expected_runtime_minutes": 60,
+                       "expected_energy_kwh": 1.2, "recent_cycles": []}
+        excluded = {**maintenance, "program": "NormalOnly", "expected_energy_kwh": 5}
+        policies = [self.policy, {**self.policy, "program": "MachineCare", "maximum_runs_per_window": 10},
+                    {**self.policy, "program": "NormalOnly", "allow_normal_recommendation": True,
+                     "allow_negative_price_run": False}]
+        result = recommend_cycle([self.model, maintenance, excluded], policies, self.periods,
+            reference_utc=first_finish + timedelta(minutes=2), search_hours=1,
+            candidate_interval_minutes=5, forecast_hours=0)
+        negative = result["negative_price_recommendation"]
+        self.assertEqual(negative["program"], "MachineCare")
+        self.assertTrue(negative["ready_to_start"])
+        self.assertEqual([p["program"] for p in negative["program_options"]], ["MachineCare"])
+
+    def test_immediate_probe_respects_earliest_start_deadline_and_blocked_windows(self):
+        cases = [
+            {"earliest_start_utc": self.reference + timedelta(minutes=15)},
+            {"latest_finish_utc": self.reference + timedelta(minutes=10)},
+            {"blocked_windows": [{"start": self.reference, "end": self.reference + timedelta(minutes=15)}]},
+            {"excluded_programs": ["Quick45"]},
+        ]
+        for options in cases:
+            with self.subTest(options=options):
+                result = self.recommend(**options)
+                self.assertFalse(result.get("negative_price_recommendation", {}).get("ready_to_start", False))
+
+    def test_negative_disabled_or_disabled_policy_cannot_start_immediately(self):
+        for change in ({"allow_negative_price_run": False}, {"enabled": False}):
+            with self.subTest(change=change):
+                original = dict(self.policy)
+                self.policy.update(change)
+                result = self.recommend()
+                self.assertFalse(result.get("negative_price_recommendation", {}).get("ready_to_start", False))
+                self.policy = original
+
+    def test_off_grid_probe_does_not_change_normal_recommendation_rounding(self):
+        self.policy.update(allow_normal_recommendation=True, allow_negative_price_run=False)
+        self.periods[1]["price_p_per_kwh"] = -1
+        result = self.recommend()
+        self.assertEqual(result["now_recommendation"]["start"], (self.start + timedelta(minutes=5)).isoformat())
+        self.assertEqual(result["negative_price_recommendation"]["status"], "not_ready")
+
+
 class NegativePriceSafetyTests(unittest.TestCase):
     def test_high_power_profile_must_fit_inside_negative_window(self):
         start = datetime(2026, 7, 28, tzinfo=timezone.utc)

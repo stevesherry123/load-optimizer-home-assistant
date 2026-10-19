@@ -2,8 +2,10 @@
 
 import ast
 import asyncio
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import logging
+import math
 from pathlib import Path
 import re
 import sys
@@ -22,7 +24,7 @@ tree = ast.parse(SOURCE.read_text())
 tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom, ast.ClassDef))
              or isinstance(node, ast.ClassDef) and node.name == "LegacyRuntime"]
 namespace = {"asyncio": asyncio, "datetime": datetime, "timedelta": timedelta, "timezone": timezone,
-             "logging": logging, "re": re, "Any": object, "Callable": object, "HomeAssistant": object,
+             "logging": logging, "math": math, "re": re, "Any": object, "Callable": object, "HomeAssistant": object,
              "Store": Mock, "DOMAIN": "load_optimizer", "app_runtime": app_runtime,
              "unquote": unquote, "urlparse": urlparse, "ConfigurationError": ConfigurationError,
              "appliance_document": appliance_document,
@@ -53,6 +55,181 @@ class AdapterSourceSafetyTests(unittest.IsolatedAsyncioTestCase):
 
     async def check(self):
         return await self.runtime.async_automatic_start_block(self.options, self.request)
+
+    def negative_fixture(self):
+        self.options.update(tariff_entity="sensor.rates", tariff_price_unit="p_per_kwh")
+        self.options["instances_yaml"] += '''
+  program_policies:
+    - program: Quick45
+      enabled: true
+      allow_negative_price_run: true
+      maximum_runs_per_window: 1
+'''
+        self.request.update(mode="negative_price", automatic=True, program="Quick45",
+                            finish=(self.now + timedelta(minutes=30)).isoformat())
+        instance = {}
+        cycle = {"runtime_minutes": 30, "energy_kwh": 0.7, "peak_power": 1000,
+                 "sample_count": 31, "program": "Quick45",
+                 "finish": (self.now - timedelta(days=1)).isoformat(),
+                 "power_profile": [{"offset_seconds": 0, "power_w": 1000},
+                                   {"offset_seconds": 1800, "power_w": 1000}]}
+        for _ in range(5):
+            app_runtime.update_program_model(instance, cycle)
+        self.runtime.state = {"instances": {"1": instance}}
+        self.put("sensor.rates", "ready", rates=[
+            {"start": self.now.isoformat(), "end": (self.now + timedelta(hours=1)).isoformat(),
+             "price": -1},
+            {"start": (self.now + timedelta(hours=1)).isoformat(),
+             "end": (self.now + timedelta(hours=6)).isoformat(), "price": 20},
+        ])
+        self.hass.services.async_call.return_value = {"calendar.no_run": {"events": []}}
+
+    async def negative_check(self):
+        class Clock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return self.now
+
+        with patch.dict(namespace, datetime=Clock), \
+             patch.object(app_runtime, "source_state", self.runtime._source_state), \
+             patch.object(app_runtime, "publish_entity"):
+            return await self.check()
+
+    async def test_negative_preflight_reprices_actual_programme_without_mutating_learning(self):
+        self.negative_fixture()
+        before = deepcopy(self.runtime.state)
+        self.assertIsNone(await self.negative_check())
+        self.assertEqual(self.runtime.state, before)
+        self.request["program"] = "Unlearned"
+        self.assertEqual(await self.negative_check(), "negative_price_program_unavailable")
+
+    async def test_negative_preflight_rejects_revised_positive_prices_without_a_scan(self):
+        self.negative_fixture()
+        self.assertIsNone(await self.negative_check())
+        self.values["sensor.rates"].attributes["rates"][0]["price"] = 25
+        self.assertEqual(await self.negative_check(), "power_hungry_window_outside_negative_price")
+
+    async def test_free_calendar_is_fetched_fresh_and_cancellation_vetoes_command(self):
+        self.negative_fixture()
+        self.options["free_window_entity"] = "calendar.free"
+        self.put("calendar.free", "on", start_time=self.now.isoformat(), end_time=(self.now + timedelta(hours=1)).isoformat())
+        self.values["sensor.rates"].attributes["rates"][0]["price"] = 25
+        events = [{"start": self.now.isoformat(), "end": (self.now + timedelta(hours=1)).isoformat()}]
+        self.hass.services.async_call.return_value = {"calendar.no_run": {"events": []}, "calendar.free": {"events": events}}
+        before = deepcopy(self.runtime.state)
+        self.assertIsNone(await self.negative_check())
+        self.assertEqual(self.runtime.state, before)
+        self.hass.services.async_call.return_value["calendar.free"]["events"] = []
+        self.assertEqual(await self.negative_check(), "power_hungry_window_outside_negative_price")
+
+    async def test_free_source_failure_and_power_down_take_precedence(self):
+        self.negative_fixture()
+        self.options["free_window_entity"] = "calendar.free"
+        self.put("calendar.free", "unavailable")
+        self.assertEqual(await self.negative_check(), "free_window_source_unavailable")
+        self.put("calendar.free", "on")
+        events = [{"start": self.now.isoformat(), "end": (self.now + timedelta(hours=1)).isoformat()}]
+        self.hass.services.async_call.return_value = {"calendar.no_run": {"events": events}, "calendar.free": {"events": events}}
+        self.assertEqual(await self.negative_check(), "blocked_window_overlap")
+
+    async def test_negative_preflight_rejects_missing_unavailable_and_incomplete_tariffs(self):
+        self.negative_fixture()
+        self.values.pop("sensor.rates")
+        self.assertEqual(await self.negative_check(), "negative_price_tariff_unavailable")
+        self.put("sensor.rates", "unavailable", rates=[{
+            "start": self.now.isoformat(), "end": (self.now + timedelta(hours=1)).isoformat(), "price": -1}])
+        self.assertEqual(await self.negative_check(), "negative_price_tariff_unavailable")
+        self.put("sensor.rates", "ready", rates=[{
+            "start": self.now.isoformat(), "end": (self.now + timedelta(minutes=29)).isoformat(), "price": -1}])
+        self.assertEqual(await self.negative_check(), "negative_price_cycle_not_fully_priced")
+
+    async def test_negative_preflight_checks_live_policy_and_window_cap(self):
+        self.negative_fixture()
+        self.options["instances_yaml"] = self.options["instances_yaml"].replace(
+            "allow_negative_price_run: true", "allow_negative_price_run: false")
+        self.assertEqual(await self.negative_check(), "negative_price_program_not_permitted")
+        self.options["instances_yaml"] = self.options["instances_yaml"].replace(
+            "allow_negative_price_run: false", "allow_negative_price_run: true")
+        model = self.runtime.state["instances"]["1"]["program_models"]["Quick45"]
+        model["recent_cycles"].append({"finish": self.now.isoformat(), "runtime_minutes": 1})
+        model["runs"] += 1
+        self.values["sensor.rates"].attributes["rates"][0]["start"] = (
+            self.now - timedelta(minutes=30)).isoformat()
+        self.assertEqual(await self.negative_check(), "maximum_runs_per_window_reached")
+
+    async def test_negative_preflight_respects_live_deadline_and_remote_exclusion(self):
+        self.negative_fixture()
+        self.options["instances_yaml"] += "\n  schedule_latest_finish_entity: input_datetime.deadline\n"
+        self.put("input_datetime.deadline", (self.now + timedelta(minutes=29)).isoformat())
+        self.assertEqual(await self.negative_check(), "negative_price_outside_schedule_constraints")
+        self.put("input_datetime.deadline", (self.now + timedelta(minutes=30)).isoformat())
+        self.assertIsNone(await self.negative_check())
+        self.put("input_text.load_optimizer_1_remote_start_blocked_programs", "Quick45")
+        self.assertEqual(await self.negative_check(), "negative_price_program_not_permitted")
+
+    async def test_negative_preflight_uses_time_after_awaited_calendar_fetch(self):
+        self.negative_fixture()
+        self.values["sensor.rates"].attributes["rates"][0]["end"] = (
+            self.now + timedelta(minutes=30, seconds=5)).isoformat()
+        self.values["sensor.rates"].attributes["rates"][1]["start"] = (
+            self.now + timedelta(minutes=30, seconds=5)).isoformat()
+
+        async def fetch(*_args, **_kwargs):
+            self.now += timedelta(seconds=6)
+            return {"calendar.no_run": {"events": []}}
+
+        self.hass.services.async_call.side_effect = fetch
+        self.assertEqual(await self.negative_check(), "power_hungry_window_outside_negative_price")
+
+    async def test_negative_preflight_uses_learned_duration_for_full_cycle_calendar_check(self):
+        self.negative_fixture()
+        self.request["finish"] = (self.now + timedelta(minutes=1)).isoformat()
+        self.hass.services.async_call.return_value = {"calendar.no_run": {"events": [{
+            "start": (self.now + timedelta(minutes=20)).isoformat(),
+            "end": (self.now + timedelta(minutes=40)).isoformat(),
+        }]}}
+        self.assertEqual(await self.negative_check(), "blocked_window_overlap")
+
+    async def test_negative_preflight_rejects_conflicting_rates_but_deduplicates_identical_sources(self):
+        self.negative_fixture()
+        self.options["tariff_entities"] = "sensor.rates,sensor.same_rates"
+        self.put("sensor.same_rates", "ready", rates=deepcopy(self.values["sensor.rates"].attributes["rates"]))
+        self.assertIsNone(await self.negative_check())
+        self.values["sensor.same_rates"].attributes["rates"][0]["price"] = 25
+        self.assertEqual(await self.negative_check(), "negative_price_tariff_invalid")
+
+    async def test_negative_preflight_distinguishes_unpublished_rates_from_malformed_published_rates(self):
+        self.negative_fixture()
+        self.options["tariff_entities"] = "sensor.rates,event.future_rates"
+        self.put("event.future_rates", "ready", rates=[])
+        self.assertIsNone(await self.negative_check())
+        self.put("event.future_rates", "ready", rates=[{
+            "start": self.now.isoformat(), "end": (self.now + timedelta(hours=1)).isoformat(),
+            "price": "NaN"}])
+        self.assertEqual(await self.negative_check(), "negative_price_tariff_invalid")
+
+    async def test_negative_preflight_rechecks_manual_free_window_helpers(self):
+        self.negative_fixture()
+        self.values["sensor.rates"].attributes["rates"][0]["price"] = 25
+        helpers = app_runtime.SPECIAL_PRICE_WINDOW_ENTITIES
+        self.put(helpers["enabled"], "on")
+        self.put(helpers["start"], self.now.isoformat())
+        self.put(helpers["end"], (self.now + timedelta(hours=1)).isoformat())
+        self.put(helpers["price"], "0")
+        self.assertIsNone(await self.negative_check())
+        self.put(helpers["enabled"], "off")
+        self.assertEqual(await self.negative_check(), "power_hungry_window_outside_negative_price")
+
+    async def test_negative_preflight_rejects_model_growth_during_calendar_fetch(self):
+        self.negative_fixture()
+
+        async def fetch(*_args, **_kwargs):
+            model = self.runtime.state["instances"]["1"]["program_models"]["Quick45"]
+            model["statistics"]["runtime_minutes"]["mean"] = 60
+            return {"calendar.no_run": {"events": []}}
+
+        self.hass.services.async_call.side_effect = fetch
+        self.assertEqual(await self.negative_check(), "negative_price_model_changed")
 
     async def test_calendar_failure_is_not_cached_as_valid_empty_and_recovers(self):
         self.hass.services.async_call.side_effect = RuntimeError("Synthetic fetch failure")

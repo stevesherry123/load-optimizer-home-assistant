@@ -6,6 +6,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
+import math
 import re
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse
@@ -283,20 +284,26 @@ class LegacyRuntime:
 
     async def _async_prefetch_calendar_events(self, configs: list[dict[str, Any]], now: datetime) -> None:
         calendar_ids: set[str] = set()
+        chart_ranges: dict[str, tuple[datetime, datetime]] = {}
         end = now + timedelta(hours=24)
         instances = (self.state or {}).get("instances", {})
         for config in configs:
             instance = instances.get(str(config.get("instance_id")), {})
             end = max(end, app_runtime.planning_window_end(config, instance, now))
-            for key in ("green_window_entity", "blocked_window_entity"):
+            for key in ("green_window_entity", "blocked_window_entity", "free_window_entity"):
                 for entity_id in app_runtime.entity_list(config.get(key, "")):
                     if entity_id.startswith("calendar."):
                         calendar_ids.add(entity_id)
+                        if key == "free_window_entity":
+                            a, b = app_runtime.price_chart_bounds(now, config.get("tariff_timezone", "Europe/London"))
+                            previous = chart_ranges.get(entity_id, (a, b))
+                            chart_ranges[entity_id] = (min(a, previous[0]), max(b, previous[1]))
         self.calendar_events = {}
         if not calendar_ids:
             return
         for entity_id in sorted(calendar_ids):
-            events = await self._async_calendar_events(entity_id, now, end)
+            a, b = chart_ranges.get(entity_id, (now, end))
+            events = await self._async_calendar_events(entity_id, min(now, a), max(end, b))
             if events is not None:
                 self.calendar_events[entity_id] = events
 
@@ -335,19 +342,27 @@ class LegacyRuntime:
             return "automatic_configuration_unavailable"
         self._normalise_calendar_entities(config)
         entity_ids = app_runtime.entity_list(config.get("blocked_window_entity", ""))
-        if entity_ids:
+        negative = request.get("mode") == "negative_price"
+        free_ids = app_runtime.entity_list(config.get("free_window_entity", "")) if negative else []
+        summary = self._negative_program_summary(request) if negative else None
+        if negative and summary is None:
+            return "negative_price_program_unavailable"
+        duration = None
+        calendars = {}
+        if entity_ids or free_ids:
             start = datetime.now(timezone.utc)
             planned_start = app_runtime.datetime_from_value(request.get("start"))
             planned_finish = app_runtime.datetime_from_value(request.get("finish"))
             if not planned_start or not planned_finish or planned_finish <= planned_start:
                 return "blocked_window_duration_unavailable"
             duration = planned_finish - planned_start
+            if summary is not None:
+                duration = max(duration, timedelta(minutes=summary["expected_runtime_minutes"]))
             # Cover the bounded fetch latency as well as the whole cycle.
             fetch_end = start + duration + timedelta(seconds=10 * sum(
-                entity.startswith("calendar.") for entity in entity_ids
+                entity.startswith("calendar.") for entity in set(entity_ids + free_ids)
             ))
-            calendars = {}
-            for entity_id in entity_ids:
+            for entity_id in sorted(set(entity_ids + free_ids)):
                 if entity_id.startswith("calendar."):
                     calendars[entity_id] = await self._async_calendar_events(entity_id, start, fetch_end)
             start = datetime.now(timezone.utc)
@@ -360,7 +375,7 @@ class LegacyRuntime:
                 calendar_reader=calendars.get,
                 naive_timezone=self.hass.config.time_zone,
             )
-            if not diagnostic or not diagnostic.get("readable"):
+            if entity_ids and (not diagnostic or not diagnostic.get("readable")):
                 return "blocked_window_source_unavailable"
             if windows:
                 return "blocked_window_overlap"
@@ -368,7 +383,110 @@ class LegacyRuntime:
         power = app_runtime.numeric_state(self._source_state(ADAPTER_MARKER, config["power_sensor"]))
         if power is None or power < 0:
             return "power_source_unavailable"
+        if negative:
+            return self._negative_price_start_block(config, request, datetime.now(timezone.utc), duration, calendars)
         return None
+
+    def _negative_program_summary(self, request: dict[str, Any]) -> dict | None:
+        program = app_runtime.normalise_program(request.get("program"))
+        models = (self.state or {}).get("instances", {}).get("1", {}).get("program_models", {})
+        model = models.get(program)
+        if not isinstance(model, dict):
+            return None
+        summary = app_runtime.program_summary(program, model)
+        runtime = summary.get("expected_runtime_minutes")
+        if runtime is None or not math.isfinite(runtime) or not 0 < runtime <= 7 * 24 * 60:
+            return None
+        return summary
+
+    def _negative_price_start_block(
+        self, config: dict[str, Any], request: dict[str, Any], now: datetime,
+        checked_duration: timedelta | None,
+        free_calendars: dict | None = None,
+    ) -> str | None:
+        """Reprice only the requested programme, after the last awaited source read."""
+        summary = self._negative_program_summary(request)
+        if summary is None:
+            return "negative_price_program_unavailable"
+        if checked_duration is not None and timedelta(minutes=summary["expected_runtime_minutes"]) > checked_duration:
+            return "negative_price_model_changed"
+        program = summary["program"]
+        policies = app_runtime.resolve_program_policies({program: {}}, config.get("program_policies", []))
+        policy = next(item for item in policies if item["program"] == program)
+        if not policy["enabled"] or not policy["allow_negative_price_run"] or program in app_runtime.remote_start_blocked_programs(ADAPTER_MARKER, "1"):
+            return "negative_price_program_not_permitted"
+
+        periods = []
+        tariff_entities = config.get("tariff_entities", [])
+        if not tariff_entities:
+            return "negative_price_tariff_unavailable"
+        for entity_id in tariff_entities:
+            source = self._source_state(ADAPTER_MARKER, entity_id)
+            if source is None or str(source.get("state", "")).strip().lower() in {"", "unknown", "unavailable", "none"}:
+                return "negative_price_tariff_unavailable"
+            try:
+                periods.extend(app_runtime.tariff_periods_from_entity(
+                    source, reference_utc=now, timezone_name=config["tariff_timezone"],
+                    price_unit=config["tariff_price_unit"],
+                ))
+            except app_runtime.TariffDataUnavailable:
+                # Tomorrow can legitimately be unpublished; full-cycle coverage is checked below.
+                continue
+            except (TypeError, ValueError):
+                return "negative_price_tariff_invalid"
+        if not periods:
+            return "negative_price_tariff_invalid"
+        periods = sorted({(item["start"], item["end"], item["price_p_per_kwh"]): item
+                          for item in periods}.values(), key=lambda item: item["start"])
+        if any(first["end"] > second["start"] for first, second in zip(periods, periods[1:])):
+            return "negative_price_tariff_invalid"
+        if config.get("free_window_entity"):
+            windows, diagnostic = app_runtime.free_windows_from_entity(
+                ADAPTER_MARKER, config["free_window_entity"], start=now,
+                end=now + timedelta(minutes=summary["expected_runtime_minutes"]),
+                state_reader=lambda entity: self._source_state(ADAPTER_MARKER, entity),
+                calendar_reader=(free_calendars or {}).get,
+            )
+            if not diagnostic["readable"]:
+                return "free_window_source_unavailable"
+            periods = app_runtime.overlay_free_windows(periods, windows)
+        manual = app_runtime.special_price_window(
+            ADAPTER_MARKER, timezone_name=config["tariff_timezone"], reference_utc=now,
+        )
+        if manual["applied"]:
+            periods = app_runtime.overlay_price_window(
+                periods, start=manual["start_datetime"], end=manual["end_datetime"],
+                price_p_per_kwh=manual["price_p_per_kwh"], label=manual["label"],
+            )
+
+        constraints = {}
+        for setting, argument in (("schedule_earliest_start_entity", "earliest_start_utc"),
+                                  ("schedule_latest_finish_entity", "latest_finish_utc")):
+            entity_id = config.get(setting)
+            if entity_id:
+                value = app_runtime.datetime_from_entity_state(
+                    self._source_state(ADAPTER_MARKER, entity_id), naive_timezone=config["tariff_timezone"],
+                )
+                if value is None:
+                    return "negative_price_outside_schedule_constraints"
+                constraints[argument] = value
+        result = app_runtime.recommend_cycle(
+            [summary], [policy], periods, reference_utc=now, search_hours=0,
+            candidate_interval_minutes=1, forecast_hours=0,
+            schedule_timezone=config["tariff_timezone"], **constraints,
+        )
+        recommendation = result.get("negative_price_recommendation", {})
+        if recommendation.get("ready_to_start") is True and recommendation.get("program") == program:
+            return None
+        reason = recommendation.get("reason")
+        if reason in {"maximum_runs_per_window_reached", "negative_run_history_incomplete"}:
+            return reason
+        diagnostic = next(iter(result.get("program_diagnostics", [])), {})
+        if result.get("rejected_constraints") or constraints.get("earliest_start_utc", now) > now:
+            return "negative_price_outside_schedule_constraints"
+        if diagnostic.get("rejected_unpriced_points"):
+            return "negative_price_cycle_not_fully_priced"
+        return "power_hungry_window_outside_negative_price"
 
     def _render_template(self, token: str, template: str) -> object | None:
         state_attr_match = re.search(r"state_attr\('([^']+)',\s*'([^']+)'\)", template)

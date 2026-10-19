@@ -19,6 +19,10 @@ SCHEDULE_STRATEGIES = {"cheapest_absolute", "cheapest_earliest_finish", "cheapes
 WINDOW_PREFERENCES = {"any", "overnight_only", "daytime_only", "prefer_overnight", "prefer_daytime"}
 
 
+class TariffDataUnavailable(ValueError):
+    """A tariff entity has not exposed a populated supported rate attribute."""
+
+
 def _nearest_year(day: int, month: int, reference_local: datetime) -> int:
     candidates = []
     for year in (reference_local.year - 1, reference_local.year, reference_local.year + 1):
@@ -192,7 +196,7 @@ def tariff_periods_from_entity(
     rates = _find_structured_rates(attributes)
     if rates:
         return parse_structured_rates(rates, price_unit=price_unit)
-    raise ValueError("Tariff entity has no supported future-rate attribute")
+    raise TariffDataUnavailable("Tariff entity has no supported future-rate attribute")
 
 
 def overlay_price_window(
@@ -292,19 +296,56 @@ def _negative_power_window_fit(start: datetime, model: dict, periods: list[dict]
     }
 
 
+def _learned_cycle_span(cycle: object) -> tuple[datetime, datetime] | None:
+    """Validate a retained cycle before using it as count or coverage evidence."""
+    if not isinstance(cycle, Mapping):
+        return None
+    try:
+        finish = _parse_timestamp(cycle.get("finish"))
+        raw_runtime = cycle.get("runtime_minutes")
+        if isinstance(raw_runtime, bool):
+            return None
+        runtime = float(raw_runtime)
+        if not math.isfinite(runtime) or runtime <= 0:
+            return None
+        return finish - timedelta(minutes=runtime), finish
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def _recent_runs_in_window(model: dict, window_start: datetime, window_end: datetime) -> int:
     """Count learned runs that overlap a tariff opportunity window."""
+    history = model.get("recent_cycles", [])
+    if not isinstance(history, list):
+        return 0
     count = 0
-    for cycle in model.get("recent_cycles", []) or []:
-        try:
-            finish = _parse_timestamp(cycle.get("finish"))
-            runtime = float(cycle.get("runtime_minutes"))
-        except (AttributeError, TypeError, ValueError):
-            continue
-        cycle_start = finish - timedelta(minutes=runtime)
-        if cycle_start < window_end and finish > window_start:
+    for cycle in history:
+        span = _learned_cycle_span(cycle)
+        if span is not None and span[0] < window_end and span[1] > window_start:
             count += 1
     return count
+
+
+def _negative_run_history_complete(model: dict, window_start: datetime) -> bool:
+    history = model.get("recent_cycles", [])
+    runs = model.get("runs", 0)
+    if not isinstance(history, list) or type(runs) is not int or runs < 0:
+        return False
+    spans = [_learned_cycle_span(cycle) for cycle in history]
+    if any(span is None for span in spans):
+        return False
+    finishes = [span[1] for span in spans]
+    if any(later < earlier for earlier, later in zip(finishes, finishes[1:])):
+        return False
+    if runs <= len(history):
+        return True
+    # Only verified chronological history can anchor the omitted older runs.
+    if finishes:
+        return finishes[0] <= window_start
+    try:
+        return _parse_timestamp(model.get("last_seen")) <= window_start
+    except (TypeError, ValueError, OverflowError):
+        return False
 
 
 def _apply_negative_run_limit(model: dict, policy: dict, negative_fit: dict) -> dict:
@@ -312,7 +353,9 @@ def _apply_negative_run_limit(model: dict, policy: dict, negative_fit: dict) -> 
     result = dict(negative_fit)
     maximum = int(policy.get("maximum_runs_per_window") or 0)
     runs = 0
+    history_complete = True
     if result.get("fits") and result.get("window_start") and result.get("window_end"):
+        history_complete = _negative_run_history_complete(model, _parse_timestamp(result["window_start"]))
         runs = _recent_runs_in_window(
             model,
             _parse_timestamp(result["window_start"]),
@@ -323,7 +366,10 @@ def _apply_negative_run_limit(model: dict, policy: dict, negative_fit: dict) -> 
         "runs_in_window": runs,
         "maximum_runs_per_window": maximum,
         "run_limit_reached": limit_reached,
+        "run_history_complete": history_complete,
     })
+    if maximum > 0 and not history_complete:
+        result.update(fits=False, reason="negative_run_history_incomplete")
     if limit_reached:
         result.update(fits=False, reason="maximum_runs_per_window_reached")
     return result
@@ -707,6 +753,17 @@ def summarize_program_option(candidate: dict, reference_utc: datetime, now_cost:
     }
 
 
+def _negative_candidate_sort_key(candidate: dict, reference_utc: datetime) -> tuple:
+    return (
+        candidate["start"] > reference_utc,
+        -candidate.get("negative_price_priority", 50),
+        -candidate.get("energy_kwh_per_minute", 0),
+        -candidate.get("energy_kwh", 0),
+        candidate["total_cost_pence"],
+        candidate.get("preference_rank", 50),
+    )
+
+
 def summarize_program_options(
     candidates: list[dict],
     *,
@@ -741,13 +798,7 @@ def summarize_program_options(
         eligible = [item for item in candidates if item.get("negative_price_run")]
 
         def sort_key(item: dict) -> tuple:
-            return (
-                -item.get("negative_price_priority", 50),
-                -item.get("energy_kwh_per_minute", 0),
-                -item.get("energy_kwh", 0),
-                item["total_cost_pence"],
-                item.get("preference_rank", 50),
-            )
+            return _negative_candidate_sort_key(item, reference_utc)
     elif intent == "greenest":
         eligible = [item for item in candidates if item.get("green_window_overlap_seconds", 0) > 0]
 
@@ -1081,11 +1132,20 @@ def recommend_cycle(
     rejected_cooldowns = 0
     rejected_blocked = 0
     rejected_negative_run_limits = 0
+    rejected_negative_run_history = 0
     program_diagnostics = []
     search_end = reference_utc + timedelta(hours=search_hours)
     earliest_allowed_start = earliest_start_utc.astimezone(timezone.utc) if earliest_start_utc else reference_utc
     latest_allowed_finish = latest_finish_utc.astimezone(timezone.utc) if latest_finish_utc else None
     first_start = _next_candidate(max(reference_utc, earliest_allowed_start), candidate_interval_minutes)
+    candidate_starts = []
+    start = first_start
+    while start <= search_end:
+        candidate_starts.append(start)
+        start += timedelta(minutes=candidate_interval_minutes)
+    # A scan between grid points must still see a usable free-price start now.
+    if earliest_allowed_start <= reference_utc < first_start:
+        candidate_starts.insert(0, reference_utc)
     for model in models:
         diagnostic = {
             "program": model.get("program"),
@@ -1127,20 +1187,20 @@ def recommend_cycle(
         if cooldown_until:
             diagnostic["cooldown_until"] = cooldown_until.isoformat()
             diagnostic["minimum_hours_between_runs"] = policy.get("minimum_hours_between_runs")
-        start = first_start
-        while start <= search_end:
+        for start in candidate_starts:
+            immediate_probe = start < first_start
+            if immediate_probe and not policy["allow_negative_price_run"]:
+                continue
             diagnostic["candidate_points"] += 1
             finish = start + timedelta(minutes=float(model["expected_runtime_minutes"]))
             if latest_allowed_finish and finish > latest_allowed_finish:
                 rejected_constraints += 1
                 diagnostic["rejected_constraints"] += 1
-                start += timedelta(minutes=candidate_interval_minutes)
                 continue
             cooldown_active = bool(cooldown_until and start < cooldown_until)
             if candidate_overlaps_windows({"start": start, "finish": finish}, blocked_windows or []):
                 rejected_blocked += 1
                 diagnostic["rejected_blocked_points"] += 1
-                start += timedelta(minutes=candidate_interval_minutes)
                 continue
             is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
             is_daytime = not is_overnight
@@ -1148,7 +1208,6 @@ def recommend_cycle(
                 estimate = estimate_cycle_cost(start, model, periods)
             except ValueError:
                 diagnostic["rejected_unpriced_points"] += 1
-                start += timedelta(minutes=candidate_interval_minutes)
                 continue
             negative_fit = _apply_negative_run_limit(
                 model,
@@ -1161,8 +1220,15 @@ def recommend_cycle(
                 if negative_fit.get("reason") == "maximum_runs_per_window_reached":
                     diagnostic["rejected_negative_run_limit_points"] += 1
                     rejected_negative_run_limits += 1
+                elif negative_fit.get("reason") == "negative_run_history_incomplete":
+                    diagnostic["rejected_negative_run_history_points"] = diagnostic.get("rejected_negative_run_history_points", 0) + 1
+                    rejected_negative_run_history += 1
+            if immediate_probe and not negative_eligible:
+                continue
             estimate = apply_operating_costs(estimate, policy)
-            normal_eligible = bool(policy["allow_normal_recommendation"] and not cooldown_active)
+            normal_eligible = bool(
+                policy["allow_normal_recommendation"] and not cooldown_active and not immediate_probe
+            )
             automatic_eligible = bool(normal_eligible or negative_eligible)
             if cooldown_active:
                 rejected_cooldowns += 1
@@ -1212,13 +1278,10 @@ def recommend_cycle(
                 if negative_eligible:
                     negative_candidates.append(candidate)
                 if not negative_eligible and window_preference == "overnight_only" and not is_overnight:
-                    start += timedelta(minutes=candidate_interval_minutes)
                     continue
                 if not negative_eligible and window_preference == "daytime_only" and not is_daytime:
-                    start += timedelta(minutes=candidate_interval_minutes)
                     continue
                 candidates.append(candidate)
-            start += timedelta(minutes=candidate_interval_minutes)
         if diagnostic["priced_points"] == 0:
             if not automatic_policy_allowed:
                 diagnostic.update(status="excluded", reason="policy_not_allowed_for_recommendation")
@@ -1232,17 +1295,28 @@ def recommend_cycle(
                 diagnostic.update(status="excluded", reason="no_fully_priced_points")
             elif diagnostic["rejected_negative_run_limit_points"]:
                 diagnostic.update(status="excluded", reason="maximum_runs_per_window_reached")
+            elif diagnostic.get("rejected_negative_run_history_points"):
+                diagnostic.update(status="excluded", reason="negative_run_history_incomplete")
             elif diagnostic["rejected_negative_power_window_points"]:
                 diagnostic.update(status="excluded", reason="negative_power_window_mismatch")
             else:
                 diagnostic.update(status="excluded", reason="no_eligible_candidates")
         program_diagnostics.append(diagnostic)
+    negative_unavailable_reason = (
+        "maximum_runs_per_window_reached" if rejected_negative_run_limits
+        else "negative_run_history_incomplete" if rejected_negative_run_history
+        else "no_negative_price_candidate"
+    )
     if not candidates:
         return {
+            "negative_price_recommendation": summarize_decision(
+                intent="negative_price", candidate=None, reference_utc=reference_utc, now_cost=None,
+                reason=negative_unavailable_reason,
+            ),
             "status": "insufficient_profile" if rejected_profiles else "no_eligible_programs",
             "reason": (
-                "maximum_runs_per_window_reached"
-                if rejected_negative_run_limits else
+                negative_unavailable_reason
+                if rejected_negative_run_limits or rejected_negative_run_history else
                 ("insufficient_profile" if rejected_profiles else "no_eligible_programs")
             ),
             "rejected_profiles": rejected_profiles,
@@ -1323,15 +1397,9 @@ def recommend_cycle(
         soon_candidates,
         key=lambda item: (item["total_cost_pence"], item["preference_rank"], item["finish"]),
     ) if soon_candidates else None
-    best_negative = max(
+    best_negative = min(
         negative_candidates,
-        key=lambda item: (
-            item["negative_price_priority"],
-            item["energy_kwh_per_minute"],
-            item["energy_kwh"],
-            -item["total_cost_pence"],
-            -item["preference_rank"],
-        ),
+        key=lambda item: _negative_candidate_sort_key(item, reference_utc),
     ) if negative_candidates else None
     now_program_options = summarize_program_options(
         normal_candidates,
@@ -1468,7 +1536,7 @@ def recommend_cycle(
             reason=(
                 "best_negative_price_energy_intensity"
                 if best_negative else
-                ("maximum_runs_per_window_reached" if rejected_negative_run_limits else "no_negative_price_candidate")
+                negative_unavailable_reason
             ),
             program_options=negative_price_program_options,
         ),

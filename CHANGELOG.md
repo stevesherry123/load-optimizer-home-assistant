@@ -2,6 +2,70 @@
 
 ## Unreleased
 
+- Plot effective import prices in the full dashboard, including verified future
+  Power Up zero-price intervals and manual price overrides. Preserve raw tariff
+  history, exact event boundaries, missing-rate gaps and the 24/48-hour layout.
+- Explain a dishwasher's native delayed-start timer separately from an active
+  learning capture or queued optimizer request, without changing either request.
+- Show automatic-only programme cooldown dates and readable pricing/source
+  blockers in both dashboard templates. Keep manual-start safety checks intact.
+- Refresh publication guidance and record the outstanding beta acceptance gates.
+
+## 1.7.0-beta.9
+
+- Add explicit free-electricity calendar sources for learned-appliance pricing:
+  Power Up event intervals override effective rates to zero without modifying
+  contracted history or filling tariff gaps. Revalidate at automatic start;
+  Power Down remains a no-run constraint.
+- Distinguish Bosch delayed starts from washing. Exclude standby captures from
+  learning and protect native manual timers from optimiser start commands.
+
+- Replace optional AI prose with structured selection of verified finding IDs.
+  Render all dates, prices, coverage and finding text locally; the provider can
+  only choose which available findings to highlight and their order.
+- Reject unknown, contradictory, duplicate, oversized or malformed selections
+  and additional provider fields. Always show partial-coverage and historical
+  warm-up notices; preserve manual-only generation and stale-result protection.
+- Validate with 440 unit tests and one real structured-provider replay using
+  genuine published tariff data. Natural upstream revision observation and
+  repeated free-price execution remain separate acceptance items.
+
+## 1.7.0-beta.8
+
+- Analyse contiguous published next-day rates through the evening peak without
+  requiring the unpublished trailing hours. Explicitly label partial coverage.
+- Compare historical prices over matching hours with duration-aware DST handling;
+  retain strict complete-day history storage and import validation.
+- Allow explicitly requested AI summaries of usable partial forecasts; invalidate
+  old summaries when coverage or prices change, including during generation.
+- Reject unavailable cached sources and unhealthy storage for narrative readiness.
+- Add partial-forecast, source-health, DST and real Home Assistant service tests.
+  Validated with 418 unit tests and minimum-version Home Assistant acceptance.
+
+## 1.7.0-beta.7
+
+- Consolidate testing into one `beta/next` branch; preserve existing release tags
+  and keep stable v1.5.7 separate.
+- Wait for whole-night tariff coverage before reserving automatic overnight
+  washes. Follow revised overnight recommendations until two minutes before the
+  saved start, preserving manual requests, active washes and reservations.
+- Record replanning and explain missing prices or a short overnight search.
+
+- Fix repeated free/negative-price scheduling between candidate grid points;
+  prefer an immediately usable permitted programme over a future opportunity.
+  Keep normal rounding, full-cycle pricing, no-run checks and explicit opt-ins.
+- Keep the 30-minute automatic request interval without reserving an overnight
+  request during that retry wait. Explain negative-mode waits, limits, confidence
+  and retry eligibility using the matching programme rather than overnight data.
+- Fail closed for finite negative-window limits when retained learned-cycle
+  history cannot establish the count. Preserve explicit zero-as-unlimited policy
+  and expose missing history without rewriting learning. Validate record shape,
+  chronological coverage and finite positive runtimes before trusting history.
+- Revalidate the exact requested programme against live prices, special-price
+  helpers, permissions and caps immediately before automatic negative-price
+  commands and fallbacks. Block stale fits after delays, price revisions or
+  changed schedule bounds. Cover the current learned duration in calendar
+  checks, without changing explicit manual starts or normal-request pricing.
 - Fix the new-install guide's missing recommendation policy and add executable
   generic-appliance and Home Connect examples, with negative-price runs off.
 - Separate fresh Home Connect activation from legacy migration; document current
@@ -33,7 +97,87 @@
   cycle after the search/forecast horizon. Include active capture elapsed time
   and restored startup models, without extending candidate start times or
   changing learning. Cover late no-run events and full green-window overlap.
-- Unreleased development only; no version bump, deployment or new control opt-in.
+
+
+## 1.7.0-beta.6
+
+- Fix automatic free/negative-price starts between five-minute candidate
+  boundaries. An eligible start now takes precedence over a better later slot,
+  allowing additional permitted runs after each confirmed completion.
+- Retain Negative programme opt-ins, per-programme/per-window run limits,
+  normal-mode cooldowns, pricing coverage, deadlines and physical safety checks.
+- Exercise the real planner and native controller together across negative,
+  zero-price and positive windows with isolated appliance commands.
+
+## 1.7.0-beta.5
+
+- Carry all stable v1.5.7 security/privacy, storage and control-boundary fixes
+  without promoting beta features or changing learning/history storage formats.
+- Require an administrator for tariff re-analysis, history import/export and
+  optional paid AI generation, including response-bearing actions on minimum HA.
+- Extend real HA permission checks to all ten actions using synthetic providers;
+  reject deeply nested history JSON without exposing request details.
+
+## 1.7.0-beta.4
+
+- Carry the validated stable v1.5.5 EV editor, retained settings, validation and
+  entity labels into the history/import beta without changing either store.
+- Extend real minimum-HA EV options/reload/restart acceptance to include the
+  beta's additional read-only tariff-analysis entities and devices.
+- Support registered hub links on both minimum and current Home Assistant for
+  tariff-analysis devices as well as appliances. Stable submission uses v1.5.6;
+  tariff history/import/AI are not promoted.
+
+## 1.7.0-beta.3
+
+- Carry the v1.5.4 unavailable-confidence startup fix into the tariff beta.
+  Learning and tariff-history stores are unchanged.
+
+## 1.7.0-beta.2
+
+- Carry the stable v1.5.3 scheduling diagnostics and MixedLoad/manual cooldown
+  fixes into the tariff-intelligence beta without removing history, import or AI
+  functionality. Preserve learned profiles, tariff history and selected controls.
+
+## 1.7.0-beta.1
+
+- Add portable JSON history import with atomic validation, dry-run default,
+  90-day default retention and explicit protection for live-captured history.
+- Add optional manually requested Home Assistant AI Task narrative summaries.
+  Only compact analysis is sent; stale text is hidden and provider failures
+  cannot change deterministic analysis or scheduling.
+- Installed on the owner's Home Assistant for controlled beta testing; stable
+  users remain on v1.5.0. The approved exact-tariff backfill is independently
+  verified; the mismatching legacy cache was preserved and not imported.
+- Verified a post-import restart and live downgrade/re-upgrade with all 90
+  imported days, their provenance and appliance learning counts preserved.
+  Actual AI provider testing remains gated on complete next-day prices.
+- Require matching tariff-source metadata for imports; reject unverified or
+  mismatched exports even when overwrite is requested.
+- Isolate provenance-aware history in schema-2 storage, copy existing history
+  without changing the old store, and preserve imported history across rollback.
+- Add an explicit legacy dt/r cache adapter, gated by verified tariff identity
+  matching the live rate entities, with off-thread parsing and gap/DST checks.
+
+## 1.6.0-beta.3
+
+- Use the midpoint median for equally weighted even-length tariff datasets.
+
+## 1.6.0-beta.2
+
+- Add explicit read-only tariff re-analysis and portable history-export actions.
+- Export only completed history with timezone and price-unit metadata.
+
+## 1.6.0-beta.1
+
+- Add source-scoped tariff history in independent integration storage, retaining
+  complete local days for 365 days with revision detection and deduplication.
+- Add a Tariff Intelligence device with tomorrow average/classification,
+  volatility, evening peak, shape comparison and cheapest one-to-four-hour starts.
+- Historical comparisons require 14 complete recent days; missing next-day data
+  remains explicitly waiting rather than producing a definitive classification.
+- Recalculate on rate publication as well as the normal coordinator interval.
+- Appliance profile costing and learning data are unchanged.
 
 ## 1.5.7
 

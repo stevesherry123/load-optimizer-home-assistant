@@ -30,6 +30,7 @@ from .const import (
     CONF_CHARGE_POWER_KW,
     CONF_CHARGER_EFFICIENCY,
     CONF_BLOCKED_WINDOW_ENTITY,
+    CONF_FREE_WINDOW_ENTITY,
     CONF_COST_CANDIDATE_INTERVAL,
     CONF_COST_FORECAST_HOURS,
     CONF_COST_FORECAST_INTERVAL,
@@ -89,10 +90,10 @@ def _appliance_review(hass, config: ApplianceConfiguration) -> str:
         for key, unit in (("power_sensor", "W"), ("energy_sensor", "kWh"),
                           ("program_sensor", None), ("state_sensor", None),
                           ("schedule_earliest_start_entity", None), ("schedule_latest_finish_entity", None),
-                          ("green_window_entity", None), ("blocked_window_entity", None)):
+                          ("green_window_entity", None), ("blocked_window_entity", None), ("free_window_entity", None)):
             if entity_id := item.get(key):
                 entity_ids = entity_id.split(",") if key in {
-                    "green_window_entity", "blocked_window_entity",
+                    "green_window_entity", "blocked_window_entity", "free_window_entity",
                 } else [entity_id]
                 for source_id in entity_ids:
                     sources.setdefault(source_id.strip(), set()).add(unit)
@@ -378,6 +379,7 @@ class LoadOptimizerConfigFlow(_ApplianceValidationFlow, config_entries.ConfigFlo
                 ),
                 vol.Optional(CONF_GREEN_WINDOW_ENTITY): str,
                 vol.Optional(CONF_BLOCKED_WINDOW_ENTITY): str,
+                vol.Optional(CONF_FREE_WINDOW_ENTITY): str,
                 vol.Optional(CONF_COST_SEARCH_HOURS, default=24): vol.All(
                     vol.Coerce(int), vol.Range(min=1, max=72)
                 ),
@@ -479,7 +481,7 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
             errors = {key if key in {
                 CONF_INSTANCES_YAML, CONF_SCAN_INTERVAL, CONF_TARIFF_ENTITY, CONF_TARIFF_ENTITIES,
                 CONF_TARIFF_TIMEZONE, CONF_TARIFF_PRICE_UNIT, CONF_GREEN_WINDOW_ENTITY,
-                CONF_BLOCKED_WINDOW_ENTITY,
+                CONF_BLOCKED_WINDOW_ENTITY, CONF_FREE_WINDOW_ENTITY,
             } else CONF_INSTANCES_YAML: value for key, value in errors.items()}
 
         existing = {**self._existing, **(user_input or {})}
@@ -534,6 +536,10 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
                     vol.Optional(
                         CONF_BLOCKED_WINDOW_ENTITY,
                         default=existing.get(CONF_BLOCKED_WINDOW_ENTITY, ""),
+                    ): str,
+                    vol.Optional(
+                        CONF_FREE_WINDOW_ENTITY,
+                        default=existing.get(CONF_FREE_WINDOW_ENTITY, ""),
                     ): str,
                 }
             ),

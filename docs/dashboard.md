@@ -75,6 +75,15 @@ events are bounded to the most recent 20 and stored with the native controls,
 so diagnosis does not depend on Recorder being enabled for optimizer sensors.
 Existing history is not reconstructed or guessed during an upgrade.
 
+The next unreleased explanation update distinguishes the dishwasher's own
+delayed-start timer from a wash in progress. A separate optimizer request, if
+present, is still displayed; the explanation does not cancel or modify it.
+Automatic programme cooldowns list their next eligible home-time dates. These
+do not restrict explicit selected-programme manual requests, which still require
+the normal physical safety checks. Missing power, no-run and free-electricity
+calendar sources have separate messages; unavailable promotional pricing must
+not be treated as a confirmed free session.
+
 Dates use Home Assistant's configured home timezone, including its timezone
 abbreviation, even when the dashboard is opened while travelling. The card falls
 back to the existing queue and attempt records on older integration versions.
@@ -129,3 +138,28 @@ tariff-day view aligned when opened while travelling. It shows today's 24 hours
 until next-day data arrives, then today and tomorrow across 48 hours. The Ofgem
 benchmark and Now lines use the same tariff-local time basis. These richer
 examples are not automatically installed by HACS.
+
+## Power Up Prices On The Chart
+
+The next unreleased full-dashboard template plots **Effective import price**
+from `sensor.load_optimizer_1_current_energy_price`'s `chart_price_periods`
+attribute. Verified configured Power Up intervals appear at zero, including
+future events and events that start partway through a tariff slot. The chart
+uses tariff-local today/tomorrow boundaries and retains the existing 24/48-hour
+layout, Ofgem reference and Now marker.
+
+The integration supplies already normalised p/kWh prices; the browser does not
+interpret calendar states as free electricity or apply a second GBP conversion.
+Calendar changes/cancellations refresh the data at the integration scan and the
+chart's one-minute refresh. Failed calendar reads remove promotional pricing,
+not the contracted rates. Free events cannot fill missing tariff periods. Manual
+special-price controls keep their existing precedence. This is effective
+planning cost, not a supplier billing statement; raw tariff history is unchanged.
+
+The compact chart feed is limited to two tariff-local days and a bounded payload.
+It retains every accepted event boundary rather than downsampling zero-price
+intervals. An oversized feed is withheld with an explicit `chart_price_status`,
+not drawn partially. An older backend without this attribute retains the prior
+raw-rate chart; an explicitly empty new feed does not fall back to stale rates.
+Both integration code and the customised full-dashboard chart must be updated
+to use this feature. Packaged template changes do not overwrite an existing copy.

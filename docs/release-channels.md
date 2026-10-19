@@ -38,16 +38,23 @@ not access control: the repository and beta branches are public, and advanced
 users can explicitly install a public branch or full commit. Development is
 isolated from normal updates, not secret.
 
-## Branches Retained After Cleanup
+## Two Branches, Two Release Types
 
 - `main`: stable product and public documentation.
-- `beta/tariff-analysis-v1.6`: deterministic history/analysis, draft PR #4.
-- `beta/tariff-import-narrative-v1.7`: stacked import/optional AI development,
-  draft PR #5, based on the analysis work.
+- `beta/next`: the single combined testing branch. It includes tariff history,
+  validated import, optional AI narratives and the pending scheduling repairs.
 
-The two beta branches have distinct promotion gates. They are not both installed
-side by side. No unfinished beta features were merged into stable by cleanup.
-The [cleanup record](branch-cleanup-2026-10-09.md) preserves retired branch tips.
+The owner's installed test version is `v1.7.0-beta.9`, verified on 19 October
+after upgrading from `v1.7.0-beta.8`; see [deployment acceptance](power-up-pricing.md#deployment-acceptance-19-october-2026).
+Stable publication remains `v1.5.7`. A beta release is a labelled
+snapshot of `beta/next`, not another installation or a new branch. Future beta
+updates continue on this same branch. Stable promotion requires separate approval
+and successful feature-specific acceptance; combining branches does not waive
+those gates or enable AI.
+
+Old tags/releases remain available for rollback. Superseded branch tips are
+recorded in the [14 October cleanup record](branch-cleanup-2026-10-14.md).
+The [earlier cleanup record](branch-cleanup-2026-10-09.md) is historical.
 
 ## What Users Read
 

@@ -63,8 +63,21 @@ are separate checks.
   cooldowns, but still requires a physically ready appliance.
 - **Free/negative programme absent:** check its explicit negative-price policy,
   run allowance, usable pricing and window fit. A promotional calendar does not
-  itself supply a zero price or enrol you in an offer. Behaviour can differ
-  between stable and beta releases; include the exact installed version.
+  enrol you in an offer. Stable v1.5.7 does not turn calendar events into zero
+  prices. The beta.9 Power Up feature requires an explicit eligible-account
+  `free_window_entity`; see [free-electricity calendar pricing](power-up-pricing.md).
+  An unavailable calendar supplies no promotional price, while Power Down
+  remains a no-run constraint. Include the exact installed version.
+- **Dishwasher has its own start timer:** beta.9 distinguishes Bosch
+  `DelayedStart` from washing and protects that timer from optimizer commands.
+  The next explanation update explicitly shows it as waiting, not washing,
+  alongside any separate optimizer request. Change the timer on the appliance
+  if that is your intent; a manual override does not bypass this safety check.
+- **A particular programme is cooling down:** the next dashboard-template
+  update lists its automatic eligibility time. An explicit selected-programme
+  manual request bypasses programme cooldowns, not connection, door, operation
+  state or remote-start checks. The automatic 30-minute retry interval is a
+  different limit and is identified separately.
 
 Disable automatic modes and cancel pending requests if you need to investigate
 without a scheduled start. This does not stop an already running wash.

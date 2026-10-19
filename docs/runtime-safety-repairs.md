@@ -1,11 +1,12 @@
 # Runtime Safety Repairs
 
-Status: reviewed, unreleased work on `fix/runtime-data-safety`, 12 October 2026.
+Status: merged to main through PR #16 at `c16b9e9` on 12 October 2026,
+still unreleased.
 Based on main plus the existing onboarding documentation and validation commits
 (`becd204`, `31c87e6`). No tariff-beta feature or negative-run scheduling fix was
-merged incidentally. The owner approved pushing this branch and opening a review
-request in this repository only. Merge, version changes, release and deployment
-remain separate approvals. No live HA access or physical appliance command was
+merged incidentally. The owner approved the repository review request and then
+separately approved its merge. All five post-merge checks passed. Version changes,
+release and deployment remain separate approvals. No live HA access or physical appliance command was
 performed for this stage; the HACS catalogue submission is unchanged.
 
 ## Approved Repair Scope
@@ -128,6 +129,6 @@ Against Home Assistant 2024.12.0 and Python 3.12:
 CI includes the new real-HA safety smoke test and the extended settings guards.
 The repository review request is the authoritative record of remote CI,
 including HACS validation and hassfest; local results alone do not imply those
-checks passed. Human review, a separately approved release and supervised live
-acceptance remain outstanding. R5's repeated negative-run fix and
+checks passed. PR #16's review and approved merge are complete. A separately
+approved release and supervised live acceptance remain outstanding. R5's repeated negative-run fix and
 comparable-integration feature decisions are separate next steps.

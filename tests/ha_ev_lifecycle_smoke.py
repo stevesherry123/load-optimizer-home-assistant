@@ -182,15 +182,25 @@ async def run(config_dir: Path, phase: str, serve: bool = False) -> None:
             original_data = dict(entry.data)
             before_ids = identities(hass, entry.entry_id)
             before_devices = device_ids(hass, entry.entry_id)
-            assert len(before_ids) == 9, before_ids
-            assert len(before_devices) == 1, before_devices
+            coordinator = hass.data[DOMAIN][entry.entry_id]
+            analysis_keys = (
+                "status", "tomorrow_classification", "tomorrow_average", "volatility",
+                "pattern", "evening_peak", "data_quality", "summary", "ai_summary_status",
+                "window_1", "window_2", "window_3", "window_4",
+            ) if "tariff_intelligence" in coordinator.data else ()
+            analysis_ids = {f"{entry.entry_id}_tariff_intelligence_{key}"
+                            for key in analysis_keys}
+            actual_analysis_ids = {key for key in before_ids
+                                   if key.startswith(f"{entry.entry_id}_tariff_intelligence_")}
+            assert actual_analysis_ids == analysis_ids, before_ids
+            assert len(before_ids) == 9 + len(analysis_ids), before_ids
+            assert len(before_devices) == (2 if analysis_ids else 1), before_devices
             assert not any(key.startswith(("switch.", "button."))
                            for key in before_ids.values()), "EV must remain advisory"
 
             if phase == "edit":
                 for entity_id in before_ids.values():
                     assert "None" not in hass.states.get(entity_id).name
-                coordinator = hass.data[DOMAIN][entry.entry_id]
                 assert coordinator.data["plan"]["target_percent"] == 80
                 values = {key: value for key, value in SOURCES.items()
                           if key not in {"target_percent_entity", "connection_status_entity",

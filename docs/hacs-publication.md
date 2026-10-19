@@ -4,9 +4,48 @@
 
 The publication product is stable v1.5.x: learned appliances, native opt-in
 orchestration, advisory EV plans, Ofgem benchmark and optional dashboard
-templates. Do not advertise the v1.6/v1.7 history, analysis, import or AI betas
-as stable. Publishing does not require retiring the separate Octopus
+templates. Do not advertise the combined `beta/next` history, analysis, import
+or AI features as stable. Publishing does not require retiring the separate Octopus
 Intelligence reference app or promoting its unobserved replacement features.
+
+The approved 19 October deployment installed and verified v1.7.0-beta.9;
+see the [deployment acceptance record](power-up-pricing.md#deployment-acceptance-19-october-2026).
+Later dashboard/explanation changes remain unreleased. Beta code is
+separate from published stable v1.5.7. The only active branches are
+`main` and `beta/next`; merging and stable publication require separate approval.
+See [release channels](release-channels.md) for the current branch/release model.
+The dated acceptance evidence below is historical, not a direction to open a
+new HACS submission or install an older beta.
+
+## Publication Review: 19 October 2026
+
+The README and linked setup, compatibility, control, EV, dashboard,
+troubleshooting and privacy guides describe the stable product separately from
+beta development. Installation, source configuration, completed learning,
+recommendation eligibility and optional control activation are distinct steps.
+The documented examples are executable tests, not borrowed household settings.
+
+Keep the following boundaries in any public announcement:
+
+- HACS catalogue review is still pending; custom-repository installation works
+  independently. Do not open another submission or post progress comments.
+- Stable v1.5.7 does not include beta tariff history/AI or the beta.9 Power Up and
+  delayed-start changes. A branch push does not deploy them to existing users.
+- EV charging is advisory; native start control is limited to the documented
+  ID `1` Home Connect dishwasher. Nothing starts automatically after setup.
+- Dashboards are optional templates. Custom copies are not automatically
+  replaced; chart and colour enhancements have their documented dependencies.
+- An unfamiliar-user onboarding trial, privacy-safe screenshots and issue forms
+  remain open. Automated examples and the owner's completed washes do not
+  substitute for testing another household's setup.
+- Before promoting the combined beta, observe natural forecast revision/tail
+  handling and repeated real free-price execution. Beta.9 deployment is verified.
+  Structured AI
+  selection has passed one real-provider replay, not a new live service test
+  after installation. Do not imply approval for another paid call.
+
+No release, production configuration change or upstream HACS edit is performed
+by this documentation review. See [the roadmap](roadmap.md) for remaining work.
 
 ## Repository Preflight (9 October 2026)
 
@@ -24,7 +63,7 @@ The v1.5.1 preparation corrects the minimum version, prevents a second shared
 learned-appliance hub and updates public documentation. The v1.5.3 update fixes
 rejected firmware captures cancelling washes, exposes scheduling reasons and
 refreshes programme selection with manual cooldown bypass. v1.5.4 fixes startup
-when live scheduling confidence is not yet available. The owner has these fixes
+when live scheduling confidence is not yet available. Those fixes were installed
 in v1.7.0-beta.3, retaining the existing tariff-history features. Live checks
 confirmed restored forecasts and programme options with unchanged learning and
 91 history days. The subsequent physical MixedLoad wash completed on 9 October
@@ -43,7 +82,7 @@ jobs and 221 unit tests pass. v1.5.7 is the submission release. Check the actual
 results and stable release immediately before submitting; this is not a claim
 of testing every supported Home Assistant or appliance combination.
 
-## Catalogue Submission
+## Catalogue Submission Record (9 October 2026)
 
 Submitted on 9 October: [hacs/default#11744](https://github.com/hacs/default/pull/11744).
 All upstream catalogue validation and lint checks passed. The request remains
@@ -51,9 +90,11 @@ open in the maintainer review queue; submission is not catalogue acceptance.
 Stable v1.5.7 was published from `28f4380b0b6a596227dc1159aab1bb41dbd0ecac`
 after [all five release checks passed](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37954979544).
 
-The owner now authorizes submission on their behalf. This supersedes the earlier
+The owner authorized that submission on their behalf, superseding the earlier
 prepare-only instruction. Use [the submission record](hacs-submission.md) for
-the current upstream checklist, exact release/check links and submission status.
+the upstream checklist, exact release/check links and submission status. The
+steps below record the submission procedure; do not repeat it while #11744 is
+pending or post routine progress comments to the upstream request.
 
 1. Confirm main's tests, minimum-version imports, HACS validation and hassfest
    are green and a full stable v1.5.7 GitHub release exists after those checks.
@@ -70,7 +111,7 @@ Use the current [official inclusion instructions](https://www.hacs.xyz/docs/publ
 and [integration requirements](https://www.hacs.xyz/docs/publish/integration/).
 The maintainers currently warn that new submissions can take months.
 
-The owner now runs v1.7.0-beta.4, which carries the stable editor and registry
+On 9 October the owner installed v1.7.0-beta.4, carrying the stable editor and registry
 fix without removing beta history/import. Live restart acceptance preserved all
 222 entity/device identities, the exact dashboard configuration, learning totals
 114 / 189 / 46, MixedLoad 4 runs / 61%, and 91 history days. Forecasts, EV form
@@ -79,7 +120,7 @@ into the stable v1.5.7 submission. Security fixes also carry to the published
 [v1.7.0-beta.5](https://github.com/stevesherry123/load-optimizer-home-assistant/releases/tag/v1.7.0-beta.5),
 from `88e23d4c628f428f998429cfd0d86b269d1915c6` after
 [all five beta checks passed](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/37955524653).
-Its 271 unit tests and isolated real-HA permission tests include the beta-only
+That beta's 271 unit tests and isolated real-HA permission tests include the beta-only
 history/AI actions. Publishing it did not install or restart the owner's HA.
 
 Until acceptance, users can install through HACS Custom repositories,
