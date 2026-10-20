@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Remove redundant paid EV charging slots after whole-slot rounding, including a
+  partly elapsed current slot after battery feedback reduces the remaining need.
+  Preserve required charging energy and selected negative-price slots.
 - Add optional passive charging-test socket alerts for HA and a selected phone,
   with context-matched service attribution, explicit unknown-caller handling and
   a dashboard alert toggle. No switch commands or release accompany this tooling.

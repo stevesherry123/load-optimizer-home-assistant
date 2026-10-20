@@ -119,6 +119,12 @@ def plan_ev_charge(
             break
         selected.append(slot)
         selected_energy += slot["energy_kwh"]
+    # A partial current slot can become redundant after adding a full later slot.
+    # Remove paid surplus without discarding energy needed to reach the target.
+    for slot in sorted(selected, key=lambda item: item["cost_pence"], reverse=True):
+        if slot["cost_pence"] > 0 and selected_energy - slot["energy_kwh"] + 1e-9 >= wall_energy_kwh:
+            selected.remove(slot)
+            selected_energy -= slot["energy_kwh"]
     selected.sort(key=lambda slot: slot["start"])
     ready = selected_energy + 1e-9 >= wall_energy_kwh
     estimated_cost = sum(slot["cost_pence"] for slot in selected)

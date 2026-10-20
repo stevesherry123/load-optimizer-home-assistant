@@ -16,6 +16,37 @@ SPEC.loader.exec_module(ev_charging)
 
 
 class IntegrationEvChargePlannerTests(unittest.TestCase):
+    def partial_slot_plan(self, battery=61, current_price=34.21):
+        start = datetime(2026, 10, 20, 10, 30, tzinfo=timezone.utc)
+        prices = [current_price, 33.28, 33.53, 34.37, 33.96, 32.82, 31.95, 33.62, 30.61]
+        periods = [{"start": start + timedelta(minutes=30 * i),
+                    "end": start + timedelta(minutes=30 * (i + 1)),
+                    "price_p_per_kwh": price} for i, price in enumerate(prices)]
+        return ev_charging.plan_ev_charge(periods=periods, battery_percent=battery,
+            battery_capacity_kwh=0.6, target_percent=100, charge_power_kw=0.06,
+            charger_efficiency=1, reference_utc=start + timedelta(minutes=20))
+
+    def test_replan_removes_redundant_paid_current_partial_slot(self):
+        plan = self.partial_slot_plan()
+        self.assertEqual(plan["status"], "ready")
+        self.assertFalse(plan["charge_now"])
+        self.assertEqual(plan["wall_energy_kwh"], 0.234)
+        self.assertEqual(len(plan["selected_slots"]), 8)
+        self.assertAlmostEqual(sum(s["energy_kwh"] for s in plan["selected_slots"]), 0.24)
+        self.assertEqual(plan["estimated_cost_pence"], 7.9242)
+
+    def test_replan_keeps_partial_slot_when_needed_for_target(self):
+        plan = self.partial_slot_plan(battery=59)
+        self.assertEqual(plan["status"], "ready")
+        self.assertTrue(plan["charge_now"])
+        self.assertGreaterEqual(sum(s["energy_kwh"] for s in plan["selected_slots"]), 0.246)
+
+    def test_surplus_cleanup_does_not_discard_negative_price_income(self):
+        plan = self.partial_slot_plan(current_price=-10)
+        self.assertTrue(plan["charge_now"])
+        self.assertEqual(len(plan["selected_slots"]), 9)
+        self.assertEqual(plan["estimated_cost_pence"], 7.8242)
+
     def test_small_test_load_uses_real_prices_without_a_hundred_watt_floor(self):
         start = datetime(2026, 10, 19, 0, tzinfo=timezone.utc)
         periods = [{"start": start + timedelta(minutes=30 * i),
