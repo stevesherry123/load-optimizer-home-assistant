@@ -31,9 +31,9 @@ automation:
           entity_id: input_text.ev_trial_switch_command
         data:
           value: >-
-            {{ dict(context_id=trigger.event.context.id,
+            {{ 'cmd:' ~ (dict(context_id=trigger.event.context.id,
                     service=trigger.event.data.domain ~ '.' ~ trigger.event.data.service,
-                    at=as_timestamp(trigger.event.time_fired)) | to_json }}
+                    at=as_timestamp(trigger.event.time_fired)) | to_json) }}
   - id: lo_ev_trial_switch_alerts
     alias: EV Trial Switch Alerts
     mode: queued
@@ -54,7 +54,7 @@ automation:
       - variables:
           alert_title: "Charging test: {{ trigger.from_state.state }} to {{ trigger.to_state.state }}"
           alert_message: >-
-            {% set command = states('input_text.ev_trial_switch_command') | from_json({}) %}
+            {% set command = states('input_text.ev_trial_switch_command')[4:] | from_json({}) %}
             {% set age = as_timestamp(trigger.to_state.last_updated) - (command.get('at', 0) | float(0)) %}
             {% set matched = command.get('context_id') == trigger.to_state.context.id and 0 <= age <= 30 %}
             {{ as_local(trigger.to_state.last_updated).strftime('%d %b %H:%M:%S %Z') }}.

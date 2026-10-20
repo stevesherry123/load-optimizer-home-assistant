@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import yaml
+from homeassistant import loader
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.setup import async_setup_component
 
@@ -14,9 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 async def main():
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        loader.async_setup(hass)
         delivered = []
 
         async def remember(call):
+            assert isinstance(call.data["value"], str)
             hass.states.async_set("input_text.ev_trial_switch_command", call.data["value"], context=call.context)
 
         async def notify(call):
