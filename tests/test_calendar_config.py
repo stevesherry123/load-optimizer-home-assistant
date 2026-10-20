@@ -31,6 +31,7 @@ class CalendarConfigurationTests(unittest.TestCase):
         source = {"instances_yaml": yaml.safe_dump(wrapped), "free_window_entity": "calendar.account_octoplus_power_up"}
         result = module.clean_calendar_settings(source)
         parsed = yaml.safe_load(result["instances_yaml"])
+        self.assertIn("instances_yaml: |", result["instances_yaml"])
         updated = yaml.safe_load(parsed["instances_yaml"])[0]
         self.assertEqual(parsed["green_window_entity"], "")
         self.assertEqual(updated["blocked_window_entity"], "calendar.account_octoplus_power_down")

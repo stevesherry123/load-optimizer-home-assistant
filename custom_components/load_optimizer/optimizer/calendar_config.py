@@ -8,6 +8,21 @@ MINIMUM_OCTOPUS_VERSION = "19.2.1"
 ENTITY_ID = re.compile(r"(?:sensor|event|calendar)\.[a-z0-9_]+")
 
 
+class CalendarDumper(yaml.SafeDumper):
+    """Keep embedded appliance YAML readable in the multiline configuration UI."""
+
+
+def _represent_text(dumper, value):
+    return dumper.represent_scalar("tag:yaml.org,2002:str", value, style="|" if "\n" in value else None)
+
+
+CalendarDumper.add_representer(str, _represent_text)
+
+
+def dump_calendar_yaml(document):
+    return yaml.dump(document, Dumper=CalendarDumper, sort_keys=False, allow_unicode=True)
+
+
 def clean_calendar_settings(settings: dict, depth: int = 0) -> dict:
     """Preserve unrelated settings and migrate both wrapped and per-load YAML."""
     if depth > 8:
@@ -40,7 +55,7 @@ def clean_calendar_settings(settings: dict, depth: int = 0) -> dict:
         else:
             raise ValueError("Appliance configuration must contain a mapping or appliance list")
         if cleaned != document:
-            result["instances_yaml"] = yaml.safe_dump(cleaned, sort_keys=False, allow_unicode=True)
+            result["instances_yaml"] = dump_calendar_yaml(cleaned)
     return result
 
 
