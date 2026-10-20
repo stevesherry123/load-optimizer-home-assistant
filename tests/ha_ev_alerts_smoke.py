@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 
 import yaml
 from homeassistant import loader
+from homeassistant.bootstrap import async_from_config_dict
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.setup import async_setup_component
 
@@ -16,6 +17,7 @@ async def main():
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
         loader.async_setup(hass)
+        assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
         delivered = []
 
         async def remember(call):
