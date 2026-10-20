@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add optional passive charging-test socket alerts for HA and a selected phone,
+  with context-matched service attribution, explicit unknown-caller handling and
+  a dashboard alert toggle. No switch commands or release accompany this tooling.
 - Add dedicated-branch read-only EV review sensors/dashboard and a hardware-free
   step-through replay using the actual planner/controller with fictional prices.
   Retain session delivery across separated slots, detect a meter that stops

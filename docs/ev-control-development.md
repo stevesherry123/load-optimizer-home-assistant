@@ -139,6 +139,33 @@ errors were logged. Household mappings and the detailed verification report are
 private, ignored local files. The test dashboard is available at
 `/charging-test-bench/charging-test`; existing dashboards remain independent.
 
+## Passive Test Alerts
+
+`dev/ev-test-alerts.yaml` adds optional command-context capture and state-change
+notification observers for the confirmed test socket. Their only actions write
+test metadata or send notifications; they cannot switch a load. The owner trial
+has these enabled for HA and the explicitly chosen phone, with a **Switch alerts**
+dashboard toggle. Installing them did not restart HA or alter charging controls.
+
+Messages include old/new state, home-local time, a matching HA service command
+when its context and timestamp agree, and the controller's latest reported reason.
+That reason is diagnostic context, not proof of who caused an external change.
+Unknown callers and availability/recovery changes are labelled explicitly.
+Attribute-only updates and initial entity creation do not generate relay alerts.
+The hidden command helper is generated metadata, not a user-editable setting.
+
+Isolated HA acceptance uses a synthetic switch and fake destinations to test
+service/user contexts, unknown changes, availability, attribute filtering and
+the disable toggle. Live setup sent a clearly labelled readiness notification
+to each destination; it did not toggle the actual socket to test the observers.
+Physical transition delivery still needs observation during the owner's trial.
+
+The simulated battery slider is manual: charging a real load does not advance it.
+Keep simulated SOC consistent with the meter or expect delivery-shortfall stops.
+An already-on manual session remains unowned; switch the test socket off before
+explicitly enabling control. Without a ready-by deadline, newly published prices
+can move the remaining plan into a later day. Neither observer changes that logic.
+
 ## Refinement And Deployment Gates
 
 1. Pass planner/control/monitor unit tests and real minimum-HA synthetic
