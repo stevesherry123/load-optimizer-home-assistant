@@ -187,6 +187,34 @@ can move the remaining plan into a later day. Neither observer changes that logi
 
 ## Refinement And Deployment Gates
 
+### Owner Laptop Safety Smoke, 20 October 2026
+
+Tested the owner-only overlay with planner patch `009843f`, real socket feedback
+and explicitly simulated battery/connection inputs. The real EV was not used.
+Five deliberate ON/OFF pairs were confirmed in Home Assistant history:
+
+| Scenario | Observed Result |
+| --- | --- |
+| Simulated SOC raised to 100% while charging | OFF in about 6 seconds; `target_reached`; no restart on refresh |
+| Manual socket OFF while owned | Control disarmed in about 5 seconds; no automatic restart |
+| Simulated disconnection | OFF in about 4 seconds; `vehicle_not_connected` |
+| Simulated connection feedback unavailable | OFF in about 6 seconds; `telemetry_unavailable` |
+| Graceful HA restart during owned charging | Socket OFF during shutdown; control remained disarmed after boot |
+
+The disconnection and unavailable-feedback blocks pause charging without
+disarming the opt-in switch: restored valid inputs can resume a selected slot.
+Manual OFF disarms it. Restart also disarms it. This live check did not simulate
+an abrupt power cut or an actual charger/vehicle communication failure.
+
+After testing, restored simulated battery 98%, target 100%, capacity 0.6 kWh and
+connection ON, with the socket, automatic control and battery-fill simulation OFF.
+Alerts and the existing midnight cutoff were retained. No release/main merge.
+
+Diagnostic follow-up: retain the manual-stop cause across later disabled ticks;
+the current generic `disabled` state can obscure that successful safety action.
+
+### Remaining Gates
+
 1. Pass planner/control/monitor unit tests and real minimum-HA synthetic
    configuration, service and ownership-journal acceptance; no physical devices.
 2. Review charger suitability for interruption, power-loss behaviour, competing
