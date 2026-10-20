@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from homeassistant import loader
+from homeassistant.bootstrap import async_from_config_dict
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import entity_registry as er
@@ -20,8 +21,11 @@ async def main():
         hass = HomeAssistant(directory)
         loader.async_setup(hass)
         try:
+            assert await async_from_config_dict({
+                "homeassistant": {"time_zone": "Europe/London"},
+                "http": {"server_host": "127.0.0.1", "server_port": 18130},
+            }, hass) is hass
             registry = er.async_get(hass)
-            await registry.async_load()
             source = registry.async_get_or_create("sensor", "octopus_energy", "synthetic_price",
                                                   suggested_object_id="renamed_tariff")
             entry = SimpleNamespace(data={"tariff_entity": source.entity_id}, options={})
