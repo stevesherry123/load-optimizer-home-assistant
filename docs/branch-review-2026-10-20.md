@@ -27,3 +27,19 @@ branch can be removed while keeping both active checkouts intact.
 
 No release tag is moved, no version is incremented, and no HACS catalogue
 submission is altered by this review.
+
+## Owner Installation
+
+The configuration/calendar repair source at `df693b5` was installed on the
+owner's existing EV-trial installation after
+[validation run 39487044042](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/39487044042)
+passed on `069b1b7`. Those commits have identical integration source trees;
+the intervening changes repair current-core test fixtures and document this review.
+
+One Home Assistant restart completed successfully. All three integration entries
+loaded, learned programme models and counts were preserved, dashboard files were
+unchanged, and the queued automatic overnight request survived. The actual UI
+displayed optimisation numbers with units and all eleven migrated dishwasher
+control mappings. No settings form was submitted, no physical load was started,
+and experimental EV control remained disabled. This remains an owner-only source
+overlay, not a new public release or real-vehicle acceptance.
