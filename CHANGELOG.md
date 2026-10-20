@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Require Home Assistant 2026.10.2 and Octopus Energy 19.2.1 when Octopus sources
+  are selected. Migrate saved Greener Nights/Saving Sessions references once at
+  entry setup; use explicit Power Down calendars thereafter. Preserve Power Up,
+  user calendars, appliance IDs, policies and learning. Remove per-scan fallback.
 - Allocate exact remaining EV energy in the marginal price slot instead of
   whole-slot rounding/pruning, preventing rounding-driven stop/start gaps during
   repeated replans. Add a three-hour planner/controller replay with metered SOC.

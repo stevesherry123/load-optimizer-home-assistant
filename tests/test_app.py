@@ -356,18 +356,16 @@ class VersionTests(unittest.TestCase):
         self.assertIn("OBSOLETE_CONTROL_ENTITY", integration)
         self.assertIn("entity_registry.async_remove", integration)
 
-    def test_retired_greener_nights_calendar_is_ignored(self):
+    def test_retired_calendars_are_migrated_once_not_translated_each_scan(self):
         root = Path(__file__).resolve().parents[1]
         source = (
             root / "custom_components/load_optimizer/legacy_runtime.py"
         ).read_text()
 
-        self.assertIn('RETIRED_GREEN_WINDOW_SUFFIX = "_greener_nights"', source)
-        self.assertIn('config[CONF_GREEN_WINDOW_ENTITY] = ""', source)
-        self.assertIn('POWER_DOWN_SUFFIX = "_octoplus_power_down"', source)
-        self.assertIn("self.hass.states.get(power_down)", source)
-        self.assertIn("for config in configs:", source)
-        self.assertIn("self._normalise_calendar_entities(config)", source)
+        self.assertNotIn("_normalise_calendar_entities", source)
+        setup = (root / "custom_components/load_optimizer/__init__.py").read_text()
+        self.assertIn("async_add_executor_job(clean_calendar_settings, dict(entry.data))", setup)
+        self.assertIn("async_update_entry(entry, data=data, options=options)", setup)
 
     def test_retired_orchestration_packages_are_not_distributed(self):
         root = Path(__file__).resolve().parents[1]

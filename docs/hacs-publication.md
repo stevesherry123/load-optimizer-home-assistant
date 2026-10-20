@@ -52,7 +52,9 @@ by this documentation review. See [the roadmap](roadmap.md) for remaining work.
 - Public, active repository; `main` is the default branch.
 - Description, topics, enabled Issues, MIT licence and owner codeowner present.
 - One packaged integration with manifest, configuration flow and local brand icon.
-- `hacs.json` declares GB and hides the default branch; minimum HA is 2024.12.
+- `hacs.json` declares GB and hides the default branch; minimum HA is 2026.10.2.
+- Octopus sources require integration 19.2.1 or newer, checked against entity
+  ownership at setup (renamed entities are supported). Generic sources remain optional.
 - HACS and hassfest checks have no ignored errors.
 - Stable runtime must match the release manifest; all new release checks must pass.
 - New-installation, migration, dashboard and contribution guidance is present.

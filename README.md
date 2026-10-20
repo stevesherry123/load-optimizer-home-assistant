@@ -41,7 +41,9 @@ HACS catalogue request is [#11744](https://github.com/hacs/default/pull/11744);
 submission is not acceptance. Once accepted and scanned, users can find the
 integration directly in HACS without adding a custom repository.
 
-Home Assistant **2024.12 or later** is required. The Ofgem benchmark is for
+Home Assistant **2026.10.2 or later** is required. When using BottlecapDave's
+Octopus Energy sources, version **19.2.1 or later** is required. Other tariff
+providers do not require that integration. The Ofgem benchmark is for
 Great Britain; other supplier integrations can supply compatible tariff data.
 No Octopus API token, separate app, or AI subscription is required.
 

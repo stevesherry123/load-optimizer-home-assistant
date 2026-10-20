@@ -13,12 +13,20 @@ A recommendation and a physical start command are separate capabilities.
 | Dashboards | Optional templates | Not added automatically. Rich charts require ApexCharts Card; price colouring optionally requires card-mod. |
 | Historical analysis / import / AI summaries | Experimental tariff beta only | Not stable features. AI is not required for learning or scheduling. |
 
-Home Assistant 2024.12 or later is the declared minimum. Automated checks use
+Home Assistant 2026.10.2 or later is the declared minimum. Automated checks use
 that version, but do not certify every HA release or appliance model. The owner's
 successful Home Connect wash is evidence for that installation, not universal
 manufacturer compatibility. Community reports should include HA and integration
 versions and whether learning, recommendations or starting was tested, without
 private device identifiers.
+
+Octopus sources require BottlecapDave's Octopus Energy integration 19.2.1 or
+newer. The version check uses entity-registry ownership, not an entity naming
+convention. It does not impose an Octopus dependency on other tariff providers.
+Older saved Greener Nights references are cleared and Saving Sessions calendar
+references are migrated once to Power Down during entry setup. Missing Power Down
+data remains a blocking-source failure; it is never treated as permission to run.
+Power Up remains an explicit free-electricity source. No learning is rewritten.
 
 ## Sources
 
