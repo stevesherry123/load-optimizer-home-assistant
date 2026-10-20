@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Allocate exact remaining EV energy in the marginal price slot instead of
+  whole-slot rounding/pruning, preventing rounding-driven stop/start gaps during
+  repeated replans. Add a three-hour planner/controller replay with metered SOC.
+- Add an optional test-only metered battery-fill simulation. It updates only the
+  simulated SOC helper while controlled charging is active; it is not vehicle
+  battery telemetry or an independent validation of charging efficiency.
 - Remove redundant paid EV charging slots after whole-slot rounding, including a
   partly elapsed current slot after battery feedback reduces the remaining need.
   Preserve required charging energy and selected negative-price slots.

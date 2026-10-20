@@ -26,14 +26,16 @@ class IntegrationEvChargePlannerTests(unittest.TestCase):
             battery_capacity_kwh=0.6, target_percent=100, charge_power_kw=0.06,
             charger_efficiency=1, reference_utc=start + timedelta(minutes=20))
 
-    def test_replan_removes_redundant_paid_current_partial_slot(self):
+    def test_replan_allocates_exact_energy_without_redundant_paid_surplus(self):
         plan = self.partial_slot_plan()
         self.assertEqual(plan["status"], "ready")
-        self.assertFalse(plan["charge_now"])
+        self.assertTrue(plan["charge_now"])
         self.assertEqual(plan["wall_energy_kwh"], 0.234)
-        self.assertEqual(len(plan["selected_slots"]), 8)
-        self.assertAlmostEqual(sum(s["energy_kwh"] for s in plan["selected_slots"]), 0.24)
-        self.assertEqual(plan["estimated_cost_pence"], 7.9242)
+        self.assertEqual(len(plan["selected_slots"]), 9)
+        self.assertAlmostEqual(sum(s["energy_kwh"] for s in plan["selected_slots"]), 0.234)
+        self.assertLess(plan["estimated_cost_pence"], 7.9242)
+        marginal = next(s for s in plan["selected_slots"] if s["price_p_per_kwh"] == 34.37)
+        self.assertAlmostEqual(marginal["energy_kwh"], 0.014)
 
     def test_replan_keeps_partial_slot_when_needed_for_target(self):
         plan = self.partial_slot_plan(battery=59)
@@ -45,7 +47,22 @@ class IntegrationEvChargePlannerTests(unittest.TestCase):
         plan = self.partial_slot_plan(current_price=-10)
         self.assertTrue(plan["charge_now"])
         self.assertEqual(len(plan["selected_slots"]), 9)
-        self.assertEqual(plan["estimated_cost_pence"], 7.8242)
+        self.assertAlmostEqual(sum(s["energy_kwh"] for s in plan["selected_slots"]), 0.234)
+        self.assertLess(plan["estimated_cost_pence"], 7.8242)
+
+    def test_replans_do_not_drop_current_slot_near_half_hour_end(self):
+        start = datetime(2026, 10, 20, 11, 30, tzinfo=timezone.utc)
+        prices = [33.53, 34.37, 33.96, 32.82, 31.95, 35.43, 50, 51, 37.02,
+                  36.23, 36.42, 34.82, 33.62, 30.61]
+        periods = [{"start": start + timedelta(minutes=30 * i),
+                    "end": start + timedelta(minutes=30 * (i + 1)),
+                    "price_p_per_kwh": price} for i, price in enumerate(prices)]
+        for seconds in range(0, 30 * 60, 30):
+            plan = ev_charging.plan_ev_charge(periods=periods, battery_percent=54,
+                battery_capacity_kwh=0.6, charge_power_kw=0.06, target_percent=100,
+                charger_efficiency=1, reference_utc=start + timedelta(seconds=seconds))
+            self.assertTrue(plan["charge_now"], seconds)
+            self.assertAlmostEqual(sum(s["energy_kwh"] for s in plan["selected_slots"]), 0.276, places=4)
 
     def test_small_test_load_uses_real_prices_without_a_hundred_watt_floor(self):
         start = datetime(2026, 10, 19, 0, tzinfo=timezone.utc)

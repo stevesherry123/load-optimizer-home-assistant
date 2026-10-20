@@ -117,14 +117,14 @@ def plan_ev_charge(
     for slot in sorted(candidate_slots, key=lambda slot: (slot["price_p_per_kwh"], slot["start"])):
         if selected_energy + 1e-9 >= wall_energy_kwh:
             break
+        remaining = wall_energy_kwh - selected_energy
+        if slot["energy_kwh"] > remaining:
+            # Cost the marginal slot by the energy needed, not a rounded full slot.
+            fraction = remaining / slot["energy_kwh"]
+            slot = {**slot, "end": slot["start"] + (slot["end"] - slot["start"]) * fraction,
+                    "energy_kwh": remaining, "cost_pence": slot["price_p_per_kwh"] * remaining}
         selected.append(slot)
         selected_energy += slot["energy_kwh"]
-    # A partial current slot can become redundant after adding a full later slot.
-    # Remove paid surplus without discarding energy needed to reach the target.
-    for slot in sorted(selected, key=lambda item: item["cost_pence"], reverse=True):
-        if slot["cost_pence"] > 0 and selected_energy - slot["energy_kwh"] + 1e-9 >= wall_energy_kwh:
-            selected.remove(slot)
-            selected_energy -= slot["energy_kwh"]
     selected.sort(key=lambda slot: slot["start"])
     ready = selected_energy + 1e-9 >= wall_energy_kwh
     estimated_cost = sum(slot["cost_pence"] for slot in selected)

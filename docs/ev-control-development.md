@@ -160,7 +160,26 @@ the disable toggle. Live setup sent a clearly labelled readiness notification
 to each destination; it did not toggle the actual socket to test the observers.
 Physical transition delivery still needs observation during the owner's trial.
 
-The simulated battery slider is manual: charging a real load does not advance it.
+The battery slider is manual by default. Optional `dev/ev-test-battery-fill.yaml`
+adds a clearly labelled, default-off simulation toggle. Import its helper and
+automation and replace the load, meter and controller placeholders. Add
+`input_boolean.ev_trial_simulate_battery_gain` to the test dashboard to expose it.
+While connected, controlled charging is active, and the socket is on, this
+simulation advances the helper by measured kWh divided by simulated capacity,
+assuming 100% test efficiency. It rejects unavailable/reset meters, wrong units
+and jumps over 5% of capacity per update, and clamps the helper to 100%.
+This is synthetic feedback derived from the same meter: it does not independently
+validate battery gain or measure the laptop's real battery. Switch it off to
+exercise manual SOC changes or battery-gain-shortfall protection.
+
+The planner now allocates only the required energy in its marginal slot. It no
+longer rounds a paid slot up and later prunes a current partial slot; that
+interaction caused repeated mid-slot OFF / next-boundary ON transitions. The
+three-hour controller replay replans every 30 seconds and asserts exactly two
+charging bursts, no extra commands, metered progress and a target-reached stop.
+This is continuous energy/cost allocation, not a global appliance wear optimizer;
+configurable minimum dwell and competing external schedules remain future work.
+
 Keep simulated SOC consistent with the meter or expect delivery-shortfall stops.
 An already-on manual session remains unowned; switch the test socket off before
 explicitly enabling control. Without a ready-by deadline, newly published prices

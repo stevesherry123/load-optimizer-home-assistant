@@ -91,6 +91,45 @@ class EVControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.values["switch.charger"].state, "off")
         self.assertIsNone(self.controller.owned_target)
 
+    async def test_replanning_smoke_charges_selected_bursts_without_rounding_chatter(self):
+        self.config["ev_min_charging_power_w"] = 5
+        start = Clock.current
+        prices = [-10, -10, 20, 20, -20, -20, 20, 20]
+        periods = [{"start": start + timedelta(minutes=30 * i),
+                    "end": start + timedelta(minutes=30 * (i + 1)),
+                    "price_p_per_kwh": price} for i, price in enumerate(prices)]
+        delivered = 0.0
+        transitions = []
+        previous = "off"
+        for seconds in range(0, 3 * 60 * 60 + 1, 30):
+            Clock.current = start + timedelta(seconds=seconds)
+            if seconds and previous == "on":
+                delivered += 0.06 / 120
+            battery = min(100, 70 + delivered / 0.3 * 100)
+            self.put("sensor.battery", str(battery), "%")
+            self.put("sensor.capacity", "0.3", "kWh")
+            self.put("sensor.power", "60" if previous == "on" else "0", "W")
+            self.put("sensor.energy", str(100 + delivered), "kWh")
+            self.put("sensor.charging", "charging" if previous == "on" else "idle")
+            self.put("sensor.connection", "connected")
+            self.put("switch.charger", previous)
+            plan = plan_ev_charge(periods=periods, battery_percent=battery,
+                battery_capacity_kwh=0.3, charge_power_kw=0.06, charger_efficiency=1,
+                reference_utc=Clock.current)
+            self.controller.set_plan(plan, Clock.current)
+            if seconds == 0:
+                await self.controller.async_enable()
+            await self.controller.async_tick()
+            await self.controller.async_tick()
+            current = self.values["switch.charger"].state
+            if current != previous:
+                transitions.append((seconds, current))
+            previous = current
+        self.assertEqual(transitions, [(0, "on"), (1800, "off"), (7200, "on"), (10800, "off")])
+        self.assertAlmostEqual(delivered, 0.09)
+        self.assertEqual(self.controller.last_stop_reason, "target_reached")
+        self.assertEqual(self.hass.services.async_call.await_count, 4)
+
     async def test_disconnect_target_and_stale_data_stop_owned_charge(self):
         for cause in ("disconnect", "target", "stale", "missing_power", "fault"):
             with self.subTest(cause=cause):

@@ -1,0 +1,47 @@
+# Test-only feedback simulation. Never use this as a real vehicle battery source.
+# Replace the load, meter, and controller placeholders before importing.
+input_boolean:
+  ev_trial_simulate_battery_gain:
+    name: EV Trial Simulate Battery Gain From Meter
+    icon: mdi:battery-sync
+    initial: false
+automation:
+  - id: lo_ev_trial_simulate_battery_gain
+    alias: EV trial simulate battery gain from meter
+    mode: queued
+    max: 10
+    trigger:
+      - platform: state
+        entity_id: sensor.ev_trial_load_energy
+    condition:
+      - condition: state
+        entity_id: input_boolean.ev_trial_simulate_battery_gain
+        state: "on"
+      - condition: state
+        entity_id: switch.ev_trial_automatic_charging_control
+        state: "on"
+      - condition: state
+        entity_id: switch.ev_trial_load
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.ev_trial_connected
+        state: "on"
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none and trigger.to_state is not none
+             and is_number(trigger.from_state.state) and is_number(trigger.to_state.state)
+             and trigger.to_state.attributes.get('unit_of_measurement') == 'kWh'
+             and is_number(states('input_number.ev_trial_battery_percent'))
+             and is_number(states('input_number.ev_trial_capacity_kwh'))
+             and states('input_number.ev_trial_capacity_kwh') | float(0) > 0
+             and 0 < (trigger.to_state.state | float - trigger.from_state.state | float)
+                 <= states('input_number.ev_trial_capacity_kwh') | float * 0.05 }}
+    action:
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.ev_trial_battery_percent
+        data:
+          value: >-
+            {% set gain = (trigger.to_state.state | float - trigger.from_state.state | float)
+                / states('input_number.ev_trial_capacity_kwh') | float * 100 %}
+            {{ [100, states('input_number.ev_trial_battery_percent') | float + gain] | min | round(3) }}
