@@ -3,6 +3,7 @@
 import importlib
 import sys
 from pathlib import Path
+import homeassistant  # Initialise the core's schema compatibility layer first.
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from custom_components.load_optimizer.const import PLATFORMS
@@ -14,7 +15,10 @@ print("All integration platform and config-flow imports passed")
 import voluptuous as vol
 from custom_components.load_optimizer.config_flow import _ev_schema, _ev_input_errors
 from homeassistant.helpers.config_validation import custom_serializer
-from voluptuous_serialize import convert
+try:
+    from probatio import to_field_list as convert
+except ImportError:
+    from voluptuous_serialize import convert
 
 values = {"tariff_entity": "sensor.rates", "battery_entity": "sensor.battery",
           "battery_capacity_entity": "sensor.capacity", "charge_power_kw": 7.2}

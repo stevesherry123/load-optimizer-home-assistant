@@ -29,7 +29,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.config_validation import custom_serializer
-from voluptuous_serialize import convert
+try:
+    from probatio import to_field_list as convert
+except ImportError:
+    from voluptuous_serialize import convert
 
 from custom_components.load_optimizer.legacy import app_runtime
 from custom_components.load_optimizer.config_flow import _appliance_review
