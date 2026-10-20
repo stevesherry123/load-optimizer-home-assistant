@@ -1,0 +1,90 @@
+# Optional test-only observers. Replace generic load, controller, review and phone IDs.
+# No action in these automations can command a physical switch.
+input_text:
+  ev_trial_switch_command:
+    name: EV Trial Switch Command
+    max: 255
+input_boolean:
+  ev_trial_switch_alerts:
+    name: EV Trial Switch Alerts
+    initial: true
+automation:
+  - id: lo_ev_trial_capture_switch_command
+    alias: EV Trial Capture Switch Command
+    mode: queued
+    max: 100
+    trigger:
+      - platform: event
+        event_type: call_service
+    condition:
+      - condition: template
+        value_template: >-
+          {% set data = trigger.event.data %}
+          {% set target = data.get('service_data', {}).get('entity_id', []) %}
+          {% set targets = [target] if target is string else target %}
+          {{ data.get('domain') in ['switch', 'homeassistant'] and
+             data.get('service') in ['turn_on', 'turn_off', 'toggle'] and
+             'switch.ev_trial_load' in (targets or []) }}
+    action:
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.ev_trial_switch_command
+        data:
+          value: >-
+            {{ dict(context_id=trigger.event.context.id,
+                    service=trigger.event.data.domain ~ '.' ~ trigger.event.data.service,
+                    at=as_timestamp(trigger.event.time_fired)) | to_json }}
+  - id: lo_ev_trial_switch_alerts
+    alias: EV Trial Switch Alerts
+    mode: queued
+    max: 100
+    trigger:
+      - platform: state
+        entity_id: switch.ev_trial_load
+        to: null
+    condition:
+      - condition: state
+        entity_id: input_boolean.ev_trial_switch_alerts
+        state: "on"
+      - condition: template
+        value_template: "{{ trigger.from_state is not none and trigger.from_state.state != trigger.to_state.state }}"
+    action:
+      - delay:
+          seconds: 1
+      - variables:
+          alert_title: "Charging test: {{ trigger.from_state.state }} to {{ trigger.to_state.state }}"
+          alert_message: >-
+            {% set command = states('input_text.ev_trial_switch_command') | from_json({}) %}
+            {% set age = as_timestamp(trigger.to_state.last_updated) - (command.get('at', 0) | float(0)) %}
+            {% set matched = command.get('context_id') == trigger.to_state.context.id and 0 <= age <= 30 %}
+            {{ as_local(trigger.to_state.last_updated).strftime('%d %b %H:%M:%S %Z') }}.
+            Socket: {{ trigger.from_state.state }} -> {{ trigger.to_state.state }}.
+            {% if matched %}
+            Trigger: {{ command.service }};
+            {% if trigger.to_state.context.user_id %}user/API initiated.
+            {% elif trigger.to_state.context.parent_id %}automation/script context.
+            {% else %}integration/system context; exact caller not confirmed.{% endif %}
+            {% elif trigger.to_state.state in ['unknown', 'unavailable'] or trigger.from_state.state in ['unknown', 'unavailable'] %}
+            Trigger: availability/recovery change; not confirmation of a physical relay operation.
+            {% elif trigger.to_state.context.user_id %}
+            Trigger: user/API context; matching service command was not captured.
+            {% else %}
+            Trigger: no matching HA command; device/external source or caller unknown.
+            {% endif %}
+            Controller's latest reported reason:
+            {{ (state_attr('switch.ev_trial_automatic_charging_control', 'reason') or 'not available') | replace('_', ' ') }}.
+            Automatic control: {{ states('switch.ev_trial_automatic_charging_control') }}.
+            Simulated battery: {{ states('sensor.ev_trial_battery') }}%; target {{ states('sensor.ev_trial_target') }}%.
+      - service: persistent_notification.create
+        data:
+          title: "{{ alert_title }}"
+          message: "{{ alert_message }}"
+          notification_id: "ev_trial_{{ trigger.to_state.context.id }}_{{ trigger.to_state.state }}"
+      - service: notify.ev_trial_phone
+        continue_on_error: true
+        data:
+          title: "{{ alert_title }}"
+          message: "{{ alert_message }}"
+          data:
+            url: /charging-test-bench/charging-test
+            group: ev-charging-test
