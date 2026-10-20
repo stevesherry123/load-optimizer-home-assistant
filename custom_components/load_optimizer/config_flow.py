@@ -367,7 +367,9 @@ class LoadOptimizerConfigFlow(_ApplianceValidationFlow, config_entries.ConfigFlo
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_INSTANCES_YAML): str,
+                vol.Required(CONF_INSTANCES_YAML): selector.TextSelector(
+                    selector.TextSelectorConfig(multiline=True)
+                ),
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
                     default=DEFAULT_LEGACY_SCAN_INTERVAL_SECONDS,
@@ -508,7 +510,7 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
                     vol.Optional(
                         CONF_INSTANCES_YAML,
                         default=existing.get(CONF_INSTANCES_YAML, ""),
-                    ): str,
+                    ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
                         default=existing.get(

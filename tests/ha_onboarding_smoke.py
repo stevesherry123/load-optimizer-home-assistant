@@ -87,6 +87,10 @@ async def configure(hass, kind, name, values):
     )
     convert(flow["data_schema"], custom_serializer=custom_serializer)
     if kind == "learned_appliance":
+        field = next(item for item in convert(flow["data_schema"], custom_serializer=custom_serializer)
+                     if item["name"] == "instances_yaml")
+        assert field["selector"]["text"]["multiline"] is True, field
+        assert flow["data_schema"](values)["instances_yaml"] == values["instances_yaml"]
         invalid = {**values, "instances_yaml": "- id: [PRIVATE_INVALID_EXAMPLE"}
         rejected = await hass.config_entries.flow.async_configure(flow["flow_id"], invalid)
         assert rejected["type"] == "form", rejected
@@ -116,6 +120,11 @@ async def verify_appliance_editing(hass, entry, coordinator, example):
     flow = await hass.config_entries.options.async_configure(
         flow["flow_id"], {"next_step_id": "appliances_tariff"}
     )
+    field = next(item for item in convert(flow["data_schema"], custom_serializer=custom_serializer)
+                 if item["name"] == "instances_yaml")
+    assert field["selector"]["text"]["multiline"] is True, field
+    saved_yaml = entry.options.get("instances_yaml", entry.data.get("instances_yaml", ""))
+    assert flow["data_schema"]({})["instances_yaml"] == saved_yaml
     for raw in ("- id: [INVALID_PRIVATE_DOCUMENT", example + "\n" + example,
                 example.replace("allow_negative_price_run: false", 'allow_negative_price_run: "false"')):
         rejected = await hass.config_entries.options.async_configure(
