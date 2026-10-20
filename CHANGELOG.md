@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Require Home Assistant 2026.10.2 and Octopus Energy 19.2.1 when Octopus sources
+  are selected. Migrate saved Greener Nights/Saving Sessions references once at
+  entry setup; use explicit Power Down calendars thereafter. Preserve Power Up,
+  user calendars, appliance IDs, policies and learning. Remove per-scan fallback.
 - Plot effective import prices in the full dashboard, including verified future
   Power Up zero-price intervals and manual price overrides. Preserve raw tariff
   history, exact event boundaries, missing-rate gaps and the 24/48-hour layout.

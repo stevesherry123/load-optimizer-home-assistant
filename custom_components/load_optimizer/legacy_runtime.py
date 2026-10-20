@@ -41,9 +41,6 @@ LOGGER = logging.getLogger(__name__)
 LEGACY_STORE_VERSION = 1
 LEGACY_STORE_KEY = f"{DOMAIN}_legacy_state"
 ADAPTER_MARKER = "__hass_adapter__"
-RETIRED_GREEN_WINDOW_SUFFIX = "_greener_nights"
-LEGACY_SAVING_SESSIONS_SUFFIX = "_octoplus_saving_sessions"
-POWER_DOWN_SUFFIX = "_octoplus_power_down"
 
 
 @dataclass
@@ -120,7 +117,6 @@ class LegacyRuntime:
         app_runtime.refresh_publish_cache()
         configs = app_runtime.instance_configs(options)
         for config in configs:
-            self._normalise_calendar_entities(config)
             config["window_timezone"] = self.hass.config.time_zone
         if not self.started:
             app_runtime.RUNTIME_STARTED_AT = now
@@ -182,21 +178,7 @@ class LegacyRuntime:
         for key, value in wrapped.items():
             if key == CONF_INSTANCES_YAML or self._option_is_blank(normalised.get(key)):
                 normalised[key] = value
-        self._normalise_calendar_entities(normalised)
         return normalised
-
-    def _normalise_calendar_entities(self, config: dict[str, Any]) -> None:
-        """Remove retired calendars and prefer the current Octoplus entity."""
-        green_window = str(config.get(CONF_GREEN_WINDOW_ENTITY, "") or "").strip()
-        if green_window.endswith(RETIRED_GREEN_WINDOW_SUFFIX):
-            config[CONF_GREEN_WINDOW_ENTITY] = ""
-        blocked_window = str(config.get(CONF_BLOCKED_WINDOW_ENTITY, "") or "").strip()
-        if blocked_window.endswith(LEGACY_SAVING_SESSIONS_SUFFIX):
-            power_down = blocked_window.removesuffix(
-                LEGACY_SAVING_SESSIONS_SUFFIX
-            ) + POWER_DOWN_SUFFIX
-            if self.hass.states.get(power_down) is not None:
-                config[CONF_BLOCKED_WINDOW_ENTITY] = power_down
 
     def _parse_wrapped_options(self, raw: object) -> dict[str, Any]:
         if raw in (None, ""):
@@ -340,7 +322,6 @@ class LegacyRuntime:
         config = next((item for item in configs if str(item.get("instance_id")) == "1"), None)
         if config is None:
             return "automatic_configuration_unavailable"
-        self._normalise_calendar_entities(config)
         entity_ids = app_runtime.entity_list(config.get("blocked_window_entity", ""))
         negative = request.get("mode") == "negative_price"
         free_ids = app_runtime.entity_list(config.get("free_window_entity", "")) if negative else []

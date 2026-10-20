@@ -18,7 +18,7 @@ class PublicationTests(unittest.TestCase):
         metadata = json.loads((ROOT / "hacs.json").read_text())
         manifest = json.loads((INTEGRATION / "manifest.json").read_text())
         self.assertEqual(metadata["country"], "GB")
-        self.assertEqual(metadata["homeassistant"], "2024.12.0")
+        self.assertEqual(metadata["homeassistant"], "2026.10.2")
         self.assertTrue(metadata["hide_default_branch"])
         self.assertEqual([p.name for p in (ROOT / "custom_components").iterdir()
                           if p.is_dir() and not p.name.startswith("__")], ["load_optimizer"])
@@ -35,7 +35,7 @@ class PublicationTests(unittest.TestCase):
         self.assertIn("Security and credential scan", workflow)
         self.assertNotIn("ignore:", workflow)
         self.assertNotIn("continue-on-error", workflow)
-        self.assertIn('homeassistant==2024.12.0', workflow)
+        self.assertIn('homeassistant==2026.10.2', workflow)
 
 
 class LearnedHubTests(unittest.IsolatedAsyncioTestCase):

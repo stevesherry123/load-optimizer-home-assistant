@@ -9,10 +9,15 @@ from functools import partial
 from datetime import datetime, timezone
 
 import voluptuous as vol
+import yaml
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError, Unauthorized, UnknownUser
+from homeassistant.exceptions import ConfigEntryError
+from homeassistant.loader import async_get_integration
+from awesomeversion import AwesomeVersion
+from awesomeversion.exceptions import AwesomeVersionException
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntry
@@ -23,6 +28,7 @@ from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, PLATFORM
 from .coordinator import LoadOptimizerCoordinator
 from .optimizer.legacy_history import adapt_agile_buddy
 from .optimizer.state_import import MAX_STATE_BYTES
+from .optimizer.calendar_config import clean_calendar_settings, configured_entities, MINIMUM_OCTOPUS_VERSION
 
 LOGGER = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -379,8 +385,32 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+async def _async_check_source_versions(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Require the supported provider only when selected entities belong to it."""
+    registry = er.async_get(hass)
+    sources = configured_entities({**entry.data, **entry.options})
+    if any((source := registry.async_get(entity_id)) and source.platform == "octopus_energy"
+           for entity_id in sources):
+        integration = await async_get_integration(hass, "octopus_energy")
+        version = integration.manifest.get("version")
+        try:
+            supported = version is not None and AwesomeVersion(version) >= AwesomeVersion(MINIMUM_OCTOPUS_VERSION)
+        except (AwesomeVersionException, TypeError, ValueError) as error:
+            raise ConfigEntryError("Could not verify the installed Octopus Energy version") from error
+        if not supported:
+            raise ConfigEntryError(f"Octopus Energy {MINIMUM_OCTOPUS_VERSION} or newer is required for Octopus sources")
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Load Optimizer from a config entry."""
+    await _async_check_source_versions(hass, entry)
+    try:
+        data = await hass.async_add_executor_job(clean_calendar_settings, dict(entry.data))
+        options = await hass.async_add_executor_job(clean_calendar_settings, dict(entry.options))
+    except (ValueError, yaml.YAMLError) as error:
+        raise ConfigEntryError("Could not migrate saved calendar settings; review appliance YAML") from error
+    if data != dict(entry.data) or options != dict(entry.options):
+        hass.config_entries.async_update_entry(entry, data=data, options=options)
     _async_migrate_native_status_entities(hass, entry)
     _async_remove_obsolete_control_entities(hass, entry)
     coordinator = LoadOptimizerCoordinator(hass, entry)
