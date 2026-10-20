@@ -309,7 +309,8 @@ async def session(config_dir, example_name, snapshot=None):
             }, hass) is hass
             await hass.async_start()
             await hass.async_block_till_done()
-            assert hass.states.get("sensor.ev_usable_battery_capacity").state == "60"
+            capacity = hass.states.get("sensor.ev_usable_battery_capacity")
+            assert capacity is not None and float(capacity.state) == 60, capacity
             assert hass.states.get("sensor.ev_charging_connection").state == "connected"
             dashboard_store = LovelaceStorage(hass, {"id": "onboarding", "url_path": "onboarding-test"})
 
