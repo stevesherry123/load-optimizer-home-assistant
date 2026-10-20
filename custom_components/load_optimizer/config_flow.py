@@ -466,6 +466,13 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
             data={**self.config_entry.options, **user_input},
         )
 
+    @property
+    def _dishwasher_existing(self) -> dict[str, Any]:
+        """Show migrated controller references without changing or activating them."""
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        controller = getattr(coordinator, "orchestrator", None)
+        return {**getattr(controller, "config", {}), **self._existing}
+
     async def async_step_ev(self, user_input: dict[str, Any] | None = None):
         """Edit EV inputs without replacing its config entry or opt-ins."""
         errors = _ev_input_errors(user_input) if user_input is not None else {}
@@ -595,19 +602,31 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
                     vol.Optional(
                         CONF_COST_SEARCH_HOURS,
                         default=existing.get(CONF_COST_SEARCH_HOURS, 24),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=72)),
+                    ): selector.NumberSelector(selector.NumberSelectorConfig(
+                        min=1, max=72, step=1, mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="h",
+                    )),
                     vol.Optional(
                         CONF_COST_FORECAST_HOURS,
                         default=existing.get(CONF_COST_FORECAST_HOURS, 12),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=72)),
+                    ): selector.NumberSelector(selector.NumberSelectorConfig(
+                        min=1, max=72, step=1, mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="h",
+                    )),
                     vol.Optional(
                         CONF_COST_FORECAST_INTERVAL,
                         default=existing.get(CONF_COST_FORECAST_INTERVAL, 30),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=60)),
+                    ): selector.NumberSelector(selector.NumberSelectorConfig(
+                        min=5, max=60, step=1, mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="min",
+                    )),
                     vol.Optional(
                         CONF_COST_CANDIDATE_INTERVAL,
                         default=existing.get(CONF_COST_CANDIDATE_INTERVAL, 5),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
+                    ): selector.NumberSelector(selector.NumberSelectorConfig(
+                        min=1, max=30, step=1, mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="min",
+                    )),
                     vol.Optional(
                         CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
                         default=existing.get(
@@ -657,7 +676,7 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
         if user_input is not None and not errors:
             return self._save_section(user_input)
 
-        existing = {**self._existing, **(user_input or {})}
+        existing = {**self._dishwasher_existing, **(user_input or {})}
         schema: dict[Any, Any] = {}
         entity_fields = (
             CONF_BOSCH_POWER_SWITCH,
@@ -678,9 +697,9 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
             )
         ] = str
         for field in entity_fields:
-            schema[
-                vol.Optional(field, default=existing.get(field, ""))
-            ] = selector.EntitySelector(selector.EntitySelectorConfig())
+            key = (vol.Optional(field, default=existing[field])
+                   if existing.get(field) else vol.Optional(field))
+            schema[key] = selector.EntitySelector(selector.EntitySelectorConfig())
         return self.async_show_form(
             step_id="dishwasher_control",
             errors=errors,

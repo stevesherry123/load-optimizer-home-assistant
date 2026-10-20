@@ -97,3 +97,22 @@ class EVOptionsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["type"], "form")
         self.assertEqual(result["errors"], {"ready_by": "invalid_ready_by"})
         self.assertEqual(self.flow.config_entry.options, self.options)
+
+    async def test_dishwasher_form_inherits_migrated_references_read_only(self):
+        migrated = {"bosch_power_switch": "switch.dishwasher", "bosch_device_id": "migrated-device"}
+        self.flow.hass = SimpleNamespace(data={constants.DOMAIN: {
+            "unchanged": SimpleNamespace(orchestrator=SimpleNamespace(config=migrated))
+        }})
+        self.assertEqual(self.flow._dishwasher_existing["bosch_power_switch"], "switch.dishwasher")
+        self.assertEqual(self.flow._dishwasher_existing["bosch_device_id"], "migrated-device")
+        self.data["bosch_device_id"] = "saved-device"
+        self.options["bosch_power_switch"] = ""
+        self.assertEqual(self.flow._dishwasher_existing["bosch_device_id"], "saved-device")
+        self.assertEqual(self.flow._dishwasher_existing["bosch_power_switch"], "")
+        self.assertEqual(migrated["bosch_power_switch"], "switch.dishwasher")
+
+    async def test_dishwasher_form_without_runtime_does_not_guess_entities(self):
+        self.flow.hass = SimpleNamespace(data={})
+        self.assertEqual(self.flow._dishwasher_existing, self.flow._existing)
+        self.flow.hass.data = {constants.DOMAIN: {"unchanged": SimpleNamespace(orchestrator=None)}}
+        self.assertEqual(self.flow._dishwasher_existing, self.flow._existing)

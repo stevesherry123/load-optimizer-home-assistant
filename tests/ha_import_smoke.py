@@ -47,3 +47,42 @@ for key, value in (("ready_by", "25:00"), ("ready_by", "2026-10-09T08:00:00"),
 assert not _ev_input_errors({**values, "ready_by": "08:00"})
 assert not _ev_input_errors({**values, "ready_by": ""})
 print("Real Home Assistant EV schema defaults, clearing, numeric and deadline validation passed")
+
+import asyncio
+from types import SimpleNamespace
+from custom_components.load_optimizer.config_flow import LoadOptimizerOptionsFlow
+
+
+async def verify_options_display():
+    values = {"cost_search_hours": 18, "cost_forecast_hours": 48,
+              "cost_forecast_interval": 30, "cost_candidate_interval": 5}
+    view = SimpleNamespace(
+        _existing=values, _appliance_save_errors=lambda: {},
+        async_show_form=lambda **kwargs: kwargs,
+        _dishwasher_existing={"bosch_power_switch": "switch.migrated_dishwasher",
+                              "bosch_device_id": "migrated-device"},
+    )
+    result = await LoadOptimizerOptionsFlow.async_step_optimisation(view)
+    fields = convert(result["data_schema"], custom_serializer=custom_serializer)
+    defaults = result["data_schema"]({})
+    for name, value in values.items():
+        field = next(item for item in fields if item["name"] == name)
+        assert field["selector"]["number"]["mode"] == "box", field
+        assert defaults[name] == value, defaults
+        for invalid in (0, 1000):
+            try:
+                result["data_schema"]({name: invalid})
+            except vol.Invalid:
+                pass
+            else:
+                raise AssertionError("Out-of-range optimisation value accepted: " + name)
+    result = await LoadOptimizerOptionsFlow.async_step_dishwasher_control(view)
+    convert(result["data_schema"], custom_serializer=custom_serializer)
+    defaults = result["data_schema"]({})
+    assert defaults["bosch_power_switch"] == "switch.migrated_dishwasher"
+    assert defaults["bosch_device_id"] == "migrated-device"
+    assert view._existing == values
+
+
+asyncio.run(verify_options_display())
+print("Options display: visible numeric values and migrated controller defaults passed")
