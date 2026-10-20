@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Show optimisation horizons and intervals as numeric inputs with visible values
+  and units. Prefill dishwasher control settings from migrated controller mappings
+  when no explicit entry setting exists; opening the form does not enable control.
 - Require Home Assistant 2026.10.2 and Octopus Energy 19.2.1 when Octopus sources
   are selected. Migrate saved Greener Nights/Saving Sessions references once at
   entry setup; use explicit Power Down calendars thereafter. Preserve Power Up,
