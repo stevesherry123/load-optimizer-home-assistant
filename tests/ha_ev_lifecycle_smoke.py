@@ -27,7 +27,10 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.config_validation import custom_serializer
 from homeassistant import loader
-from voluptuous_serialize import convert
+try:
+    from probatio import to_field_list as convert
+except ImportError:
+    from voluptuous_serialize import convert
 
 DOMAIN = "load_optimizer"
 TITLE = "Development EV"
