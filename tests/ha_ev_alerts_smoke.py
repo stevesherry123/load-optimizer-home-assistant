@@ -1,6 +1,7 @@
 """Run test-bench observers in isolated HA with a synthetic switch and notifiers."""
 
 import asyncio
+import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -8,16 +9,21 @@ import yaml
 from homeassistant import loader
 from homeassistant.bootstrap import async_from_config_dict
 from homeassistant.core import Context, HomeAssistant
-from homeassistant.setup import async_setup_component
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 async def main():
+    logging.basicConfig(level=logging.WARNING)
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
         loader.async_setup(hass)
-        assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
+        config = yaml.safe_load((ROOT / "dev/ev-test-alerts.yaml").read_text())
+        assert await async_from_config_dict({
+            "homeassistant": {"time_zone": "Europe/London"},
+            "http": {"server_host": "127.0.0.1", "server_port": 18128},
+            "automation": config["automation"],
+        }, hass) is hass
         delivered = []
 
         async def remember(call):
@@ -42,10 +48,9 @@ async def main():
         hass.states.async_set("sensor.ev_trial_battery", "65")
         hass.states.async_set("sensor.ev_trial_target", "90")
         hass.states.async_set("switch.ev_trial_automatic_charging_control", "on", {"reason": "starting_selected_slot"})
-        config = yaml.safe_load((ROOT / "dev/ev-test-alerts.yaml").read_text())
-        assert await async_setup_component(hass, "automation", {"automation": config["automation"]})
         await hass.async_start()
         await hass.async_block_till_done()
+        assert len(hass.data["automation"].entities) == 2
 
         async def settle():
             await asyncio.sleep(1.2)
