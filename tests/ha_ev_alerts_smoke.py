@@ -17,6 +17,7 @@ async def main():
     logging.basicConfig(level=logging.WARNING)
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         config = yaml.safe_load((ROOT / "dev/ev-test-alerts.yaml").read_text())
         assert await async_from_config_dict({
@@ -50,7 +51,7 @@ async def main():
         hass.states.async_set("switch.ev_trial_automatic_charging_control", "on", {"reason": "starting_selected_slot"})
         await hass.async_start()
         await hass.async_block_till_done()
-        assert len(hass.data["automation"].entities) == 2
+        assert len(hass.data["automation"].entities) == 3
 
         async def settle():
             await asyncio.sleep(1.2)
@@ -83,6 +84,22 @@ async def main():
         hass.states.async_set("switch.ev_trial_load", "off")
         await settle()
         assert len(delivered) == 8, "Alert toggle must suppress notifications"
+        hass.states.async_set("input_boolean.ev_trial_switch_alerts", "on")
+        attrs = {"reason": "charging_in_selected_slot", "delivery": {"warning": "battery_gain_below_expected"}}
+        hass.states.async_set("switch.ev_trial_automatic_charging_control", "on", attrs)
+        await settle()
+        assert any("This warning does not cut power" in call["message"] for call in delivered)
+        count = len(delivered)
+        attrs["delivery"]["delivered_wall_kwh"] = 0.1
+        hass.states.async_set("switch.ev_trial_automatic_charging_control", "on", attrs)
+        await settle()
+        assert len(delivered) == count, "An ongoing warning must not repeatedly notify"
+        hass.states.async_set("switch.ev_trial_automatic_charging_control", "off", {
+            "reason": "session_energy_limit_reached", "session_energy_kwh": 0.3,
+            "session_max_energy_kwh": 0.3, "session_max_hours": 4})
+        await settle()
+        assert len(delivered) == count + 2, delivered
+        assert "explicitly enable a new session" in delivered[-1]["message"]
         await hass.async_stop()
         print("EV alerts: service context, unknown caller, availability, attribute filtering, both destinations and disable passed")
 

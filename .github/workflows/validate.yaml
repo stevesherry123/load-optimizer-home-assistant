@@ -61,7 +61,7 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install declared minimum Home Assistant
-        run: pip install "homeassistant==2026.10.2" "home-assistant-frontend==20260930.4" "pyotp==2.8.0" "PyQRCode==1.2.1"
+        run: pip install "homeassistant==2026.10.2" "home-assistant-frontend==20260930.4" "pyotp==2.10.0" "PyQRCode==1.2.1"
       - name: Import all integration platforms and config flow
         run: python tests/ha_import_smoke.py
       - name: Verify Octopus version floor and renamed source ownership
@@ -76,6 +76,8 @@ jobs:
         run: python tests/ha_ev_alerts_smoke.py
       - name: Test simulated battery feedback in Home Assistant
         run: python tests/ha_ev_battery_fill_smoke.py
+      - name: Verify trial battery settings restore across separate Home Assistant processes
+        run: python tests/ha_ev_trial_restore_smoke.py
       - name: Verify documented clean-install examples and safe control defaults
         run: python tests/ha_onboarding_smoke.py
       - name: Verify sensor-outage learning and automatic no-run source enforcement

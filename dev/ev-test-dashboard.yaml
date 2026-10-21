@@ -21,6 +21,12 @@ views:
             name: Target
           - entity: input_boolean.ev_trial_connected
             name: Connected
+          - entity: input_boolean.ev_trial_simulate_battery_gain
+            name: Simulate battery gain from meter
+          - entity: input_datetime.ev_trial_simulation_expires
+            name: Simulation expires
+          - entity: sensor.ev_trial_battery_simulation_status
+            name: Battery simulation status
       - type: entities
         title: Load And Control
         show_header_toggle: false

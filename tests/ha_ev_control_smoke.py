@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from homeassistant.core import HomeAssistant
 from homeassistant import loader
 from custom_components.load_optimizer.ev_control import EVChargeController
-from custom_components.load_optimizer.config_flow import _ev_schema
+from custom_components.load_optimizer.config_flow import _ev_schema, _ev_input_errors
 import voluptuous as vol
 
 
@@ -28,6 +28,17 @@ async def main():
                 "ev_charging_status_entity": "sensor.charging"}
             form_values = {key: value for key, value in config.items() if key != "load_type"}
             assert vol.Schema(_ev_schema(config))(form_values)["ev_charger_switch"] == "switch.synthetic"
+            for key in ("ev_session_max_hours", "ev_session_max_energy_kwh"):
+                assert _ev_input_errors({key: float("nan")}) == {key: "invalid_number"}
+                try:
+                    vol.Schema(_ev_schema(config))({**form_values, key: 0})
+                except vol.Invalid:
+                    pass
+                else:
+                    raise AssertionError("Session limits must be positive")
+            form = vol.Schema(_ev_schema(config))({**form_values,
+                "ev_session_max_hours": 4, "ev_session_max_energy_kwh": 0.3})
+            assert form["ev_session_max_hours"] == 4 and form["ev_session_max_energy_kwh"] == 0.3
             values = {"switch.synthetic": ("off", {}), "sensor.battery": ("10", {"unit_of_measurement": "%"}),
                 "sensor.capacity": ("60", {"unit_of_measurement": "kWh"}), "sensor.connection": ("connected", {}),
                 "sensor.power": ("1000", {"unit_of_measurement": "W"}),

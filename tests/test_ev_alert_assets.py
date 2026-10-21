@@ -26,3 +26,15 @@ class EVAlertAssetTests(unittest.TestCase):
         self.assertIn("exact caller not confirmed", message)
         self.assertIn("not confirmation of a physical relay", message)
         self.assertIn("latest reported reason", message)
+
+    def test_trial_settings_restore_but_simulation_requires_new_activation(self):
+        package = yaml.safe_load((ROOT / "dev/ev-test-package.yaml").read_text())
+        for item in package["input_number"].values():
+            self.assertNotIn("initial", item)
+        self.assertNotIn("initial", package["input_boolean"]["ev_trial_connected"])
+        fill = yaml.safe_load((ROOT / "dev/ev-test-battery-fill.yaml").read_text())
+        self.assertFalse(fill["input_boolean"]["ev_trial_simulate_battery_gain"]["initial"])
+        self.assertIn("ev_trial_simulation_expires", fill["input_datetime"])
+        status = fill["template"][0]["sensor"][0]["state"]
+        self.assertIn("expired", status)
+        self.assertIn("expiry_not_configured", status)

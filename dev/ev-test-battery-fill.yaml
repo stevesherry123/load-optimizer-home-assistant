@@ -5,6 +5,21 @@ input_boolean:
     name: EV Trial Simulate Battery Gain From Meter
     icon: mdi:battery-sync
     initial: false
+input_datetime:
+  ev_trial_simulation_expires:
+    name: EV Trial Simulation Expires
+    has_date: true
+    has_time: true
+template:
+  - sensor:
+      - name: EV Trial Battery Simulation Status
+        unique_id: load_optimizer_ev_trial_simulation_status
+        state: >-
+          {% set expiry = state_attr('input_datetime.ev_trial_simulation_expires', 'timestamp') %}
+          {% if not is_state('input_boolean.ev_trial_simulate_battery_gain', 'on') %}disabled
+          {% elif expiry is not number %}expiry_not_configured
+          {% elif as_timestamp(now()) >= expiry %}expired
+          {% else %}active{% endif %}
 automation:
   - id: lo_ev_trial_simulate_battery_gain
     alias: EV trial simulate battery gain from meter
@@ -17,6 +32,10 @@ automation:
       - condition: state
         entity_id: input_boolean.ev_trial_simulate_battery_gain
         state: "on"
+      - condition: template
+        value_template: >-
+          {% set expiry = state_attr('input_datetime.ev_trial_simulation_expires', 'timestamp') %}
+          {{ expiry is number and as_timestamp(now()) < expiry }}
       - condition: state
         entity_id: switch.ev_trial_automatic_charging_control
         state: "on"

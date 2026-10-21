@@ -89,3 +89,58 @@ automation:
           data:
             url: /charging-test-bench/charging-test
             group: ev-charging-test
+  - id: lo_ev_trial_controller_review_alerts
+    alias: EV Trial Controller Review Alerts
+    mode: queued
+    max: 10
+    trigger:
+      - platform: state
+        entity_id: switch.ev_trial_automatic_charging_control
+        attribute: reason
+        id: decision
+      - platform: template
+        value_template: >-
+          {{ (state_attr('switch.ev_trial_automatic_charging_control', 'delivery') or {}).get('warning')
+             == 'battery_gain_below_expected' }}
+        id: warning
+    condition:
+      - condition: state
+        entity_id: input_boolean.ev_trial_switch_alerts
+        state: "on"
+      - condition: template
+        value_template: >-
+          {{ trigger.id == 'warning' or
+             (trigger.from_state is not none and trigger.to_state is not none
+              and trigger.from_state.attributes.get('reason') != trigger.to_state.attributes.get('reason')
+              and trigger.to_state.attributes.get('reason') not in
+                ['starting_selected_slot', 'awaiting_switch_confirmation']) }}
+    action:
+      - variables:
+          alert_title: "Charging test: {{ 'battery feedback warning' if trigger.id == 'warning' else 'controller update' }}"
+          alert_message: >-
+            {% set c = trigger.to_state.attributes if trigger.id == 'decision' else states.switch.ev_trial_automatic_charging_control.attributes %}
+            {% if trigger.id == 'warning' %}
+            Battery gain is below the estimate despite metered consumption.
+            Check the battery sensor or simulator. This warning does not cut power.
+            {% endif %}
+            Controller decision: {{ (c.get('reason') or 'unknown') | replace('_', ' ') }}.
+            Socket: {{ states('switch.ev_trial_load') }}.
+            Session supply energy: {{ c.get('session_energy_kwh', 'unknown') }} kWh;
+            allowance {{ c.get('session_max_energy_kwh', 'unknown') }} kWh
+            and {{ c.get('session_max_hours', 'unknown') }} hours including waiting.
+            {% if c.get('reason') in ['session_duration_limit_reached', 'session_energy_limit_reached'] %}
+            Automatic control is disarmed; explicitly enable a new session to resume.
+            {% endif %}
+      - service: persistent_notification.create
+        data:
+          title: "{{ alert_title }}"
+          message: "{{ alert_message }}"
+          notification_id: ev_trial_controller_review
+      - service: notify.ev_trial_phone
+        continue_on_error: true
+        data:
+          title: "{{ alert_title }}"
+          message: "{{ alert_message }}"
+          data:
+            url: /charging-test-bench/charging-test
+            group: ev-charging-test

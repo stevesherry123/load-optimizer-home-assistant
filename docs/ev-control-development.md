@@ -34,8 +34,9 @@ are part of development acceptance.
   disarms automatic control and attempts to stop any journalled owned session;
   it does not silently resume. Failed stops retain ownership for retry/recovery.
 - Charging confirmation requires meaningful power, vehicle charging status and
-  meter progress after the configured grace period. Meter resets and a large
-  battery-gain shortfall stop owned charging and disarm the controller.
+  meter progress after the configured grace period. Meter resets stop owned
+  charging and disarm the controller. A large battery-gain shortfall is advisory:
+  it appears in delivery feedback and the dashboard without cutting power.
 
 Delivery comparison uses metered wall energy times the assumed charger
 efficiency divided by battery capacity. It tolerates at least five percentage
@@ -170,7 +171,7 @@ assuming 100% test efficiency. It rejects unavailable/reset meters, wrong units
 and jumps over 5% of capacity per update, and clamps the helper to 100%.
 This is synthetic feedback derived from the same meter: it does not independently
 validate battery gain or measure the laptop's real battery. Switch it off to
-exercise manual SOC changes or battery-gain-shortfall protection.
+exercise manual SOC changes or the battery-gain-shortfall warning.
 
 The planner now allocates only the required energy in its marginal slot. It no
 longer rounds a paid slot up and later prunes a current partial slot; that
@@ -180,12 +181,50 @@ charging bursts, no extra commands, metered progress and a target-reached stop.
 This is continuous energy/cost allocation, not a global appliance wear optimizer;
 configurable minimum dwell and competing external schedules remain future work.
 
-Keep simulated SOC consistent with the meter or expect delivery-shortfall stops.
+Keep simulated SOC consistent with the meter or expect a delivery-shortfall warning.
+The warning clears when the reading catches up. It does not bypass selected-slot
+boundaries, the target, missing/stale telemetry, charging faults or meter checks.
 An already-on manual session remains unowned; switch the test socket off before
 explicitly enabling control. Without a ready-by deadline, newly published prices
 can move the remaining plan into a later day. Neither observer changes that logic.
 
 ## Refinement And Deployment Gates
+
+### Bounded Sessions And Restart-Safe Test Inputs
+
+The development controller exposes `ev_session_max_hours` (default 24 hours)
+and `ev_session_max_energy_kwh` (default 120 kWh) in setup/options. Choose much
+smaller allowances for the laptop trial, for example 4 hours and 0.3 kWh; these
+examples are not automatically installed settings. Duration includes waiting,
+not just socket-on time. Energy is the selected supply meter's increase since
+explicit enabling, including any consumption during slot gaps. Use a dedicated
+charger meter; unrelated loads will conservatively consume the allowance.
+
+Replanning, battery changes and slot gaps do not reset either budget. Exhaustion
+stops only an owned socket and disarms the controller. A new explicit enable
+begins a new budget. Restart still disarms and does not silently resume. Meter
+resets and missing/stale feedback remain blocking. Checks occur every ten
+seconds and depend on meter reporting; this is not a hardware energy limiter.
+
+Test battery, capacity, target and connection helpers now restore their saved
+values instead of imposing startup defaults. On a new installation, configure
+them before starting a test. Automatic control and battery-fill simulation do
+not automatically enable after restarting.
+
+Install `dev/ev-test-battery-fill.yaml` alongside the test package to expose an
+explicit simulation-expiry date/time and `sensor.ev_trial_battery_simulation_status`.
+Set a future expiry and explicitly enable simulation for a supervised session.
+The status is `active`, `disabled`, `expired` or `expiry_not_configured`;
+an expired/missing deadline prevents battery updates even if the toggle is on.
+No hard-coded calendar date is required. When replacing an older privately
+installed automation, remove its old additional one-day condition through the
+supported automation editor; merely replacing the package cannot update a
+separately stored automation. Preserve the current helper values during rollout.
+
+Optional test observers now report decision transitions and the rising edge of
+a battery-gain warning to HA and the selected mobile target. A continuing warning
+does not notify on every meter update. These observers never command a socket;
+they remain separately installed test assets, not automatic public notifications.
 
 ### Owner Laptop Safety Smoke, 20 October 2026
 

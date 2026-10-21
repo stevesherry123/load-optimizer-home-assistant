@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Bound experimental EV enabled sessions by configurable time and supply energy,
+  without resetting allowances on replans or slot gaps. Limit exhaustion disarms
+  control until explicitly enabled again.
+- Preserve simulated battery, capacity, target and connection across restarts;
+  require an explicit, visible simulation expiry instead of a hard-coded date.
+- Explain charging/waiting decisions and session allowances on the EV dashboard;
+  add optional passive controller/warning alerts for HA and the selected phone.
+- Treat lower-than-estimated EV battery gain as a visible delivery warning, not
+  an automatic power cut, while retaining slot, target and telemetry safety stops.
 - Show optimisation horizons and intervals as numeric inputs with visible values
   and units. Prefill dishwasher control settings from migrated controller mappings
   when no explicit entry setting exists; opening the form does not enable control.

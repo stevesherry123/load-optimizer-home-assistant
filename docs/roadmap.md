@@ -6,6 +6,14 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- EV reliability batch implemented locally on `feature/ev-charger-control`:
+  restart-restored test inputs, explicit visible simulator expiry, whole-enabled-
+  session duration/energy limits, dashboard decision explanations and passive
+  warning/decision notifications. Synthetic tests are not live deployment.
+  Agree small-load allowances before installing this batch; real-EV setup and
+  physical acceptance remain outstanding. The earlier warning-only fix is
+  already installed privately on the RPi, not a public release.
+
 - Refine opt-in EV charger control on the separate `feature/ev-charger-control`
   branch, not `beta/next`. See [EV development gates](ev-control-development.md).
   The household mapping is private; unavailable plug telemetry and unverified

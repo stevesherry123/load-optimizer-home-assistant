@@ -81,6 +81,9 @@ class EVDeliveryMonitor:
         # SOC is coarse and cloud-delayed; allow at least five percentage points.
         if expected_gain - actual_gain > max(5, expected_gain * tolerance_percent / 100):
             self.result["status"] = "battery_gain_below_expected"
-            return "battery_gain_below_expected"
+            # Metered consumption is not proof of battery gain (for example, a
+            # laptop may be using the supply directly). Keep this advisory.
+            self.result["warning"] = "battery_gain_below_expected"
+            return None
         self.result["status"] = "charging_confirmed"
         return None

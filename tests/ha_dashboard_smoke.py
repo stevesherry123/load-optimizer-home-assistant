@@ -134,6 +134,27 @@ async def main():
         print("EV dashboard: ready/absent data, zero values, selected slots, home timezone and retained stop reasons passed")
         readiness = next(card for card in ev_cards if card.get("title") == "Source Readiness")
         assert "|---|---|---:|\n| battery |" in Template(readiness["content"], hass).async_render(parse_result=False), "Whitespace must not split the Markdown table"
+        delivery_card = next(card for card in ev_cards if card.get("title") == "Control And Delivery")
+        for warning in ("battery_gain_below_expected", None):
+            feedback = {"status": "battery_gain_below_expected" if warning else "charging_confirmed"}
+            if warning:
+                feedback["warning"] = warning
+            hass.states.async_set("sensor.ev_charging_review", "ready", {
+                "charger_state": "on", "control": {"state": "enabled",
+                    "reason": "charging_in_selected_slot", "delivery": feedback}})
+            rendered = Template(delivery_card["content"], hass).async_render(parse_result=False)
+            assert ("**Warning:**" in rendered) == bool(warning), rendered
+            if warning:
+                assert "does not stop charging" in rendered, rendered
+        print("EV delivery warning: visible while charging and cleared after battery feedback recovers")
+        hass.states.async_set("sensor.ev_charging_review", "ready", {
+            "selected_slots": [{"start": "2026-10-21T14:00:00+00:00"}],
+            "control": {"state": "enabled", "reason": "waiting_for_selected_slot",
+                        "session_max_hours": 4, "session_max_energy_kwh": 0.3,
+                        "session_energy_kwh": 0.01}})
+        rendered = Template(delivery_card["content"], hass).async_render(parse_result=False)
+        for text in ("Waiting for a cheaper", "15:00 BST", "4 hours", "0.3 kWh", "0.01 kWh"):
+            assert text in rendered, (text, rendered)
         from homeassistant.components import input_boolean, input_number
         package = yaml.safe_load((ROOT / "dev/ev-test-package.yaml").read_text())
         input_number.CONFIG_SCHEMA({"input_number": package["input_number"]})

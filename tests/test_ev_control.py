@@ -185,8 +185,110 @@ class EVControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.values["switch.charger"].state, "off")
         self.assertEqual(self.controller.monitor.result["status"], "charging_not_confirmed")
 
+    async def test_battery_gain_warning_keeps_charging_until_slot_end(self):
+        await self.start()
+        self.hass.services.async_call.reset_mock()
+        for minutes, energy in ((3, "110"), (6, "111")):
+            Clock.current = datetime(2026, 10, 19, 10, minutes, tzinfo=timezone.utc)
+            self.controller.set_plan(self.plan, Clock.current)
+            self.put("sensor.energy", energy, "kWh")
+            await self.controller.async_tick()
+            self.assertTrue(self.controller.enabled)
+            self.assertEqual(self.values["switch.charger"].state, "on")
+            self.assertEqual(self.controller.reason, "charging_in_selected_slot")
+            self.assertEqual(self.controller.status["delivery"]["warning"], "battery_gain_below_expected")
+            self.assertIsNone(self.controller.last_stop_reason)
+        self.hass.services.async_call.assert_not_awaited()
+        Clock.current = datetime(2026, 10, 19, 10, 30, tzinfo=timezone.utc)
+        self.controller.set_plan(self.plan, Clock.current)
+        for value in self.values.values():
+            value.last_reported = Clock.current
+        await self.controller.async_tick()
+        self.assertEqual(self.values["switch.charger"].state, "off")
+        self.assertEqual(self.controller.last_stop_reason, "outside_selected_slot")
+
+    async def test_battery_gain_warning_does_not_override_safety_stops(self):
+        for cause, reason in (("target", "target_reached"), ("disconnect", "vehicle_not_connected"),
+                              ("fault", "vehicle_charging_fault"), ("missing", "telemetry_unavailable")):
+            with self.subTest(cause=cause):
+                self.setUp()
+                await self.start()
+                Clock.current += timedelta(minutes=3)
+                self.controller.set_plan(self.plan, Clock.current)
+                self.put("sensor.energy", "110", "kWh")
+                await self.controller.async_tick()
+                self.assertEqual(self.controller.status["delivery"]["warning"], "battery_gain_below_expected")
+                if cause == "target": self.put("sensor.battery", "100", "%")
+                if cause == "disconnect": self.put("sensor.connection", "disconnected")
+                if cause == "fault": self.put("sensor.charging", "error")
+                if cause == "missing": self.put("sensor.battery", "unavailable", "%")
+                await self.controller.async_tick()
+                self.assertEqual(self.values["switch.charger"].state, "off")
+                self.assertEqual(self.controller.last_stop_reason, reason)
+
+    async def test_session_energy_limit_survives_replanning_and_slot_gaps(self):
+        self.config["ev_session_max_energy_kwh"] = 0.03
+        await self.start()
+        for minutes, energy in ((1, "100.01"), (2, "100.02"), (3, "100.03")):
+            Clock.current += timedelta(minutes=1)
+            self.controller.set_plan(self.plan, Clock.current)
+            self.put("sensor.energy", energy, "kWh")
+            if minutes == 1:
+                self.controller.set_plan({"status": "ready", "selected_slots": []}, Clock.current)
+            await self.controller.async_tick()
+            await self.controller.async_tick()
+        self.assertFalse(self.controller.enabled)
+        self.assertEqual(self.values["switch.charger"].state, "off")
+        self.assertEqual(self.controller.last_stop_reason, "session_energy_limit_reached")
+        self.assertEqual(self.controller.status["session_energy_kwh"], 0.03)
+        self.controller.set_plan(self.plan, Clock.current)
+        await self.controller.async_tick()
+        self.assertEqual(self.values["switch.charger"].state, "off")
+        await self.controller.async_enable()
+        self.assertTrue(self.controller.enabled)
+        self.assertEqual(self.controller.status["session_energy_kwh"], 0)
+
+    async def test_session_time_limit_disarms_even_while_waiting(self):
+        self.config["ev_session_max_hours"] = 0.05
+        self.controller.set_plan({"status": "ready", "selected_slots": []}, Clock.current)
+        await self.controller.async_enable()
+        Clock.current += timedelta(minutes=3)
+        self.controller.set_plan(self.plan, Clock.current)
+        await self.controller.async_tick()
+        self.assertFalse(self.controller.enabled)
+        self.assertEqual(self.controller.last_stop_reason, "session_duration_limit_reached")
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_session_time_limit_stops_owned_charging(self):
+        self.config["ev_session_max_hours"] = 0.05
+        await self.start()
+        Clock.current += timedelta(minutes=3)
+        self.controller.set_plan(self.plan, Clock.current)
+        self.put("sensor.energy", "100.01", "kWh")
+        await self.controller.async_tick()
+        self.assertFalse(self.controller.enabled)
+        self.assertEqual(self.values["switch.charger"].state, "off")
+        self.assertEqual(self.controller.last_stop_reason, "session_duration_limit_reached")
+
+    async def test_invalid_session_limits_never_energise(self):
+        for value in (0, -1, float("nan"), float("inf"), "bad"):
+            self.config["ev_session_max_hours"] = value
+            await self.controller.async_enable()
+            self.assertFalse(self.controller.enabled)
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_missing_initial_meter_cannot_start_a_session(self):
+        self.put("sensor.energy", "unavailable", "kWh")
+        with self.assertRaises(RuntimeError):
+            await self.controller.async_enable()
+        self.assertFalse(self.controller.enabled)
+        self.hass.services.async_call.assert_not_awaited()
+
 
 class EVDeliveryTests(unittest.TestCase):
+    def setUp(self):
+        Clock.current = datetime(2026, 10, 19, 10, tzinfo=timezone.utc)
+
     def test_unit_conversion_and_invalid_values(self):
         for quantity, value, unit, expected in (("power", "1.5", "kW", 1500),
             ("energy", "1500", "Wh", 1.5), ("power", "NaN", "W", None),
@@ -197,7 +299,7 @@ class EVDeliveryTests(unittest.TestCase):
     def test_meter_progress_battery_gain_and_reset(self):
         start = Clock.current
         cases = ((101, 15, "charging", None), (100, 10, "charging", "charging_energy_not_increasing"),
-                 (110, 10, "charging", "battery_gain_below_expected"), (99, 10, "charging", "energy_meter_reset"))
+                 (110, 10, "charging", None), (99, 10, "charging", "energy_meter_reset"))
         for energy, battery, status, expected in cases:
             monitor = EVDeliveryMonitor()
             monitor.start(start, 10, 100)
@@ -205,8 +307,33 @@ class EVDeliveryTests(unittest.TestCase):
                 efficiency=1, power=1000, energy=energy, charging_status=status)
             self.assertEqual(result, expected)
 
+    def test_battery_gain_warning_clears_when_reading_catches_up(self):
+        start = Clock.current
+        monitor = EVDeliveryMonitor()
+        monitor.start(start, 10, 100)
+        feedback = dict(capacity=20, efficiency=1, power=1000, charging_status="charging")
+        self.assertIsNone(monitor.update(start + timedelta(minutes=3), battery=10, energy=102, **feedback))
+        self.assertEqual(monitor.result["warning"], "battery_gain_below_expected")
+        self.assertIsNone(monitor.update(start + timedelta(minutes=4), battery=20, energy=102.01, **feedback))
+        self.assertEqual(monitor.result["status"], "charging_confirmed")
+        self.assertNotIn("warning", monitor.result)
+
+    def test_warning_does_not_hide_subsequent_meter_stall(self):
+        start = Clock.current
+        monitor = EVDeliveryMonitor()
+        monitor.start(start, 10, 100)
+        feedback = dict(battery=10, capacity=20, efficiency=1, power=1000,
+                        energy=102, charging_status="charging")
+        self.assertIsNone(monitor.update(start + timedelta(minutes=3), **feedback))
+        self.assertEqual(monitor.result["warning"], "battery_gain_below_expected")
+        self.assertEqual(monitor.update(start + timedelta(minutes=6), **feedback),
+                         "charging_energy_not_increasing")
+
 
 class EVSplitSlotTests(unittest.TestCase):
+    def setUp(self):
+        Clock.current = datetime(2026, 10, 19, 10, tzinfo=timezone.utc)
+
     def plan(self, periods, now, capacity=6):
         return plan_ev_charge(periods=periods, reference_utc=now, battery_percent=0,
             battery_capacity_kwh=capacity, charge_power_kw=1, charger_efficiency=1)

@@ -26,6 +26,8 @@ class EVChargeController:
         self.generated_at = None
         self.reason = "disabled"
         self.last_stop_reason = None
+        self.session_started_at = None
+        self.session_energy_start = None
         self._pending = None
         self._retry_after = None
         self._lock = asyncio.Lock()
@@ -43,6 +45,10 @@ class EVChargeController:
                 "owns_charger": bool(self.owned_target), "pending_command": self._pending[0] if self._pending else None,
                 "delivery": self.monitor.result,
                 "last_stop_reason": self.last_stop_reason,
+                "session_started_at": self.session_started_at.isoformat() if self.session_started_at else None,
+                "session_max_hours": self.config.get("ev_session_max_hours", 24),
+                "session_max_energy_kwh": self.config.get("ev_session_max_energy_kwh", 120),
+                "session_energy_kwh": self._session_energy(),
                 "plan_generated_at": self.generated_at.isoformat() if self.generated_at else None}
 
     def set_plan(self, plan, generated_at):
@@ -85,6 +91,11 @@ class EVChargeController:
             raise HomeAssistantError("The charger must be available and off before enabling control")
         self.monitor = EVDeliveryMonitor()
         self.last_stop_reason = None
+        feedback = self._feedback()
+        if feedback["energy"] is None:
+            raise HomeAssistantError("A valid supply energy reading is required to begin a bounded session")
+        self.session_started_at = datetime.now(timezone.utc)
+        self.session_energy_start = feedback["energy"]
         self.enabled = True
         await self.async_tick()
 
@@ -98,6 +109,20 @@ class EVChargeController:
         if not self.generated_at or not 0 <= (now - self.generated_at).total_seconds() <= 90:
             return "plan_stale"
         config = self.config
+        try:
+            hours = float(config.get("ev_session_max_hours", 24))
+            energy_limit = float(config.get("ev_session_max_energy_kwh", 120))
+            if not math.isfinite(hours) or not math.isfinite(energy_limit) or hours <= 0 or energy_limit <= 0:
+                return "session_limits_invalid"
+        except (ValueError, TypeError, OverflowError):
+            return "session_limits_invalid"
+        if self.session_started_at and (now - self.session_started_at).total_seconds() >= hours * 3600:
+            return "session_duration_limit_reached"
+        energy = self._session_energy()
+        if energy is not None and energy < 0:
+            return "energy_meter_reset"
+        if energy is not None and energy >= energy_limit:
+            return "session_energy_limit_reached"
         for other in self.hass.data.get("load_optimizer_ev_controls", {}).values():
             if other is not self and (other.enabled or other.owned_target) and other.config.get("ev_charger_switch") == config.get("ev_charger_switch"):
                 return "charger_already_controlled"
@@ -132,6 +157,12 @@ class EVChargeController:
         if feedback["charging_status"] in {"error", "fault", "discharging"}:
             return "vehicle_charging_fault"
         return None
+
+    def _session_energy(self):
+        energy = measurement(self.hass.states.get(self.config.get("ev_charge_energy_entity", "")), "energy")
+        if energy is None or self.session_energy_start is None:
+            return None
+        return round(energy - self.session_energy_start, 6)
 
     def _feedback(self):
         config = self.config
@@ -206,6 +237,10 @@ class EVChargeController:
                     self.reason = "manual_stop_or_restart_recovery"
                     return
                 block = self._block(now)
+                if block in {"session_duration_limit_reached", "session_energy_limit_reached",
+                             "session_limits_invalid", "energy_meter_reset"}:
+                    self.enabled = False
+                    self.last_stop_reason = block
                 selected_now = False
                 if block is None:
                     try:

@@ -137,7 +137,23 @@ views:
 
           **Decision:** {{ (c.get('reason') or 'not available') | replace('_', ' ') }}
 
+          {% set explanations = {
+            'charging_in_selected_slot': 'This interval is selected by the current lowest-cost plan.',
+            'waiting_for_selected_slot': 'Waiting for a cheaper selected interval.',
+            'outside_selected_slot': 'This interval is not selected by the current plan.',
+            'target_reached': 'The reported battery level has reached the target.',
+            'session_duration_limit_reached': 'The session time allowance is exhausted. Explicitly enable a new session to resume.',
+            'session_energy_limit_reached': 'The session supply-energy allowance is exhausted. Explicitly enable a new session to resume.',
+            'vehicle_not_connected': 'The connection sensor does not report a connected device.',
+            'telemetry_stale': 'Required feedback is too old to continue safely.',
+            'telemetry_unavailable': 'Required feedback is missing or unavailable.',
+            'disabled': 'Automatic control is disabled.'} %}
+          {{ explanations.get(c.get('reason'), '') }}
+          {% if c.get('reason') == 'waiting_for_selected_slot' and r.get('selected_slots') %}**Next selected start:** {{ as_local(as_datetime(r.selected_slots[0].start)).strftime('%a %H:%M %Z') }}{% endif %}
+
           {% if c.get('last_stop_reason') %}**Last stop:** {{ c.last_stop_reason | replace('_', ' ') }}{% endif %}
+
+          {% if d.get('warning') == 'battery_gain_below_expected' %}**Warning:** Battery gain is below the estimate despite metered power consumption. Check the battery reading and any simulation. This warning does not stop charging; the selected slots, target and safety checks still apply.{% endif %}
 
           | Feedback | Reading |
           |---|---|
@@ -147,6 +163,9 @@ views:
           | Cumulative supply meter | {{ value(r, 'meter_energy_kwh') }} kWh |
           | Owns this charging session | {{ 'yes' if c.get('owns_charger') else 'no' }} |
           | Pending command | {{ c.get('pending_command') or 'none' }} |
+          | Session maximum duration (including waiting) | {{ value(c, 'session_max_hours') }} hours |
+          | Session maximum supply energy | {{ value(c, 'session_max_energy_kwh') }} kWh |
+          | Supply energy since enabling | {{ value(c, 'session_energy_kwh') }} kWh |
           | Delivery verification | {{ (d.get('status') or 'not started') | replace('_', ' ') }} |
           | Controlled-session supply energy | {{ value(d, 'delivered_wall_kwh') }} kWh |
           | Expected battery gain | {{ value(d, 'expected_battery_gain_percent') }} percentage points |
