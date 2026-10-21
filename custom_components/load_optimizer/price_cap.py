@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timezone, tzinfo
 import logging
 from urllib.parse import urljoin, urlsplit
-from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -119,7 +118,7 @@ class PriceCapManager:
         *,
         region: str | None,
         payment_method: str | None,
-        timezone_name: str,
+        local_timezone: tzinfo,
         now_utc: datetime | None = None,
     ) -> dict:
         """Return a current reference, refreshing the official source daily."""
@@ -127,7 +126,7 @@ class PriceCapManager:
         if not region or not payment_method:
             return {"status": "not_configured", "source": "ofgem"}
         now_utc = now_utc or datetime.now(timezone.utc)
-        local_date = now_utc.astimezone(ZoneInfo(timezone_name)).date()
+        local_date = now_utc.astimezone(local_timezone).date()
         retrieved_at = self.cache.get("retrieved_at")
         cache_matches = (
             self.cache.get("region") == region
@@ -138,7 +137,7 @@ class PriceCapManager:
             try:
                 retrieved_today = (
                     datetime.fromisoformat(retrieved_at)
-                    .astimezone(ZoneInfo(timezone_name))
+                    .astimezone(local_timezone)
                     .date()
                     == local_date
                 )
@@ -174,7 +173,6 @@ class PriceCapManager:
                 "payment_method": payment_method,
                 "error": fetch_error,
             }
-        local_timezone = ZoneInfo(timezone_name)
         public_references = []
         for reference in references:
             value = reference.as_dict()

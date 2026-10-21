@@ -17,6 +17,7 @@ tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast
 namespace = {
     "asyncio": asyncio, "datetime": datetime, "timedelta": timedelta,
     "timezone": timezone, "logging": logging, "ZoneInfo": ZoneInfo,
+    "dt_util": SimpleNamespace(as_local=lambda now: now.astimezone(ZoneInfo("Europe/London"))),
     "Any": object, "Callable": object, "HomeAssistant": object, "ConfigEntry": object,
     "OrchestrationMigration": object, "Event": object, "callback": lambda fn: fn,
     "Store": Mock, "DOMAIN": "load_optimizer", "STATE_ON": "on",

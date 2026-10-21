@@ -43,6 +43,9 @@ class EVOptionsTests(unittest.IsolatedAsyncioTestCase):
         exec(compile(ast.Module(body=[cls], type_ignores=[]), "<ev-options>", "exec"), namespace)
         self.namespace = namespace
         self.flow = namespace[cls.name]()
+        async def execute(function, *args):
+            return function(*args)
+        self.flow.hass = SimpleNamespace(async_add_executor_job=execute)
         self.data = {"load_type": "ev_charging", "name": "Car", "battery_entity": "sensor.old",
                      "target_percent_entity": "sensor.target", "ready_by": "08:00"}
         self.options = {"target_percent": 85, "price_cap_region": "Merseyside and Northern Wales",
