@@ -101,7 +101,21 @@ async def configure(hass, kind, name, values):
         assert "PRIVATE_INVALID_EXAMPLE" not in rejected["description_placeholders"]["validation_details"]
         assert not hass.config_entries.async_entries(DOMAIN)
         convert(rejected["data_schema"], custom_serializer=custom_serializer)
-    result = await hass.config_entries.flow.async_configure(flow["flow_id"], values)
+    if kind == "ev_charging":
+        from custom_components.load_optimizer.ev_setup_flow import SOURCE_FIELDS
+
+        flow = await hass.config_entries.flow.async_configure(flow["flow_id"], {
+            key:value for key,value in values.items() if key in SOURCE_FIELDS})
+        assert flow["step_id"] == "ev_preferences", flow
+        convert(flow["data_schema"], custom_serializer=custom_serializer)
+        flow = await hass.config_entries.flow.async_configure(flow["flow_id"], {
+            key:value for key,value in values.items() if key not in SOURCE_FIELDS
+            and key not in {"price_cap_region", "price_cap_payment_method"}})
+        assert flow["step_id"] == "ev_review", flow
+        convert(flow["data_schema"], custom_serializer=custom_serializer)
+        result = await hass.config_entries.flow.async_configure(flow["flow_id"], {"action":"save"})
+    else:
+        result = await hass.config_entries.flow.async_configure(flow["flow_id"], values)
     if kind == "learned_appliance":
         assert result["type"] == "form" and result["step_id"] == "appliance_review", result
         convert(result["data_schema"], custom_serializer=custom_serializer)
@@ -255,6 +269,7 @@ async def session(config_dir, example_name, snapshot=None):
         control.update(bosch_selected_program_sensor=appliance["program_sensor"],
                        bosch_operation_state_sensor=appliance["state_sensor"])
     hass = HomeAssistant(str(config_dir))
+    hass.config.skip_pip = True
     loader.async_setup(hass)
     start = Clock.current
     rates = [{"start": (start + timedelta(minutes=30 * index)).isoformat(),
@@ -266,7 +281,7 @@ async def session(config_dir, example_name, snapshot=None):
     if is_dishwasher:
         hass.states.async_set(appliance["program_sensor"], "Dishcare.Dishwasher.Program." + programme)
         hass.states.async_set(appliance["state_sensor"], "BSH.Common.EnumType.OperationState.Ready")
-    hass.states.async_set("sensor.synthetic_ev_battery", 40)
+    hass.states.async_set("sensor.synthetic_ev_battery", 40, {"unit_of_measurement":"%"})
     hass.states.async_set("binary_sensor.ev_plugged_in", "on")
     for key, entity_id in (control.items() if is_dishwasher else []):
         if key == "bosch_device_id":
