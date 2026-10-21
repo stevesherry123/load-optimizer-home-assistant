@@ -14,8 +14,10 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.service import async_register_admin_service
+from homeassistant.util import dt as dt_util
+from homeassistant.exceptions import ConfigEntryError
 
-from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, PLATFORMS
+from .const import CONF_LOAD_TYPE, CONF_TARIFF_TIMEZONE, DEFAULT_TARIFF_TIMEZONE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE, PLATFORMS
 from .coordinator import LoadOptimizerCoordinator
 from .optimizer.state_import import MAX_STATE_BYTES
 
@@ -291,9 +293,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Load Optimizer from a config entry."""
+    data = {**entry.data, **entry.options}
+    local_timezone = await dt_util.async_get_time_zone(data.get(CONF_TARIFF_TIMEZONE, DEFAULT_TARIFF_TIMEZONE))
+    if local_timezone is None:
+        raise ConfigEntryError("Unknown tariff timezone; review the integration settings")
     _async_migrate_native_status_entities(hass, entry)
     _async_remove_obsolete_control_entities(hass, entry)
-    coordinator = LoadOptimizerCoordinator(hass, entry)
+    coordinator = LoadOptimizerCoordinator(hass, entry, local_timezone=local_timezone)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
