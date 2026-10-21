@@ -17,6 +17,7 @@ from custom_components.load_optimizer.legacy import app_runtime as app
 async def main():
     with tempfile.TemporaryDirectory() as config_dir:
         hass = HomeAssistant(config_dir)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         try:
             hass.config.time_zone = "Europe/London"

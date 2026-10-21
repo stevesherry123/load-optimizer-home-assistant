@@ -212,6 +212,7 @@ async def http_boundaries():
 async def main():
     with tempfile.TemporaryDirectory(prefix="load-optimizer-security-") as config_dir:
         hass = HomeAssistant(config_dir)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         try:
             assert await async_from_config_dict({"homeassistant": {"name": "Isolated security test"}}, hass) is hass

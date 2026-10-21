@@ -35,7 +35,9 @@ class PublicationTests(unittest.TestCase):
         self.assertIn("Security and credential scan", workflow)
         self.assertNotIn("ignore:", workflow)
         self.assertNotIn("continue-on-error", workflow)
-        self.assertIn('homeassistant==2026.10.2', workflow)
+        requirements = (ROOT / "dev/requirements-validation.txt").read_text()
+        self.assertIn('homeassistant==2026.10.2', requirements)
+        self.assertIn('pip install -r dev/requirements-validation.txt', workflow)
 
 
 class LearnedHubTests(unittest.IsolatedAsyncioTestCase):

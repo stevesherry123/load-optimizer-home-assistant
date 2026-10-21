@@ -48,6 +48,7 @@ async def main():
     with tempfile.TemporaryDirectory(prefix="load-optimizer-negative-") as directory:
         (Path(directory) / "custom_components").symlink_to(ROOT / "custom_components", target_is_directory=True)
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         physical_commands = []
         events = []

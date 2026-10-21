@@ -128,6 +128,8 @@ Report faults with the release number, Home Assistant version and redacted
 diagnostics in [GitHub Issues](https://github.com/stevesherry123/load-optimizer-home-assistant/issues).
 Never post access tokens or a full private configuration. See the
 [contribution guide](CONTRIBUTING.md) for release-channel and testing rules.
+The [validation guide](docs/validation.md) provides the matching local/CI
+environment and complete acceptance runner.
 
 For a suspected vulnerability, use the private reporting route in
 [SECURITY.md](SECURITY.md), not a public issue. See

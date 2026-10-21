@@ -176,7 +176,9 @@ async def verify_appliance_editing(hass, entry, coordinator, example):
 
     flow = await hass.config_entries.options.async_init(entry.entry_id)
     flow = await hass.config_entries.options.async_configure(flow["flow_id"], {"next_step_id": "appliances_tariff"})
-    result = await hass.config_entries.options.async_configure(flow["flow_id"], {"instances_yaml": example})
+    result = await hass.config_entries.options.async_configure(flow["flow_id"], {
+        "instances_yaml": example, "tariff_entities": "sensor.synthetic_rates",
+    })
     assert result["step_id"] == "appliance_review", result
     instance = coordinator.legacy_runtime.state["instances"]["1"]
     instance["cycle_start"] = Clock.current.isoformat()
@@ -196,6 +198,8 @@ async def verify_appliance_editing(hass, entry, coordinator, example):
     assert result["type"] == "create_entry", result
     await hass.async_block_till_done()
     current = hass.data[DOMAIN][entry.entry_id]
+    assert entry.options["tariff_entity"] == ""
+    assert entry.options["tariff_entities"] == "sensor.synthetic_rates"
     assert identities(hass, entry.entry_id) == ids_before
     assert current.legacy_runtime.state["instances"]["1"]["runs"] == 1
     assert current.legacy_runtime.state["instances"]["1"]["program_models"] == memory_before["instances"]["1"]["program_models"]
@@ -255,6 +259,7 @@ async def session(config_dir, example_name, snapshot=None):
         control.update(bosch_selected_program_sensor=appliance["program_sensor"],
                        bosch_operation_state_sensor=appliance["state_sensor"])
     hass = HomeAssistant(str(config_dir))
+    hass.config.skip_pip = True
     loader.async_setup(hass)
     start = Clock.current
     rates = [{"start": (start + timedelta(minutes=30 * index)).isoformat(),
@@ -309,7 +314,8 @@ async def session(config_dir, example_name, snapshot=None):
             }, hass) is hass
             await hass.async_start()
             await hass.async_block_till_done()
-            assert hass.states.get("sensor.ev_usable_battery_capacity").state == "60"
+            capacity = hass.states.get("sensor.ev_usable_battery_capacity")
+            assert capacity is not None and float(capacity.state) == 60, capacity
             assert hass.states.get("sensor.ev_charging_connection").state == "connected"
             dashboard_store = LovelaceStorage(hass, {"id": "onboarding", "url_path": "onboarding-test"})
 

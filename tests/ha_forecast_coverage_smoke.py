@@ -30,6 +30,7 @@ from custom_components.load_optimizer.tariff_intelligence import TariffIntellige
 async def main():
     with tempfile.TemporaryDirectory(prefix="load-optimizer-coverage-") as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         with patch.object(HomeAssistantHTTP, "start", new=AsyncMock()), \
              patch.object(HomeAssistantHTTP, "stop", new=AsyncMock()):

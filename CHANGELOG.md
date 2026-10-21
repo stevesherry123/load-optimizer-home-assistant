@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Use one version-checked local/CI acceptance runner, report all independent
+  failures in one run, and remove duplicate beta push/PR validation runs.
+- Carry multiline appliance editing, visible optimisation values and migrated
+  dishwasher reference defaults into the shared beta without experimental EV control.
+- Allow clearing the optional primary tariff selector while retaining additional
+  rate sources, without silently restoring the previous primary entity.
 - Show optimisation horizons and intervals as numeric inputs with visible values
   and units. Prefill dishwasher control settings from migrated controller mappings
   when no explicit entry setting exists; opening the form does not enable control.

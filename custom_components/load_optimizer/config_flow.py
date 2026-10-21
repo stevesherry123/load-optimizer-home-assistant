@@ -483,6 +483,8 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
         """Edit appliance sources and tariff inputs."""
         errors = {}
         if user_input is not None:
+            user_input = dict(user_input)
+            user_input.setdefault(CONF_TARIFF_ENTITY, "")
             errors = await self._async_prepare_appliances({**self._existing, **user_input})
             if not errors:
                 self._appliance_pending = dict(user_input)
@@ -513,7 +515,8 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
                     ): vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
                     vol.Optional(
                         CONF_TARIFF_ENTITY,
-                        default=existing.get(CONF_TARIFF_ENTITY, ""),
+                        description={"suggested_value": existing[CONF_TARIFF_ENTITY]}
+                        if existing.get(CONF_TARIFF_ENTITY) else {},
                     ): selector.EntitySelector(selector.EntitySelectorConfig()),
                     vol.Optional(
                         CONF_TARIFF_ENTITIES,

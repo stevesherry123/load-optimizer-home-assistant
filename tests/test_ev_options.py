@@ -7,7 +7,7 @@ import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 ROOT = Path(__file__).resolve().parents[1] / "custom_components/load_optimizer"
 spec = importlib.util.spec_from_file_location("ev_options_constants", ROOT / "const.py")
@@ -116,3 +116,16 @@ class EVOptionsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.flow._dishwasher_existing, self.flow._existing)
         self.flow.hass.data = {constants.DOMAIN: {"unchanged": SimpleNamespace(orchestrator=None)}}
         self.assertEqual(self.flow._dishwasher_existing, self.flow._existing)
+
+    async def test_clear_primary_tariff_keeps_additional_sources_and_saved_data_until_review(self):
+        self.data["tariff_entity"] = "sensor.old_tariff"
+        self.flow._async_prepare_appliances = AsyncMock(return_value={})
+        self.flow.async_step_appliance_review = AsyncMock(return_value={"type": "form"})
+        submitted = {"tariff_entities": "event.alternate_rates"}
+        await self.flow.async_step_appliances_tariff(submitted)
+        self.assertEqual(self.flow._appliance_pending["tariff_entity"], "")
+        self.assertEqual(self.flow._appliance_pending["tariff_entities"], "event.alternate_rates")
+        prepared = self.flow._async_prepare_appliances.call_args.args[0]
+        self.assertEqual(prepared["tariff_entity"], "")
+        self.assertEqual(self.data["tariff_entity"], "sensor.old_tariff")
+        self.assertNotIn("tariff_entity", submitted)

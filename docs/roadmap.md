@@ -6,15 +6,24 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
+- Stabilisation batch in progress on local `beta/next` (21 October): selectively
+  carry the reviewed multiline/number/control-default forms and persisted calendar
+  migration from the owner EV branch, without importing experimental charger
+  control. Use the [shared validation runner](validation.md) to reject mismatched
+  environments and report all acceptance failures in one run. No beta.10 release,
+  stable promotion or live deployment is implied. Known form-default fixes are
+  implemented; natural source-revision and repeated free-price observation remain
+  separate acceptance gates.
 - Observe the next real Power Up and native delayed-start transition following
   the verified [beta.9 deployment](power-up-pricing.md#deployment-acceptance-19-october-2026).
   Permanent calendar pricing is configured and the expired manual override is
   disabled. Do not start a wash or restart merely to complete these observations.
-- Repair optional blank entity-selector validation in appliance tariff settings.
-  HA rejected the saved blank primary selector during the 19 October edit; using
-  an existing tariff source allowed the reviewed change without altering the
-  effective source pair or history. Show effective legacy calendar mappings in
-  the source review so retired aliases do not produce misleading warnings.
+- Verify this stabilisation batch remotely before release. The optional primary
+  selector now supports blank/clear with additional tariff sources; its setup,
+  review, cancellation, learning preservation and restart checks pass locally.
+  Calendar aliases are migrated once in saved settings instead of rewritten on
+  every runtime scan. Complete desktop/mobile review of the new selector before
+  including it in a public release.
 
 - Observe repeated free-price washes before separately approved stable promotion.
   Automatic overnight completion and learning passed the 15 October live audit.
@@ -78,6 +87,14 @@ implementation architecture in `docs/architecture.md`.
   with a lower-carbon or provider-highlighted green candidate
 
 ## Completed Recently
+
+- Prepared the 21 October stabilisation batch locally on `beta/next`. Carried
+  general editor/calendar repairs without experimental EV control, corrected
+  the matching-HA authentication dependency pin, blocked test-time package
+  installation, and added a shared version-checked full-report runner. Local
+  Python 3.14 / HA 2026.10.2 validation passed 469 unit tests, Bandit and all 11
+  isolated HA acceptance scripts. Changes are not yet pushed, remotely validated,
+  released or installed. See [validation instructions](validation.md).
 
 - Published and installed beta.9 from `cd7eed6` on 19 October with one idle-time
   restart. Configured permanent Power Up calendar pricing through the reviewed

@@ -145,6 +145,7 @@ async def edit(hass: HomeAssistant, entry_id: str, section: str, values: dict):
 
 async def run(config_dir: Path, phase: str, serve: bool = False) -> None:
     hass = HomeAssistant(str(config_dir))
+    hass.config.skip_pip = True
     loader.async_setup(hass)
     seed_sources(hass)
     # No live source, AI provider, charger, add-on or appliance is contacted.
