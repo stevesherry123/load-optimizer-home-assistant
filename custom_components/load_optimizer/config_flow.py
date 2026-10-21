@@ -316,7 +316,7 @@ class LoadOptimizerConfigFlow(_ApplianceValidationFlow, config_entries.ConfigFlo
 
     async def async_step_ev(self, user_input: dict[str, Any] | None = None):
         """Create a new EV optimizer load."""
-        errors = _ev_input_errors(user_input) if user_input is not None else {}
+        errors = await self.hass.async_add_executor_job(_ev_input_errors, user_input) if user_input is not None else {}
         if user_input is not None and not errors:
             user_input[CONF_SLOT_MINUTES] = int(user_input.get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES))
             user_input[CONF_NAME] = self._name
@@ -452,7 +452,7 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
 
     async def async_step_ev(self, user_input: dict[str, Any] | None = None):
         """Edit EV inputs without replacing its config entry or opt-ins."""
-        errors = _ev_input_errors(user_input) if user_input is not None else {}
+        errors = await self.hass.async_add_executor_job(_ev_input_errors, user_input) if user_input is not None else {}
         if user_input is not None and not errors:
             updates = dict(user_input)
             if CONF_SLOT_MINUTES in updates:

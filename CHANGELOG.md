@@ -35,6 +35,17 @@
   changing learning. Cover late no-run events and full green-window overlap.
 - Unreleased development only; no version bump, deployment or new control opt-in.
 
+## 1.5.8
+
+- Resolve the tariff timezone asynchronously during entry setup and reuse its
+  tzinfo for Ofgem date selection, cache freshness and effective UTC boundaries.
+- Move timezone-bearing EV validation, tariff parsing and ready-by conversion
+  into executor jobs; use HA's resolved local timezone for native scheduling.
+- Pre-resolve and retain appliance timezone objects before legacy scans, avoiding
+  cold timezone-database reads in their synchronous calculation helpers.
+- Add cold-timezone, local-midnight and DST regression coverage. Stable patch
+  based on v1.5.7; no beta or experimental EV control features are included.
+
 ## 1.5.7
 
 - Restrict learning import, recovery and orchestration handover actions to Home

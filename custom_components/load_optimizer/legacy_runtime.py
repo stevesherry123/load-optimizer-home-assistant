@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlparse
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_BLOCKED_WINDOW_ENTITY,
@@ -70,6 +71,7 @@ class LegacyRuntime:
         self.published_entities: dict[str, dict[str, Any]] = {}
         self.calendar_events: dict[str, list[dict[str, Any]]] = {}
         self.started = False
+        self._timezones = {}
         self._state_lock = asyncio.Lock()
         self.external_state_provider: Callable[[str], dict[str, Any] | None] | None = None
         self._patch_legacy_runtime()
@@ -118,6 +120,15 @@ class LegacyRuntime:
             app_runtime.LAST_FULL_REPUBLISH_AT = None
         app_runtime.refresh_publish_cache()
         configs = app_runtime.instance_configs(options)
+        # Retain resolved zones so synchronous legacy helpers only hit ZoneInfo's
+        # object cache, never a cold timezone-database read on the event loop.
+        names = {"UTC", "Europe/London", *(str(config.get(CONF_TARIFF_TIMEZONE, "Europe/London")) for config in configs)}
+        for name in names:
+            if name not in self._timezones:
+                zone = await dt_util.async_get_time_zone(name)
+                if zone is None:
+                    raise ValueError("Unknown appliance tariff timezone")
+                self._timezones[name] = zone
         for config in configs:
             self._normalise_calendar_entities(config)
             config["window_timezone"] = self.hass.config.time_zone

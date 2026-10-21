@@ -6,7 +6,6 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any, Awaitable, Callable
-from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_ON
@@ -17,6 +16,7 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .orchestration_migration import LEGACY_AUTOMATION_IDS, OrchestrationMigration
@@ -882,7 +882,7 @@ class NativeOrchestrator:
 
     def _overnight_window_unused(self, now: datetime) -> bool:
         previous = self._parse_datetime(self.state.get("last_auto_normal_request"))
-        local_now = now.astimezone(ZoneInfo(self.hass.config.time_zone))
+        local_now = dt_util.as_local(now)
         cutoff = local_now.replace(hour=16, minute=0, second=0, microsecond=0)
         if local_now < cutoff:
             cutoff -= timedelta(days=1)
@@ -1067,7 +1067,7 @@ class NativeOrchestrator:
         previous = self._parse_datetime(self.state.get("last_auto_normal_request"))
         eligible_after = None
         if previous and not self._overnight_window_unused(now):
-            local_now = now.astimezone(ZoneInfo(self.hass.config.time_zone))
+            local_now = dt_util.as_local(now)
             cutoff = local_now.replace(hour=16, minute=0, second=0, microsecond=0)
             if local_now >= cutoff:
                 cutoff += timedelta(days=1)
