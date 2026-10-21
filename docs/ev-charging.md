@@ -9,6 +9,40 @@ That branch also includes a read-only review dashboard and a
 [hardware-free step-through preview](ev-control-development.md#read-only-dashboard-and-offline-review)
 with fictional negative prices; the offline preview cannot change Home Assistant.
 
+## Guided Setup On The Development Branch
+
+The unreleased EV branch now offers a guided path for new entries and under
+**Configure > Guided EV setup and plan review** for existing EV entries:
+
+1. Select tariff, battery percentage, capacity, target and connection sources.
+2. Set charging power, efficiency, ready-by time, session allowances and optional
+   charger feedback/control entities. Leave the switch empty for advisory only.
+3. Review current input checks and proposed cheapest charging slots. Refresh the
+   preview or return to either earlier screen before saving.
+4. Optionally select an existing storage-mode dashboard, such as Load Optimizer,
+   to append a read-only charging view. Existing views and cards are preserved.
+
+No settings are committed before the final save, and the review never commands
+a switch or contacts a cloud API. Saving rechecks current readings. Missing,
+stale or incorrectly unit-labelled inputs require correction or an explicit
+**Save with warnings for advisory use** acknowledgement. That acknowledgement
+does not bypass the running controller's safety checks or turn it on.
+Saving an existing controlled entry reloads it and stops any owned session;
+charger activation is a separate, explicit action after reviewing the saved plan.
+
+The appended view uses built-in Markdown cards only; it does not require
+ApexCharts or replace the existing price graph. It includes battery/plan data,
+selected slots, delivery feedback and input freshness. An existing view at the
+entry's generated path is never overwritten, including any user edits. Changing
+the destination or clearing the setting does not delete previously added views.
+YAML-mode and automatically generated overview dashboards are not written to.
+Inspect the review sensor's `dashboard_status` if the optional append fails;
+the integration continues to work without a dashboard view.
+
+The advanced single-form editor remains available. Neither this wizard nor its
+synthetic tests constitute real-EV physical acceptance. Installation and a
+supervised Volvo trial remain separate deployment steps.
+
 Add a separate entry and choose `ev_charging`. This calculates charging slots;
 it does **not** operate a charger, car or plug. Any separate charger automation
 needs its own safety checks and explicit opt-in.

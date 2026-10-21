@@ -1,7 +1,7 @@
 {
   "domain": "load_optimizer",
   "name": "Load Optimizer",
-  "after_dependencies": [],
+  "after_dependencies": ["lovelace"],
   "codeowners": ["@stevesherry123"],
   "config_flow": true,
   "documentation": "https://github.com/stevesherry123/load-optimizer-home-assistant",

@@ -147,6 +147,7 @@ views:
             'vehicle_not_connected': 'The connection sensor does not report a connected device.',
             'telemetry_stale': 'Required feedback is too old to continue safely.',
             'telemetry_unavailable': 'Required feedback is missing or unavailable.',
+            'battery_units_invalid': 'Battery level and target must use %, and capacity must use kWh. Check the selected entities.',
             'disabled': 'Automatic control is disabled.'} %}
           {{ explanations.get(c.get('reason'), '') }}
           {% if c.get('reason') == 'waiting_for_selected_slot' and r.get('selected_slots') %}**Next selected start:** {{ as_local(as_datetime(r.selected_slots[0].start)).strftime('%a %H:%M %Z') }}{% endif %}

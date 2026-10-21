@@ -70,6 +70,8 @@ jobs:
         run: python tests/ha_dashboard_smoke.py
       - name: Verify real EV configuration, reload and restart persistence
         run: python tests/ha_ev_lifecycle_smoke.py
+      - name: Verify guided EV review and append-only dashboard without hardware
+        run: python tests/ha_ev_guided_setup_smoke.py
       - name: Verify opt-in EV switch control and ownership recovery with synthetic charger
         run: python tests/ha_ev_control_smoke.py
       - name: Verify passive charging-test alerts with synthetic switch and notifiers

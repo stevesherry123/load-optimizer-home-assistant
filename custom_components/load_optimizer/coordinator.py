@@ -13,34 +13,25 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import (
     CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_ENTITY,
-    CONF_CHARGE_POWER_KW,
-    CONF_CHARGER_EFFICIENCY,
     CONF_CONNECTION_STATUS_ENTITY,
     CONF_LOAD_TYPE,
     CONF_PRICE_CAP_PAYMENT_METHOD,
     CONF_PRICE_CAP_REGION,
-    CONF_READY_BY,
     CONF_SCAN_INTERVAL,
-    CONF_SLOT_MINUTES,
-    CONF_TARGET_PERCENT,
     CONF_TARGET_PERCENT_ENTITY,
     CONF_TARIFF_ENTITY,
     CONF_TARIFF_ENTITIES,
-    CONF_TARIFF_PRICE_UNIT,
     CONF_TARIFF_TIMEZONE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_PRICE_CAP_PAYMENT_METHOD,
     DEFAULT_TARIFF_TIMEZONE,
-    DEFAULT_TARGET_PERCENT,
     DOMAIN,
     LOAD_TYPE_LEARNED_APPLIANCE,
 )
 from .legacy_runtime import LegacyRuntime
 from .orchestration import NativeOrchestrator
 from .orchestration_migration import OrchestrationMigration
-from .optimizer.ev_charging import connection_is_available, deadline_from_ready_by, plan_ev_charge, state_float
-from .optimizer.tariffs import TariffDataUnavailable, tariff_periods_from_entity
-from .legacy.app_runtime import entity_list
+from .optimizer.ev_setup import build_ev_plan, tariff_entities
 from .price_cap import PriceCapManager
 from .tariff_intelligence import get_service
 from .narrative import OptionalNarrative
@@ -130,55 +121,11 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "tariff_intelligence": intelligence,
             }
 
-        tariff_entities = list(dict.fromkeys(entity_list(data.get(CONF_TARIFF_ENTITY, ""))
-                                            + entity_list(data.get(CONF_TARIFF_ENTITIES, ""))))
-        try:
-            periods = []
-            for entity_id in tariff_entities:
-                source = self._state_payload(entity_id)
-                if not source or source["state"] in {"unknown", "unavailable"}:
-                    raise ValueError("Configured EV tariff source is unavailable")
-                try:
-                    periods.extend(tariff_periods_from_entity(source, reference_utc=now,
-                        timezone_name=data.get(CONF_TARIFF_TIMEZONE), price_unit=data.get(CONF_TARIFF_PRICE_UNIT)))
-                except TariffDataUnavailable:
-                    continue
-            if not periods:
-                raise ValueError("No configured EV tariff source contains future prices")
-            tariff_error = None
-        except (TypeError, ValueError) as error:
-            periods = []
-            tariff_error = str(error)
-
-        battery_entity = self._state_payload(data.get(CONF_BATTERY_ENTITY))
-        capacity_entity = self._state_payload(data.get(CONF_BATTERY_CAPACITY_ENTITY))
-        target_entity = self._state_payload(data.get(CONF_TARGET_PERCENT_ENTITY))
-        connection_entity = self._state_payload(data.get(CONF_CONNECTION_STATUS_ENTITY))
-
-        target_percent = state_float(target_entity)
-        if target_percent is None:
-            target_percent = float(data.get(CONF_TARGET_PERCENT, DEFAULT_TARGET_PERCENT))
-
-        deadline = deadline_from_ready_by(
-            data.get(CONF_READY_BY),
-            reference_utc=now,
-            timezone_name=data.get(CONF_TARIFF_TIMEZONE),
-        )
-        plan = plan_ev_charge(
-            periods=periods,
-            battery_percent=state_float(battery_entity),
-            battery_capacity_kwh=state_float(capacity_entity),
-            charge_power_kw=float(data.get(CONF_CHARGE_POWER_KW)),
-            target_percent=target_percent,
-            charger_efficiency=float(data.get(CONF_CHARGER_EFFICIENCY)),
-            slot_minutes=int(data.get(CONF_SLOT_MINUTES)),
-            reference_utc=now,
-            deadline_utc=deadline,
-            connected=connection_is_available(connection_entity),
-        )
-        if tariff_error and plan.get("reason") == "no_tariff_periods":
-            plan["reason"] = "tariff_error"
-            plan["tariff_error"] = tariff_error
+        sources = {entity_id: self._state_payload(entity_id) for entity_id in tariff_entities(data)}
+        for key in (CONF_BATTERY_ENTITY, CONF_BATTERY_CAPACITY_ENTITY, CONF_TARGET_PERCENT_ENTITY, CONF_CONNECTION_STATUS_ENTITY):
+            if data.get(key):
+                sources[data[key]] = self._state_payload(data[key])
+        plan, periods = build_ev_plan(data, sources, now)
         if self.ev_controller:
             self.ev_controller.set_plan(plan, now)
         review_sources = {entity_id: self._state_payload(entity_id) for key, entity_id in data.items()

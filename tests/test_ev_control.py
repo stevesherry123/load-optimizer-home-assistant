@@ -284,6 +284,12 @@ class EVControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.controller.enabled)
         self.hass.services.async_call.assert_not_awaited()
 
+    async def test_wrong_battery_units_cannot_energise(self):
+        self.put("sensor.capacity", "60000", "Wh")
+        await self.controller.async_enable()
+        self.assertEqual(self.controller.reason, "battery_units_invalid")
+        self.hass.services.async_call.assert_not_awaited()
+
 
 class EVDeliveryTests(unittest.TestCase):
     def setUp(self):

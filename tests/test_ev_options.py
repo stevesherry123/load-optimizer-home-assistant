@@ -36,6 +36,7 @@ class EVOptionsTests(unittest.IsolatedAsyncioTestCase):
                    and n.name == "LoadOptimizerOptionsFlow")
         namespace = {k: v for k, v in vars(constants).items() if k.isupper()}
         namespace.update({"config_entries": SimpleNamespace(OptionsFlow=FlowBase),
+                          "EVGuidedFlow": type("EVGuidedFlow", (), {}),
                           "_ApplianceValidationFlow": type("ApplianceValidationFlow", (), {}),
                           "vol": SimpleNamespace(Schema=lambda value: value),
                           "_ev_schema": Mock(return_value={"ev": "schema"}),
@@ -52,7 +53,7 @@ class EVOptionsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_ev_gets_only_ev_and_benchmark_menu(self):
         result = await self.flow.async_step_init()
-        self.assertEqual(result["menu_options"], ["ev", "price_cap"])
+        self.assertEqual(result["menu_options"], ["ev_setup", "ev", "price_cap"])
 
     async def test_learned_appliance_menu_is_unchanged(self):
         self.data["load_type"] = "learned_appliance"

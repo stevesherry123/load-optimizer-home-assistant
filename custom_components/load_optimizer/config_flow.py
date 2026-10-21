@@ -13,6 +13,8 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers import selector
 
+from .ev_setup_flow import EVGuidedFlow
+
 from .const import (
     EV_CONTROL_ENTITY_FIELDS,
     CONF_BATTERY_CAPACITY_ENTITY,
@@ -298,7 +300,7 @@ def _ev_input_errors(values: dict[str, Any]) -> dict[str, str]:
     return errors
 
 
-class LoadOptimizerConfigFlow(_ApplianceValidationFlow, config_entries.ConfigFlow, domain=DOMAIN):
+class LoadOptimizerConfigFlow(EVGuidedFlow, _ApplianceValidationFlow, config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a Load Optimizer config flow."""
 
     VERSION = 1
@@ -314,7 +316,7 @@ class LoadOptimizerConfigFlow(_ApplianceValidationFlow, config_entries.ConfigFlo
             self._name = user_input[CONF_NAME]
             if user_input[CONF_LOAD_TYPE] == LOAD_TYPE_LEARNED_APPLIANCE:
                 return await self.async_step_learned_appliance()
-            return await self.async_step_ev()
+            return await self.async_step_ev_setup()
 
         return self.async_show_form(
             step_id="user",
@@ -437,14 +439,14 @@ class LoadOptimizerConfigFlow(_ApplianceValidationFlow, config_entries.ConfigFlo
         })
 
 
-class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsFlow):
+class LoadOptimizerOptionsFlow(EVGuidedFlow, _ApplianceValidationFlow, config_entries.OptionsFlow):
     """Edit load settings without exposing one giant form."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Route to the options supported by this load type."""
         load_type = self.config_entry.data.get(CONF_LOAD_TYPE)
         if load_type == LOAD_TYPE_EV:
-            return self.async_show_menu(step_id="init", menu_options=["ev", "price_cap"])
+            return self.async_show_menu(step_id="init", menu_options=["ev_setup", "ev", "price_cap"])
         if load_type != LOAD_TYPE_LEARNED_APPLIANCE:
             return self.async_abort(reason="not_supported")
 

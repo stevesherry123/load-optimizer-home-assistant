@@ -6,13 +6,21 @@ implementation architecture in `docs/architecture.md`.
 
 ## Near-Term Priorities
 
-- EV reliability batch implemented locally on `feature/ev-charger-control`:
+- Guided EV setup implemented locally on `feature/ev-charger-control`: staged
+  sources/preferences, fresh read-only validation and actual-plan preview, plus
+  optional append-only charging views on existing storage dashboards. Advanced
+  editing remains available. Real-HA synthetic acceptance covers create/edit,
+  cancellation, stale preview rechecks, identity and customised-view preservation.
+  Pending: owner deployment/review and separately approved physical Volvo trial.
+
+- EV reliability batch `a8c5da8` pushed and privately installed on 21 October:
   restart-restored test inputs, explicit visible simulator expiry, whole-enabled-
   session duration/energy limits, dashboard decision explanations and passive
-  warning/decision notifications. Synthetic tests are not live deployment.
-  Agree small-load allowances before installing this batch; real-EV setup and
-  physical acceptance remain outstanding. The earlier warning-only fix is
-  already installed privately on the RPi, not a public release.
+  warning/decision notifications. Approved laptop limits are 4 hours including
+  waiting and 0.3 kWh. Real restart retained the current helper values; live
+  metered charging was confirmed after the three-minute grace period. GitHub
+  validation passed. This is an owner trial, not a public release or real-EV
+  physical acceptance.
 
 - Refine opt-in EV charger control on the separate `feature/ev-charger-control`
   branch, not `beta/next`. See [EV development gates](ev-control-development.md).
@@ -23,8 +31,8 @@ implementation architecture in `docs/architecture.md`.
   offline actual-engine replay for the twelve-hour/six-hour negative-price case
   and four stop/fault scenarios. Review these together before a physical trial.
   An explicitly approved owner-only laptop test entry/dashboard is installed;
-  live battery-helper planning tests passed with automatic control off and no
-  physical commands. Real-EV and supervised switching acceptance remain open.
+  planning tests and explicitly approved supervised laptop switching passed.
+  Real-EV physical acceptance remains open.
 
 - Observe the next real Power Up and native delayed-start transition following
   the verified [beta.9 deployment](power-up-pricing.md#deployment-acceptance-19-october-2026).

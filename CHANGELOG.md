@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add a staged guided EV setup/edit path with live input/unit/freshness checks,
+  the same charging-plan preview used by the coordinator, and explicit saving.
+  Keep advanced editing, stable IDs and default-off charger activation.
+- Optionally append read-only EV views to selected existing storage dashboards
+  without replacing existing views or custom edits. Require explicit battery
+  percentage/kWh units before enabling experimental physical charger control.
 - Bound experimental EV enabled sessions by configurable time and supply energy,
   without resetting allowances on replans or slot gaps. Limit exhaustion disarms
   control until explicitly enabled again.

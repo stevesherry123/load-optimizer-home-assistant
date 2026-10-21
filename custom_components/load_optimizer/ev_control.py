@@ -136,6 +136,12 @@ class EVChargeController:
             if key == "connection_status_entity" and source.state.lower() not in {"connected", "charging", "plugged_in", "ready"}:
                 return "vehicle_not_connected"
         try:
+            for key, unit in (("battery_entity", "%"), ("battery_capacity_entity", "kWh"),
+                              ("target_percent_entity", "%")):
+                if config.get(key):
+                    source = self.hass.states.get(config[key])
+                    if source is None or source.attributes.get("unit_of_measurement") != unit:
+                        return "battery_units_invalid"
             battery = float(self.hass.states.get(config["battery_entity"]).state)
             target_entity = config.get("target_percent_entity")
             target_state = self.hass.states.get(target_entity) if target_entity else None

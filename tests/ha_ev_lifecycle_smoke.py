@@ -63,7 +63,9 @@ def seed_sources(hass: HomeAssistant) -> None:
     hass.states.async_set("sensor.dev_rates", "ready", {"rates": rates})
     for name, value in (("battery", 40), ("capacity", 60), ("target", 80),
                         ("connection", "connected")):
-        hass.states.async_set(f"sensor.dev_{name}", value)
+        unit = "kWh" if name == "capacity" else "%"
+        hass.states.async_set(f"sensor.dev_{name}", value,
+                              {"unit_of_measurement": unit} if name != "connection" else {})
 
 
 def identities(hass: HomeAssistant, entry_id: str) -> dict[str, str]:
@@ -132,7 +134,7 @@ async def prepare_ui_fixture(hass: HomeAssistant) -> None:
 
 async def edit(hass: HomeAssistant, entry_id: str, section: str, values: dict):
     flow = await hass.config_entries.options.async_init(entry_id)
-    assert flow["menu_options"] == ["ev", "price_cap"], flow
+    assert flow["menu_options"] == ["ev_setup", "ev", "price_cap"], flow
     flow = await hass.config_entries.options.async_configure(
         flow["flow_id"], {"next_step_id": section}
     )
@@ -145,6 +147,7 @@ async def edit(hass: HomeAssistant, entry_id: str, section: str, values: dict):
 
 async def run(config_dir: Path, phase: str, serve: bool = False) -> None:
     hass = HomeAssistant(str(config_dir))
+    hass.config.skip_pip = True
     loader.async_setup(hass)
     seed_sources(hass)
     # No live source, AI provider, charger, add-on or appliance is contacted.
@@ -173,9 +176,17 @@ async def run(config_dir: Path, phase: str, serve: bool = False) -> None:
                     flow["flow_id"], {"name": TITLE, "load_type": "ev_charging"}
                 )
                 convert(flow["data_schema"], custom_serializer=custom_serializer)
-                result = await hass.config_entries.flow.async_configure(
-                    flow["flow_id"], dict(SOURCES)
-                )
+                from custom_components.load_optimizer.ev_setup_flow import SOURCE_FIELDS
+                flow = await hass.config_entries.flow.async_configure(flow["flow_id"], {
+                    key:value for key,value in SOURCES.items() if key in SOURCE_FIELDS})
+                assert flow["step_id"] == "ev_preferences", flow
+                convert(flow["data_schema"], custom_serializer=custom_serializer)
+                flow = await hass.config_entries.flow.async_configure(flow["flow_id"], {
+                    key:value for key,value in SOURCES.items() if key not in SOURCE_FIELDS
+                    and key not in {"price_cap_region", "price_cap_payment_method"}})
+                assert flow["step_id"] == "ev_review", flow
+                convert(flow["data_schema"], custom_serializer=custom_serializer)
+                result = await hass.config_entries.flow.async_configure(flow["flow_id"], {"action":"save"})
                 assert result["type"] == "create_entry", result
                 await hass.async_block_till_done()
                 entries = hass.config_entries.async_entries(DOMAIN)

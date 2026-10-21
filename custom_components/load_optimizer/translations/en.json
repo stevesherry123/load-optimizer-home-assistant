@@ -4,7 +4,9 @@
       "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
       "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
       "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes.",
-      "invalid_appliance_configuration": "Correct the configuration using the details above."
+      "invalid_appliance_configuration": "Correct the configuration using the details above.",
+      "ev_review_incomplete": "Resolve the input checks, or explicitly save with warnings for advisory use.",
+      "ev_dashboard_unavailable": "That dashboard is unavailable. Choose another dashboard or no view."
     },
     "step": {
       "user": {
@@ -13,6 +15,50 @@
         "data": {
           "name": "Name",
           "load_type": "Load type"
+        }
+      },
+      "ev_setup": {
+        "title": "EV battery and tariff",
+        "description": "Choose live sources. Battery and target must use %, and capacity must use kWh. Nothing is saved until the final review.",
+        "data": {
+          "tariff_entity": "Primary tariff entity",
+          "tariff_entities": "Additional future-rate entities",
+          "tariff_timezone": "Home tariff timezone",
+          "tariff_price_unit": "Tariff price unit",
+          "battery_entity": "Battery percentage",
+          "battery_capacity_entity": "Battery capacity (kWh)",
+          "target_percent_entity": "Target percentage entity (optional)",
+          "connection_status_entity": "Connection status (required for switch control)"
+        }
+      },
+      "ev_preferences": {
+        "title": "EV charging preferences and control",
+        "description": "Leave the charger switch empty for advisory planning only. Selecting controls does not enable them. Use a dedicated cumulative supply meter in Wh or kWh.",
+        "data": {
+          "ev_charger_switch": "Charger switch (optional)",
+          "ev_charge_power_entity": "Charging power (W or kW)",
+          "ev_charge_energy_entity": "Cumulative supply energy (Wh or kWh)",
+          "ev_charging_status_entity": "Charging status",
+          "ev_telemetry_max_age_minutes": "Maximum feedback age (minutes)",
+          "ev_min_charging_power_w": "Minimum charging power (W)",
+          "ev_charge_confirmation_seconds": "Charging confirmation timeout (seconds)",
+          "ev_delivery_tolerance_percent": "Battery-gain warning tolerance (%)",
+          "ev_session_max_hours": "Session duration limit, including waiting (hours)",
+          "ev_session_max_energy_kwh": "Session supply-energy limit (kWh)",
+          "charge_power_kw": "Expected charging power (kW)",
+          "target_percent": "Fallback target (%)",
+          "charger_efficiency": "Charging efficiency (0.1 to 1)",
+          "slot_minutes": "Slot length (minutes)",
+          "ready_by": "Ready by (home time HH:MM, optional)"
+        }
+      },
+      "ev_review": {
+        "title": "Review EV inputs and charging plan",
+        "description": "{review}",
+        "data": {
+          "action": "Next action",
+          "accept_incomplete": "Save with warnings for advisory use",
+          "ev_dashboard_path": "Add a read-only charging view to this dashboard"
         }
       },
       "ev": {
@@ -83,6 +129,8 @@
   },
   "options": {
     "error": {
+      "ev_review_incomplete": "Resolve the input checks, or explicitly save with warnings for advisory use.",
+      "ev_dashboard_unavailable": "That dashboard is unavailable. Choose another dashboard or no view.",
       "active_appliance_capture": "An appliance cycle is being captured. Wait until it finishes before saving these settings.",
       "appliance_request_pending": "An appliance start is queued. Wait for it to complete or explicitly cancel it before saving these settings.",
       "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
@@ -95,7 +143,8 @@
         "title": "Load Optimizer settings",
         "description": "Choose the part of Load Optimizer you want to change. Saving one section preserves every other setting.",
         "menu_options": {
-          "ev": "EV charging settings",
+          "ev_setup": "Guided EV setup and plan review",
+          "ev": "Advanced EV charging settings",
           "appliances_tariff": "Appliances and tariff",
           "optimisation": "Cost optimisation",
           "publishing": "Published data",
@@ -103,6 +152,7 @@
           "dishwasher_control": "Dishwasher control (optional)"
         },
         "menu_option_descriptions": {
+          "ev_setup": "Review sources, limits and proposed slots before saving. Optional additive dashboard view.",
           "ev": "Tariff, battery references, charging power, efficiency, target and deadline.",
           "appliances_tariff": "Appliance definitions, refresh timing, tariff entities and calendar windows.",
           "optimisation": "Search horizon, forecast resolution and schedule preference weighting.",
@@ -130,8 +180,52 @@
         "title": "Review appliance configuration",
         "description": "{summary}\n\nSubmit to save these settings. Keep existing appliance IDs unchanged to retain their learning associations."
       },
+      "ev_setup": {
+        "title": "EV battery and tariff",
+        "description": "Choose live sources. Battery and target must use %, and capacity must use kWh. Existing settings remain unchanged until the final review.",
+        "data": {
+          "tariff_entity": "Primary tariff entity",
+          "tariff_entities": "Additional future-rate entities",
+          "tariff_timezone": "Home tariff timezone",
+          "tariff_price_unit": "Tariff price unit",
+          "battery_entity": "Battery percentage",
+          "battery_capacity_entity": "Battery capacity (kWh)",
+          "target_percent_entity": "Target percentage entity (optional)",
+          "connection_status_entity": "Connection status (required for switch control)"
+        }
+      },
+      "ev_preferences": {
+        "title": "EV charging preferences and control",
+        "description": "Leave the charger switch empty for advisory planning only. Saving does not enable control. Use a dedicated cumulative supply meter in Wh or kWh.",
+        "data": {
+          "ev_charger_switch": "Charger switch (optional)",
+          "ev_charge_power_entity": "Charging power (W or kW)",
+          "ev_charge_energy_entity": "Cumulative supply energy (Wh or kWh)",
+          "ev_charging_status_entity": "Charging status",
+          "ev_telemetry_max_age_minutes": "Maximum feedback age (minutes)",
+          "ev_min_charging_power_w": "Minimum charging power (W)",
+          "ev_charge_confirmation_seconds": "Charging confirmation timeout (seconds)",
+          "ev_delivery_tolerance_percent": "Battery-gain warning tolerance (%)",
+          "ev_session_max_hours": "Session duration limit, including waiting (hours)",
+          "ev_session_max_energy_kwh": "Session supply-energy limit (kWh)",
+          "charge_power_kw": "Expected charging power (kW)",
+          "target_percent": "Fallback target (%)",
+          "charger_efficiency": "Charging efficiency (0.1 to 1)",
+          "slot_minutes": "Slot length (minutes)",
+          "ready_by": "Ready by (home time HH:MM, optional)"
+        }
+      },
+      "ev_review": {
+        "title": "Review EV inputs and charging plan",
+        "description": "{review}",
+        "data": {
+          "action": "Next action",
+          "accept_incomplete": "Save with warnings for advisory use",
+          "ev_dashboard_path": "Add a read-only charging view to this dashboard"
+        }
+      },
       "ev": {
-        "title": "EV charging settings",
+        "title": "Advanced EV charging settings",
         "description": "Changes update the advisory plan and retain existing entities. This does not enable charger control.",
         "data": {
           "ev_charger_switch": "Charger switch (optional)",

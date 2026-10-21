@@ -434,6 +434,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.orchestrator.async_start()
     if coordinator.ev_controller:
         await coordinator.ev_controller.async_start()
+    dashboard_path = {**entry.data, **entry.options}.get("ev_dashboard_path")
+    if dashboard_path and coordinator.legacy_runtime is None:
+        from .ev_dashboard import async_add_ev_view
+
+        status = await async_add_ev_view(hass, entry, dashboard_path)
+        coordinator.data["ev_review"]["dashboard_status"] = status
+        coordinator.async_update_listeners()
     return True
 
 
