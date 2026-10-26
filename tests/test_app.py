@@ -315,9 +315,9 @@ class VersionTests(unittest.TestCase):
         integration = (root / "custom_components/load_optimizer/__init__.py").read_text()
         self.assertIn("_async_migrate_native_status_entities", integration)
         self.assertIn("new_unique_id=unique_id", integration)
-        self.assertIn('existing.platform == "template"', integration)
-        self.assertIn('current_state.state == "unavailable"', integration)
-        self.assertIn("hass.states.async_remove(entity_id)", integration)
+        self.assertIn("legacy_status_conflict", integration)
+        self.assertNotIn("hass.states.async_remove(entity_id)", integration)
+        self.assertIn("existing.platform == DOMAIN", integration)
         self.assertIn("_async_claim_native_status_entity_ids", integration)
         self.assertIn("new_entity_id=target_entity_id", integration)
         self.assertIn("entity_id not in NATIVE_STATUS_ENTITY_IDS", sensors)
@@ -583,6 +583,22 @@ class CurrentTariffPeriodTests(unittest.TestCase):
 class PublishingTests(unittest.TestCase):
     def tearDown(self):
         PUBLISHED_ENTITY_CACHE.clear()
+
+    @patch("legacy.app_runtime.api_request")
+    def test_tariff_horizon_uses_calendar_days_across_dst(self, api_request):
+        for reference, start, end, expected in (
+            ("2026-10-25T12:00:00+00:00", "2026-10-24T23:00:00+00:00", "2026-10-26T00:00:00+00:00", "24h"),
+            ("2026-03-29T12:00:00+00:00", "2026-03-29T00:00:00+00:00", "2026-03-30T23:00:00+00:00", "48h"),
+        ):
+            PUBLISHED_ENTITY_CACHE.clear()
+            api_request.reset_mock()
+            publish_cost_entities("token", "sensor.load_optimizer_1", "Test", {
+                "status": "not_ready", "tariff_start": start, "tariff_end": end,
+                "schedule_timezone": "Europe/London",
+            }, reference_utc=datetime.fromisoformat(reference))
+            horizon = next(call.args[2] for call in api_request.call_args_list
+                if call.args[1].endswith("_tariff_horizon"))
+            self.assertEqual(horizon["state"], expected)
 
     @patch("legacy.app_runtime.api_request")
     def test_publish_entity_skips_unchanged_payloads(self, api_request):

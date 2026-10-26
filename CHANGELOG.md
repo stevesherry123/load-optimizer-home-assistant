@@ -35,6 +35,21 @@
   changing learning. Cover late no-run events and full green-window overlap.
 - Unreleased development only; no version bump, deployment or new control opt-in.
 
+## 1.5.9
+
+- Run appliance calculations in a serialized executor worker. Keep HA reads on
+  its event loop, buffer entity publications, queue notifications thread-safely,
+  and finish saving cancelled scans before releasing the memory-import lock.
+- Replace unregistered migration/recovery status states with persistent
+  notifications and actionable service errors. No learning data is removed.
+- Preserve template entities and native alternative IDs during migration; raise
+  a repair issue until the user removes obsolete package sensors, then reclaim
+  free IDs on reload without modifying another integration's registry entries.
+- Align the optional full price chart's labels, tooltips, day bounds, Ofgem line
+  and Now marker to the configured tariff timezone regardless of browser/profile
+  timezone. Handle 23/25-hour UK days and select 24/48h by tariff calendar days.
+- Narrow stable patch based on v1.5.8, without experimental EV control.
+
 ## 1.5.8
 
 - Resolve the tariff timezone asynchronously during entry setup and reuse its

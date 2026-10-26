@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
 import re
+from threading import Lock, get_ident
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
@@ -44,6 +45,7 @@ ADAPTER_MARKER = "__hass_adapter__"
 RETIRED_GREEN_WINDOW_SUFFIX = "_greener_nights"
 LEGACY_SAVING_SESSIONS_SUFFIX = "_octoplus_saving_sessions"
 POWER_DOWN_SUFFIX = "_octoplus_power_down"
+_ENGINE_LOCK = Lock()
 
 
 @dataclass
@@ -72,9 +74,9 @@ class LegacyRuntime:
         self.calendar_events: dict[str, list[dict[str, Any]]] = {}
         self.started = False
         self._timezones = {}
+        self._loop_thread = get_ident()
         self._state_lock = asyncio.Lock()
         self.external_state_provider: Callable[[str], dict[str, Any] | None] | None = None
-        self._patch_legacy_runtime()
 
     async def async_load(self) -> None:
         """Load persisted legacy state from Home Assistant storage."""
@@ -106,7 +108,14 @@ class LegacyRuntime:
     async def async_scan(self, options: dict[str, Any]) -> LegacyScanResult:
         """Run one legacy compatibility scan."""
         async with self._state_lock:
-            return await self._async_scan(options)
+            task = asyncio.create_task(self._async_scan(options))
+            try:
+                return await asyncio.shield(task)
+            except asyncio.CancelledError:
+                # An executor job cannot be cancelled. Finish saving its learning
+                # before releasing the import/scan lock during a reload.
+                await task
+                raise
 
     async def _async_scan(self, options: dict[str, Any]) -> LegacyScanResult:
         """Serialize scans with imports so persisted learning cannot race."""
@@ -115,10 +124,6 @@ class LegacyRuntime:
             raise RuntimeError("Appliance memory was not loaded")
         options = self._normalise_options(options)
         now = datetime.now(timezone.utc)
-        if not self.started:
-            app_runtime.PUBLISHED_ENTITY_CACHE.clear()
-            app_runtime.LAST_FULL_REPUBLISH_AT = None
-        app_runtime.refresh_publish_cache()
         configs = app_runtime.instance_configs(options)
         # Retain resolved zones so synchronous legacy helpers only hit ZoneInfo's
         # object cache, never a cold timezone-database read on the event loop.
@@ -132,40 +137,9 @@ class LegacyRuntime:
         for config in configs:
             self._normalise_calendar_entities(config)
             config["window_timezone"] = self.hass.config.time_zone
-        if not self.started:
-            app_runtime.RUNTIME_STARTED_AT = now
-            app_runtime.SCAN_HEALTH_TIMEOUT_SECONDS = max(180, (int(options.get("scan_interval", 60)) * 3) + 30)
-            app_runtime.reset_configured_instances(self.state, options)
-            app_runtime.bootstrap_program_models(self.state)
-            app_runtime.repair_learning_quality(self.state, configs)
-            startup_running = app_runtime.running_instances(self.state, configs)
-            app_runtime.mark_interrupted_captures(self.state, startup_running)
-            app_runtime.publish_restart_warning(ADAPTER_MARKER, startup_running)
-            self.started = True
+        await self.hass.async_add_executor_job(self._prepare_instances, options, configs, now)
         await self._async_prefetch_calendar_events(configs, now)
-        reset_status = app_runtime.reset_request_status(self.state, options)
-        app_runtime.LAST_SCAN_STARTED_AT = now
-        for config in configs:
-            try:
-                app_runtime.update_instance(ADAPTER_MARKER, self.state, config, now=now)
-            except Exception as error:  # pragma: no cover - defensive integration isolation
-                LOGGER.error("Legacy Load Optimizer scan failed for instance %s (%s)", config.get("instance_id"), type(error).__name__)
-                app_runtime.publish_entity(
-                    ADAPTER_MARKER,
-                    f"sensor.load_optimizer_{config.get('instance_id')}_status",
-                    "error",
-                    {
-                        "friendly_name": f"{config.get('name', 'Load Optimizer')} Optimizer Status",
-                        "icon": "mdi:alert-circle",
-                        "reason": type(error).__name__,
-                    },
-                )
-        running = app_runtime.running_instances(self.state, configs)
-        app_runtime.publish_restart_safety(ADAPTER_MARKER, running)
-        app_runtime.LAST_SCAN_COMPLETED_AT = datetime.now(timezone.utc)
-        app_runtime.publish_status(ADAPTER_MARKER, len(configs), running=running, reset_status=reset_status)
-        app_runtime.publish_logging_diagnostics(ADAPTER_MARKER)
-        signature = app_runtime.state_signature(self.state)
+        signature = await self.hass.async_add_executor_job(self._scan_instances, options, configs, now)
         if signature != self.last_signature:
             await self.store.async_save(self.state)
             self.last_signature = signature
@@ -184,6 +158,57 @@ class LegacyRuntime:
             },
             message=None if configs else "Configure learned appliance instances to enable compatibility publishing.",
         )
+
+    def _scan_instances(self, options: dict, configs: list[dict], now: datetime) -> str:
+        """Keep the legacy engine's module-level adapters isolated per worker."""
+        with _ENGINE_LOCK:
+            self._patch_legacy_runtime()
+            return self._scan_instances_locked(options, configs, now)
+
+    def _scan_instances_locked(self, options: dict, configs: list[dict], now: datetime) -> str:
+        """Calculate and buffer publications without accessing HA from a worker."""
+        reset_status = app_runtime.reset_request_status(self.state, options)
+        app_runtime.LAST_SCAN_STARTED_AT = now
+        for config in configs:
+            try:
+                app_runtime.update_instance(ADAPTER_MARKER, self.state, config, now=now)
+            except Exception as error:  # pragma: no cover - defensive integration isolation
+                LOGGER.error("Legacy Load Optimizer scan failed for instance %s (%s)", config.get("instance_id"), type(error).__name__)
+                app_runtime.publish_entity(
+                    ADAPTER_MARKER,
+                    f"sensor.load_optimizer_{config.get('instance_id')}_status",
+                    "error",
+                    {"friendly_name": f"{config.get('name', 'Load Optimizer')} Optimizer Status",
+                     "icon": "mdi:alert-circle", "reason": type(error).__name__},
+                )
+        running = app_runtime.running_instances(self.state, configs)
+        app_runtime.publish_restart_safety(ADAPTER_MARKER, running)
+        app_runtime.LAST_SCAN_COMPLETED_AT = datetime.now(timezone.utc)
+        app_runtime.publish_status(ADAPTER_MARKER, len(configs), running=running, reset_status=reset_status)
+        app_runtime.publish_logging_diagnostics(ADAPTER_MARKER)
+        return app_runtime.state_signature(self.state)
+
+    def _prepare_instances(self, options: dict, configs: list[dict], now: datetime) -> None:
+        """Restore startup models in a worker before sizing calendar coverage."""
+        with _ENGINE_LOCK:
+            self._patch_legacy_runtime()
+            self._prepare_instances_locked(options, configs, now)
+
+    def _prepare_instances_locked(self, options: dict, configs: list[dict], now: datetime) -> None:
+        if not self.started:
+            app_runtime.PUBLISHED_ENTITY_CACHE.clear()
+            app_runtime.LAST_FULL_REPUBLISH_AT = None
+        app_runtime.refresh_publish_cache()
+        if not self.started:
+            app_runtime.RUNTIME_STARTED_AT = now
+            app_runtime.SCAN_HEALTH_TIMEOUT_SECONDS = max(180, (int(options.get("scan_interval", 60)) * 3) + 30)
+            app_runtime.reset_configured_instances(self.state, options)
+            app_runtime.bootstrap_program_models(self.state)
+            app_runtime.repair_learning_quality(self.state, configs)
+            startup_running = app_runtime.running_instances(self.state, configs)
+            app_runtime.mark_interrupted_captures(self.state, startup_running)
+            app_runtime.publish_restart_warning(ADAPTER_MARKER, startup_running)
+            self.started = True
 
     def _normalise_options(self, options: dict[str, Any]) -> dict[str, Any]:
         """Accept either split config-flow fields or a full pasted add-on options block."""
@@ -231,6 +256,16 @@ class LegacyRuntime:
         app_runtime.save_state_if_changed = self._save_state_if_changed_ignored
 
     def _source_state(self, token: str, entity_id: str) -> dict[str, Any] | None:
+        if get_ident() != self._loop_thread:
+            return asyncio.run_coroutine_threadsafe(
+                self._async_source_state(token, entity_id), self.hass.loop
+            ).result()
+        return self._source_state_on_loop(token, entity_id)
+
+    async def _async_source_state(self, token: str, entity_id: str) -> dict[str, Any] | None:
+        return self._source_state_on_loop(token, entity_id)
+
+    def _source_state_on_loop(self, token: str, entity_id: str) -> dict[str, Any] | None:
         if not entity_id:
             return None
         published = self.published_entities.get(entity_id)
@@ -273,7 +308,7 @@ class LegacyRuntime:
 
     def _api_request(self, token: str, path: str, payload: dict | None = None) -> object | None:
         if path == "/services/persistent_notification/create" and payload:
-            self.hass.async_create_task(
+            self.hass.create_task(
                 self.hass.services.async_call(
                     "persistent_notification",
                     "create",
@@ -384,8 +419,8 @@ class LegacyRuntime:
     def _render_template(self, token: str, template: str) -> object | None:
         state_attr_match = re.search(r"state_attr\('([^']+)',\s*'([^']+)'\)", template)
         if state_attr_match:
-            state = self.hass.states.get(state_attr_match.group(1))
-            return state.attributes.get(state_attr_match.group(2)) if state else None
+            state = self._source_state(token, state_attr_match.group(1))
+            return state["attributes"].get(state_attr_match.group(2)) if state else None
         helper_prefix_match = re.search(r"helper_prefix = '([^']+)'", template)
         if helper_prefix_match:
             return self._execution_snapshot(helper_prefix_match.group(1))
@@ -393,8 +428,8 @@ class LegacyRuntime:
 
     def _execution_snapshot(self, helper_prefix: str) -> dict[str, Any]:
         def state(entity_id: str) -> str:
-            item = self.hass.states.get(entity_id)
-            return item.state if item else "unknown"
+            item = self._source_state(ADAPTER_MARKER, entity_id)
+            return item["state"] if item else "unknown"
 
         def helper(domain: str, suffix: str) -> str:
             return state(f"{domain}.{helper_prefix}_{suffix}")
