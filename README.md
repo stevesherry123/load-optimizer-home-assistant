@@ -132,7 +132,7 @@ For a suspected vulnerability, use the private reporting route in
 [data handling and privacy](docs/privacy.md) before sharing logs, dashboard
 screenshots or older diagnostic downloads. The integration adds no telemetry.
 
-The [publication checklist](docs/hacs-publication.md) distinguishes custom
+The [release-channel guide](docs/release-channels.md#catalogue-acceptance) distinguishes custom
 repository installation from inclusion in HACS's default catalogue.
 
 ## Documentation

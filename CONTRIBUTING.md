@@ -4,10 +4,10 @@ Use GitHub Issues for bugs and small proposals. Include the integration release,
 Home Assistant version, affected load type and steps to reproduce. Redact
 credentials, addresses, device identifiers and private entity data.
 
-`main` contains the stable product. Work in a separate branch and open a pull
-request. Tariff analysis (`beta/tariff-analysis-v1.6`) and import/AI
-(`beta/tariff-import-narrative-v1.7`) remain stacked development branches until
-their release gates pass. Do not merge them just to prepare a HACS submission.
+`main` is the default development branch and may contain unreleased changes.
+Work in a separate branch and open a pull request. Keep experimental features
+separate until their own acceptance gates pass; a catalogue submission is not a
+reason to merge unfinished work. Published tags define released product scope.
 
 The standalone unit suite needs `PyYAML==6.0.2` (already supplied by the declared
 minimum Home Assistant); install it in your test environment if necessary.
@@ -37,10 +37,8 @@ publish an experimental branch as a full stable GitHub release: HACS follows
 release status, not the branch's name. Public betas are isolated from normal
 updates, not hidden from GitHub visitors. See [release channels](docs/release-channels.md).
 
-Delete completed feature/fix branches after their changes are merged. Retain the
-two stacked tariff beta branches while their separate promotion gates remain
-open. Preserve unique superseded work with an explicit archive tag if retiring
-its branch; an archive tag is not a GitHub release. The
-[9 October cleanup record](docs/branch-cleanup-2026-10-09.md) records retained
-branches and recoverable commits. Do not delete the HACS submission fork branch
-while the upstream request is open.
+Delete completed feature/fix branches only after verifying their work is retained.
+Keep active experimental branches while their promotion gates remain open.
+Preserve unique superseded work before retiring a branch; an archive tag is not
+a GitHub release. Do not delete a submission fork branch while its upstream
+request is open. Documentation-only maintenance need not publish a new version.
