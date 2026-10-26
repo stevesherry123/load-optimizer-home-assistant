@@ -66,6 +66,10 @@ jobs:
         run: python tests/ha_import_smoke.py
       - name: Verify cold timezone resolution, local midnight caching and DST boundaries
         run: python tests/ha_timezone_smoke.py
+      - name: Verify worker scans, maintenance outcomes and entity ownership
+        run: python tests/ha_runtime_review_smoke.py
+      - name: Verify travelling-browser tariff chart timezones
+        run: python tests/ha_chart_smoke.py
       - name: Verify dashboard price colours with Home Assistant templates
         run: python tests/ha_dashboard_smoke.py
       - name: Verify real EV configuration, reload and restart persistence

@@ -128,4 +128,12 @@ published by Load Optimizer, not the viewing browser's timezone. This keeps the
 tariff-day view aligned when opened while travelling. It shows today's 24 hours
 until next-day data arrives, then today and tomorrow across 48 hours. The Ofgem
 benchmark and Now lines use the same tariff-local time basis. These richer
-examples are not automatically installed by HACS.
+examples are not automatically installed by HACS. Existing copies must be updated
+from `homeassistant/dashboards/full/load_optimizer_dashboard.yaml` to receive chart
+fixes; upgrading the integration alone does not overwrite a user's dashboard.
+
+The chart uses real UTC instants internally and explicitly formats tariff-local
+axis labels and tooltips (including BST/GMT). Its day range and Now marker do not
+follow the viewing browser's day or the profile's local/server preference. London
+clock-change days cover 23 or 25 actual hours rather than dropping or duplicating
+the repeated hour. The 24h/48h labels mean one/two tariff calendar days.

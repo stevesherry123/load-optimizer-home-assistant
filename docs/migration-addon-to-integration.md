@@ -54,7 +54,7 @@ data:
 
 Replace the example object with the full contents of the old add-on database.
 
-10. Confirm `sensor.load_optimizer_migration_status` reports `imported`.
+10. Confirm the persistent notification reports that learning was imported, then verify the learned run counts on each appliance device.
 11. Confirm the expected `sensor.load_optimizer_N_*` entities have the learned
     program data and recommendations.
 12. Stop the old add-on.

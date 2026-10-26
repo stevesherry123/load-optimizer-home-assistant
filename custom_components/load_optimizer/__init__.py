@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.service import async_register_admin_service
 from homeassistant.util import dt as dt_util
@@ -52,35 +53,38 @@ def _async_migrate_native_status_entities(
     hass: HomeAssistant,
     entry: ConfigEntry,
 ) -> None:
-    """Transfer stable package-era entity IDs to native status sensors."""
+    """Migrate only our registry entries; report IDs owned by other integrations."""
+    if entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
+        return
     entity_registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    conflicts = []
     for key, object_id in NATIVE_STATUS_OBJECT_IDS.items():
         entity_id = f"sensor.{object_id}"
         unique_id = f"{entry.entry_id}_orchestration_{key}"
-        current_state = hass.states.get(entity_id)
-        native_entry = next(
-            (candidate for candidate in entries if candidate.unique_id == unique_id),
-            None,
-        )
-        if native_entry is not None and native_entry.entity_id != entity_id:
-            entity_registry.async_remove(native_entry.entity_id)
         existing = entity_registry.async_get(entity_id)
         if (
-            existing is not None
-            and existing.platform == "template"
-            and existing.config_entry_id is None
-            and (current_state is None or current_state.state == "unavailable")
+            (existing is not None and (existing.platform != DOMAIN or existing.config_entry_id != entry.entry_id))
+            or (existing is None and hass.states.get(entity_id) is not None)
         ):
-            entity_registry.async_remove(entity_id)
-            hass.states.async_remove(entity_id)
-            existing = None
+            conflicts.append(entity_id)
         if (
             existing is not None
+            and existing.platform == DOMAIN
             and existing.config_entry_id == entry.entry_id
             and existing.unique_id != unique_id
+            and not any(candidate.unique_id == unique_id for candidate in entries)
         ):
             entity_registry.async_update_entity(entity_id, new_unique_id=unique_id)
+    issue_id = f"legacy_status_conflict_{entry.entry_id}"
+    if conflicts:
+        ir.async_create_issue(
+            hass, DOMAIN, issue_id, is_fixable=False,
+            severity=ir.IssueSeverity.WARNING, translation_key="legacy_status_conflict",
+            translation_placeholders={"entities": ", ".join(conflicts)},
+        )
+    else:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
 def _async_claim_native_status_entity_ids(
@@ -88,13 +92,15 @@ def _async_claim_native_status_entity_ids(
     entry: ConfigEntry,
 ) -> None:
     """Rename native status entities to package-era IDs once those IDs are free."""
+    if entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
+        return
     entity_registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(entity_registry, entry.entry_id)
     for key, object_id in NATIVE_STATUS_OBJECT_IDS.items():
         target_entity_id = f"sensor.{object_id}"
         unique_id = f"{entry.entry_id}_orchestration_{key}"
         native_entry = next(
-            (candidate for candidate in entries if candidate.unique_id == unique_id),
+            (candidate for candidate in entries if candidate.platform == DOMAIN and candidate.unique_id == unique_id),
             None,
         )
         if (
@@ -142,40 +148,19 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             except ValueError as error:
                 raise ServiceValidationError(str(error)) from error
             await coordinator.async_request_refresh()
-            hass.states.async_set(
-                "sensor.load_optimizer_migration_status",
-                result["status"],
+            await hass.services.async_call(
+                "persistent_notification", "create",
                 {
-                    "friendly_name": "Load Optimizer Migration Status",
-                    "icon": "mdi:database-import",
-                    "imported_instances": result["instances"],
-                    "message": "Legacy Load Optimizer state imported into integration storage.",
+                    "notification_id": "load_optimizer_migration_status",
+                    "title": "Load Optimizer learning imported",
+                    "message": f"Legacy learning imported for instances: {', '.join(result['instances']) or 'none'}. Verify the learned run counts before retiring the add-on.",
                 },
+                blocking=True,
             )
             return
-        hass.states.async_set(
-            "sensor.load_optimizer_migration_status",
-            "no_runtime",
-            {
-                "friendly_name": "Load Optimizer Migration Status",
-                "icon": "mdi:database-alert",
-                "message": "Create a learned-appliance Load Optimizer integration entry before importing state.",
-            },
-        )
+        raise ServiceValidationError("Create a learned-appliance Load Optimizer entry before importing state")
 
     async def async_mothball_legacy_addon(call) -> None:
-        hass.states.async_set(
-            "sensor.load_optimizer_legacy_addon_status",
-            "ready_to_uninstall",
-            {
-                "friendly_name": "Load Optimizer Legacy Add-on Status",
-                "icon": "mdi:archive-arrow-down",
-                "message": (
-                    "The integration compatibility runtime is active. After validating imported "
-                    "memory and taking a post-migration backup, uninstall the stopped legacy add-on."
-                ),
-            },
-        )
         await hass.services.async_call(
             "persistent_notification",
             "create",
@@ -198,19 +183,18 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             for entry in hass.config_entries.async_entries(DOMAIN)
             if entry.data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE
         ]
-        hass.states.async_set(
-            "sensor.load_optimizer_recovery_status",
-            "reload_requested" if entries else "no_runtime",
+        await hass.services.async_call(
+            "persistent_notification", "create",
             {
-                "friendly_name": "Load Optimizer Recovery Status",
-                "icon": "mdi:reload-alert",
-                "entry_count": len(entries),
+                "notification_id": "load_optimizer_recovery_status",
+                "title": "Load Optimizer recovery",
                 "message": (
                     "Learned-appliance integration reload requested."
                     if entries
                     else "No learned-appliance Load Optimizer entry is configured."
                 ),
             },
+            blocking=True,
         )
         for entry in entries:
             hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
