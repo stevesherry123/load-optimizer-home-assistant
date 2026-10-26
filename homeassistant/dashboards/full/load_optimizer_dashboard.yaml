@@ -82,27 +82,20 @@ views:
                 events:
                   updated: |
                     EVAL:function(chart) {
-                      const parts = Object.fromEntries(
-                        new Intl.DateTimeFormat('en-GB', {
-                          timeZone: window.loadOptimizerTariffTimezone || 'UTC',
-                          year: 'numeric', month: '2-digit', day: '2-digit',
-                          hour: '2-digit', minute: '2-digit', second: '2-digit',
-                          hourCycle: 'h23'
-                        }).formatToParts(new Date()).map((part) => [part.type, part.value])
-                      );
-                      const timestamp = new Date(
-                        Number(parts.year), Number(parts.month) - 1, Number(parts.day),
-                        Number(parts.hour), Number(parts.minute), Number(parts.second)
-                      ).getTime();
+                      const range = window.loadOptimizerTariffChart;
+                      if (range && (chart.w.config.xaxis.min !== range.start
+                          || chart.w.config.xaxis.max !== range.end)) {
+                        chart.updateOptions({ xaxis: { min: range.start, max: range.end } }, false, false, false);
+                      }
                       chart.removeAnnotation('load-optimizer-now');
                       chart.addXaxisAnnotation({
                         id: 'load-optimizer-now',
-                        x: timestamp,
+                        x: Date.now(),
                         borderColor: '#0ea5e9',
                         borderWidth: 2,
                         strokeDashArray: 3,
                         label: {
-                          text: 'Now',
+                          text: 'Now (tariff time)',
                           borderColor: '#0ea5e9',
                           style: { color: '#ffffff', background: '#0ea5e9' }
                         }
@@ -110,10 +103,14 @@ views:
                     }
               xaxis:
                 type: datetime
+                tickAmount: 8
+                title:
+                  text: Tariff time
                 labels:
                   formatter: |
                     EVAL:function(value, timestamp) {
                       return new Intl.DateTimeFormat('en-GB', {
+                        timeZone: window.loadOptimizerTariffTimezone || 'Europe/London',
                         weekday: 'short',
                         hour: '2-digit',
                         minute: '2-digit',
@@ -144,6 +141,8 @@ views:
                   formatter: |
                     EVAL:function(value) {
                       return new Intl.DateTimeFormat('en-GB', {
+                        timeZone: window.loadOptimizerTariffTimezone || 'Europe/London',
+                        timeZoneName: 'short',
                         weekday: 'short',
                         day: '2-digit',
                         month: 'short',
@@ -195,36 +194,38 @@ views:
                   const sourceState = hass.states['sensor.load_optimizer_1_cost_status'];
                   window.loadOptimizerTariffTimezone = sourceState?.attributes?.tariff_timezone
                     || hass.config.time_zone
-                    || 'UTC';
-                  const useServerTimezone = hass.locale?.time_zone === 'server';
-                  const displayTimestamp = (timestamp) => {
-                    if (useServerTimezone) {
-                      return timestamp;
+                    || 'Europe/London';
+                  const partsAt = (timestamp, zone) => Object.fromEntries(
+                    new Intl.DateTimeFormat('en-GB', {
+                      timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+                      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+                    }).formatToParts(new Date(timestamp)).map((part) => [part.type, Number(part.value)])
+                  );
+                  const now = Date.now();
+                  const local = partsAt(now, window.loadOptimizerTariffTimezone);
+                  const midnight = (dayOffset) => {
+                    const wall = Date.UTC(local.year, local.month - 1, local.day + dayOffset);
+                    let result = wall;
+                    for (let attempt = 0; attempt < 4; attempt++) {
+                      const part = partsAt(result, window.loadOptimizerTariffTimezone);
+                      const delta = wall - Date.UTC(part.year, part.month - 1, part.day, part.hour, part.minute, part.second);
+                      result += delta;
+                      if (delta === 0) break;
                     }
-                    const date = new Date(timestamp);
-                    const parts = Object.fromEntries(
-                      new Intl.DateTimeFormat('en-GB', {
-                        timeZone: window.loadOptimizerTariffTimezone,
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        hourCycle: 'h23'
-                      }).formatToParts(date).map((part) => [part.type, part.value])
-                    );
-                    const tariffOffset = Date.UTC(
-                      Number(parts.year),
-                      Number(parts.month) - 1,
-                      Number(parts.day),
-                      Number(parts.hour),
-                      Number(parts.minute),
-                      Number(parts.second)
-                    ) - timestamp;
-                    const browserOffset = -date.getTimezoneOffset() * 60 * 1000;
-                    return timestamp + tariffOffset - browserOffset;
+                    return result;
                   };
+                  const days = hass.states['sensor.load_optimizer_1_tariff_horizon']?.state === '48h' ? 2 : 1;
+                  window.loadOptimizerTariffChart = { start: midnight(0), end: midnight(days) };
+                  // Apexcharts-card subtracts this profile offset after data_generator.
+                  // Counteract that once, retaining real UTC instants for London labels.
+                  const useServerTimezone = hass.locale?.time_zone === 'server';
+                  const server = partsAt(now, hass.config.time_zone || 'Europe/London');
+                  const serverOffset = Date.UTC(server.year, server.month - 1, server.day,
+                    server.hour, server.minute, server.second) - Math.floor(now / 1000) * 1000;
+                  const browserOffset = -new Date(now).getTimezoneOffset() * 60 * 1000;
+                  const cardOffset = useServerTimezone ? browserOffset - serverOffset : 0;
+                  window.loadOptimizerTariffCardOffset = cardOffset;
+                  const displayTimestamp = (timestamp) => timestamp + cardOffset;
                   const rawEntities = sourceState?.attributes?.tariff_entities
                     || sourceState?.attributes?.tariff_entity
                     || '';
@@ -288,38 +289,7 @@ views:
                 data_generator: |
                   const references = entity.attributes.references || [];
                   const tariff = hass.states['sensor.load_optimizer_1_cost_status'];
-                  const tariffTimezone = tariff?.attributes?.tariff_timezone
-                    || hass.config.time_zone
-                    || 'UTC';
-                  const useServerTimezone = hass.locale?.time_zone === 'server';
-                  const displayTimestamp = (timestamp) => {
-                    if (useServerTimezone) {
-                      return timestamp;
-                    }
-                    const date = new Date(timestamp);
-                    const parts = Object.fromEntries(
-                      new Intl.DateTimeFormat('en-GB', {
-                        timeZone: tariffTimezone,
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        hourCycle: 'h23'
-                      }).formatToParts(date).map((part) => [part.type, part.value])
-                    );
-                    const tariffOffset = Date.UTC(
-                      Number(parts.year),
-                      Number(parts.month) - 1,
-                      Number(parts.day),
-                      Number(parts.hour),
-                      Number(parts.minute),
-                      Number(parts.second)
-                    ) - timestamp;
-                    const browserOffset = -date.getTimezoneOffset() * 60 * 1000;
-                    return timestamp + tariffOffset - browserOffset;
-                  };
+                  const displayTimestamp = (timestamp) => timestamp + (window.loadOptimizerTariffCardOffset || 0);
                   const horizonStart = new Date(tariff?.attributes?.tariff_start).getTime();
                   const horizonEnd = new Date(tariff?.attributes?.tariff_end).getTime();
                   const points = [];

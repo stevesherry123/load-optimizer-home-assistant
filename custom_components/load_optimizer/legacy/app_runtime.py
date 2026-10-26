@@ -21,7 +21,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.5.8"
+APP_VERSION = "1.5.9"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -1574,6 +1574,7 @@ def publish_cost_entities(
     publish_cost_forecast: bool = True,
     cycle_running: bool = False,
     active_cycle_start: str | None = None,
+    reference_utc: datetime | None = None,
 ) -> None:
     status = result.get("status", "error")
     common = {
@@ -1645,7 +1646,13 @@ def publish_cost_entities(
         tariff_hours = max(0.0, (tariff_end - tariff_start).total_seconds() / 3600)
     except ValueError:
         pass
-    tariff_horizon_hours = 48 if tariff_hours > 24.5 else 24
+    local_now = (reference_utc or datetime.now(timezone.utc)).astimezone(
+        configured_timezone(result.get("schedule_timezone") or "Europe/London")
+    )
+    next_midnight = (local_now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    tariff_horizon_hours = 24
+    if tariff_hours and tariff_end.astimezone(timezone.utc) > next_midnight.astimezone(timezone.utc):
+        tariff_horizon_hours = 48
     publish_entity(token, f"{prefix}_tariff_horizon", f"{tariff_horizon_hours}h", {
         "friendly_name": f"{name} Tariff Horizon",
         "icon": "mdi:calendar-range",
@@ -2526,6 +2533,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         publish_cost_forecast=config.get("publish_cost_forecast", True),
         cycle_running=bool(instance.get("cycle_start")),
         active_cycle_start=instance.get("cycle_start"),
+        reference_utc=now,
     )
     publish_schedule_entities(
         token,
