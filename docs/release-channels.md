@@ -38,16 +38,12 @@ not access control: the repository and beta branches are public, and advanced
 users can explicitly install a public branch or full commit. Development is
 isolated from normal updates, not secret.
 
-## Branches Retained After Cleanup
+## Development Branches
 
-- `main`: stable product and public documentation.
-- `beta/tariff-analysis-v1.6`: deterministic history/analysis, draft PR #4.
-- `beta/tariff-import-narrative-v1.7`: stacked import/optional AI development,
-  draft PR #5, based on the analysis work.
-
-The two beta branches have distinct promotion gates. They are not both installed
-side by side. No unfinished beta features were merged into stable by cleanup.
-The [cleanup record](branch-cleanup-2026-10-09.md) preserves retired branch tips.
+`main` may contain unreleased work. Feature and experimental branches have their
+own acceptance gates; their names are not release metadata or a promise of safe
+side-by-side installation. Use published tags and release notes to identify the
+supported installed scope, not a historical branch-cleanup inventory.
 
 ## What Users Read
 
@@ -64,18 +60,17 @@ replace an existing tag merely to update its documentation.
 
 ## Catalogue Acceptance
 
-The request is [hacs/default#11744](https://github.com/hacs/default/pull/11744),
-submitted by the owner on 9 October 2026. Catalogue validation and lint passed;
-maintainer review is pending. A merged request is the acceptance signal. The
+The request is [hacs/default#11744](https://github.com/hacs/default/pull/11744).
+Use that page for current reviews and status rather than a dated work diary.
+A merged request is the acceptance signal. The
 listing follows a scheduled catalogue scan, so it is not instantaneous.
 
-The owner's GitHub account was verified as subscribed to this request. GitHub
-can notify through its inbox, mobile app or email according to account settings.
-Check participating notifications if email is wanted. The request page remains
+GitHub can notify subscribers through its inbox, mobile app or email according to
+their account settings. The request page remains
 the authoritative status; a closed-but-unmerged request is not acceptance.
-Do not send routine status comments, request reviewers or open duplicates while
-waiting. Continue normal repository development and respond to maintainer
-questions when asked.
+Do not send routine queue-status comments or open duplicates while waiting.
+Follow the maintainer's instructions when responding to requested changes or
+returning a submission for review. Normal repository development can continue.
 
 ## Statistics And Privacy
 
