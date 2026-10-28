@@ -72,6 +72,8 @@ jobs:
         run: python tests/ha_chart_smoke.py
       - name: Verify dashboard price colours with Home Assistant templates
         run: python tests/ha_dashboard_smoke.py
+      - name: Verify the optional beta dashboard templates and control confirmations
+        run: python tests/ha_beta_dashboard_smoke.py
       - name: Verify real EV configuration, reload and restart persistence
         run: python tests/ha_ev_lifecycle_smoke.py
       - name: Verify documented clean-install examples and safe control defaults
