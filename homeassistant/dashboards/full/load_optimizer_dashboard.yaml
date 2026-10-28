@@ -503,6 +503,8 @@ views:
               show: true
               title: Dishwasher 1 - Cost Forecast
             graph_span: 15h
+            all_series_config:
+              unit: GBP
             span:
               start: minute
             apex_config:

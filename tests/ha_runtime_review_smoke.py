@@ -17,6 +17,7 @@ from custom_components.load_optimizer import (
 from custom_components.load_optimizer.const import DOMAIN
 from custom_components.load_optimizer.legacy import app_runtime
 from custom_components.load_optimizer.legacy_runtime import LegacyRuntime
+from custom_components.load_optimizer.orchestration import NativeOrchestrator
 
 
 async def main():
@@ -50,6 +51,44 @@ async def main():
             assert seen and result.entities["sensor.load_optimizer_1_status"]["state"] != "error"
             assert any(item["message"] == "Worker notification" for item in notifications)
             assert hass.states.get("sensor.load_optimizer_1_status") is None, "Worker wrote a raw HA state"
+
+            # Retired helpers must not hide the native scheduler's execution record.
+            scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id="diagnostics"), None)
+            scheduler.state.update(active=True, last_program="Quick45",
+                last_attempt="2026-10-27T04:00:00+00:00", last_message="Test record")
+            hass.states.async_set("input_text.load_optimizer_1_last_start_result", "obsolete")
+            def native_provider(entity_id):
+                assert get_ident() == loop_thread, "Native scheduler read off loop"
+                return scheduler.legacy_state(entity_id)
+            runtime.external_state_provider = native_provider
+            def publish_execution():
+                runtime._patch_legacy_runtime()
+                app_runtime.publish_execution_entities("", "sensor.load_optimizer_1", "Test", "1")
+                return runtime.published_entities
+            for status, result, cycle, lifecycle in (
+                ("queued", None, "idle", "ready"),
+                ("commanding", None, "idle", "starting"),
+                ("idle", "confirmed", "running", "running"),
+                ("idle", "completed", "idle", "completed"),
+                ("failed", "failed", "idle", "failed"),
+            ):
+                scheduler.state.update(execution_status=status, last_result=result)
+                hass.states.async_set("sensor.load_optimizer_1_cycle_state", cycle)
+                runtime._publish_entity("", "sensor.load_optimizer_1_cycle_state", cycle, {})
+                entities = await hass.async_add_executor_job(publish_execution)
+                prefix = "sensor.load_optimizer_1_"
+                assert entities[prefix + "execution_status"]["state"] == status
+                assert entities[prefix + "execution_lifecycle"]["state"] == lifecycle, (status, result, cycle, entities[prefix + "execution_lifecycle"])
+                assert entities[prefix + "last_start_program"]["state"] == "Quick45"
+                assert entities[prefix + "last_start_result"]["state"] == (result or "unknown")
+                assert entities[prefix + "last_start_attempt"]["state"] == "2026-10-27T04:00:00+00:00"
+            # Other appliances must not inherit the dishwasher's execution record.
+            snapshot = await hass.async_add_executor_job(runtime._execution_snapshot, "load_optimizer_2")
+            assert snapshot["program"] == "unknown" and snapshot["attempt"] == "unknown"
+            hass.states.async_set("sensor.load_optimizer_1_cycle_state", "idle")
+            runtime._publish_entity("", "sensor.load_optimizer_1_cycle_state", "idle", {})
+            runtime.external_state_provider = None
+            print("Native execution diagnostics passed five lifecycle states without legacy helpers")
 
             # Cancellation must not release the import lock while the worker writes memory.
             entered, release = Event(), Event()
