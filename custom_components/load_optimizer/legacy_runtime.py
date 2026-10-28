@@ -472,8 +472,8 @@ class LegacyRuntime:
     def _render_template(self, token: str, template: str) -> object | None:
         state_attr_match = re.search(r"state_attr\('([^']+)',\s*'([^']+)'\)", template)
         if state_attr_match:
-            state = self.hass.states.get(state_attr_match.group(1))
-            return state.attributes.get(state_attr_match.group(2)) if state else None
+            state = self._source_state(token, state_attr_match.group(1))
+            return state["attributes"].get(state_attr_match.group(2)) if state else None
         helper_prefix_match = re.search(r"helper_prefix = '([^']+)'", template)
         if helper_prefix_match:
             return self._execution_snapshot(helper_prefix_match.group(1))
@@ -481,8 +481,8 @@ class LegacyRuntime:
 
     def _execution_snapshot(self, helper_prefix: str) -> dict[str, Any]:
         def state(entity_id: str) -> str:
-            item = self.hass.states.get(entity_id)
-            return item.state if item else "unknown"
+            item = self._source_state(ADAPTER_MARKER, entity_id)
+            return item["state"] if item else "unknown"
 
         def helper(domain: str, suffix: str) -> str:
             return state(f"{domain}.{helper_prefix}_{suffix}")
