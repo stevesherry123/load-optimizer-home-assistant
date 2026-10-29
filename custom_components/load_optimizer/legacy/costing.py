@@ -158,6 +158,33 @@ def parse_structured_rates(rates: Sequence[Mapping], *, price_unit: str) -> list
     return periods
 
 
+def normalize_tariff_periods(periods: list[dict]) -> list[dict]:
+    """Remove duplicate source slots; reject ambiguous overlapping source prices.
+
+    Run once after combining sources, before explicit special-price overlays.
+    Source order is not a freshness guarantee, so never use it to pick a winner.
+    """
+    normalized = []
+    for period in periods:
+        start = _parse_timestamp(period["start"])
+        end = _parse_timestamp(period["end"])
+        price = float(period["price_p_per_kwh"])
+        if end <= start or not math.isfinite(price):
+            raise ValueError("Tariff periods require positive durations and finite prices")
+        normalized.append({**period, "start": start, "end": end, "price_p_per_kwh": price})
+    normalized.sort(key=lambda period: (period["start"], period["end"]))
+    unique = []
+    for period in normalized:
+        if unique:
+            previous = unique[-1]
+            if all(period[key] == previous[key] for key in ("start", "end", "price_p_per_kwh")):
+                continue
+            if period["start"] < previous["end"]:
+                raise ValueError("Configured tariff sources contain conflicting or overlapping periods")
+        unique.append(period)
+    return unique
+
+
 def _rate_sequence(value: object) -> list[dict] | None:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         rates = [dict(item) for item in value if isinstance(item, Mapping)]

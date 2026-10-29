@@ -1270,6 +1270,43 @@ class InstanceMonitoringTests(unittest.TestCase):
         self.assertEqual(cost_status.args[3]["tariff_periods"], 2)
         self.assertEqual(cost_status.args[3]["tariff_parse_errors"][0]["entity_id"], "event.next_rates")
 
+    @patch("legacy.app_runtime.recommend_cycle", return_value={"status": "not_ready"})
+    @patch("legacy.app_runtime.publish_entity")
+    @patch("legacy.app_runtime.source_state")
+    def test_rollover_sources_are_normalized_before_recommendations(self, source, publish, recommend):
+        current = {"start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:30:00Z", "value_inc_vat": 0.012345}
+        following = {"start": "2026-01-01T00:30:00Z", "end": "2026-01-01T01:00:00Z", "value_inc_vat": 0}
+        states = {
+            "sensor.test_power": {"state": "0"},
+            "sensor.test_energy": {"state": "3.5"},
+            "sensor.test_program": {"state": "Eco"},
+            "event.current_rates": {"attributes": {"rates": [current]}},
+            "event.next_rates": {"attributes": {"rates": [dict(current), following]}},
+        }
+        source.side_effect = lambda _token, entity_id: states.get(entity_id)
+        config = {**self.config, "tariff_entities": ["event.current_rates", "event.next_rates"],
+                  "tariff_timezone": "Europe/London", "tariff_price_unit": "gbp_per_kwh",
+                  "cost_search_hours": 1, "cost_candidate_interval": 30}
+        for conflict in (False, True, False):
+            with self.subTest(conflict=conflict):
+                recommend.reset_mock()
+                publish.reset_mock()
+                states["event.next_rates"]["attributes"]["rates"][0]["value_inc_vat"] = (
+                    0.02 if conflict else 0.012345
+                )
+                update_instance("token", {"schema_version": 1, "instances": {}}, config,
+                                datetime(2026, 1, 1, tzinfo=timezone.utc))
+                if conflict:
+                    recommend.assert_not_called()
+                    status = next(call for call in publish.call_args_list
+                                  if call.args[1] == "sensor.load_optimizer_1_cost_status")
+                    self.assertEqual(status.args[2], "tariff_invalid")
+                    self.assertIn("overlapping", status.args[3]["reason"])
+                else:
+                    periods = recommend.call_args.args[2]
+                    self.assertEqual(len(periods), 2)
+                    self.assertEqual([p["price_p_per_kwh"] for p in periods], [1.2345, 0])
+
     def test_bosch_program_name_is_normalised(self):
         self.assertEqual(
             normalise_program("Dishcare.Dishwasher.Program.PreRinse"),
