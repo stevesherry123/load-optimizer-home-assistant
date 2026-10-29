@@ -438,7 +438,10 @@ class LegacyRuntime:
         program = summary["program"]
         policies = app_runtime.resolve_program_policies({program: {}}, config.get("program_policies", []))
         policy = next(item for item in policies if item["program"] == program)
-        if not policy["enabled"] or not policy["allow_negative_price_run"] or program in app_runtime.remote_start_blocked_programs(ADAPTER_MARKER, "1"):
+        blocked_programs = app_runtime.remote_start_blocked_programs(
+            ADAPTER_MARKER, "1", state_reader=lambda entity: self._source_state(ADAPTER_MARKER, entity),
+        )
+        if not policy["enabled"] or not policy["allow_negative_price_run"] or program in blocked_programs:
             return "negative_price_program_not_permitted"
 
         periods = []
@@ -477,6 +480,7 @@ class LegacyRuntime:
             periods = app_runtime.overlay_free_windows(periods, windows)
         manual = app_runtime.special_price_window(
             ADAPTER_MARKER, timezone_name=config["tariff_timezone"], reference_utc=now,
+            state_reader=lambda entity: self._source_state(ADAPTER_MARKER, entity), publish=False,
         )
         if manual["applied"]:
             periods = app_runtime.overlay_price_window(
