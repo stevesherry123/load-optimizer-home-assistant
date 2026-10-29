@@ -9,6 +9,7 @@ import math
 from pathlib import Path
 import re
 import sys
+from threading import Lock, get_ident
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
@@ -24,6 +25,7 @@ tree = ast.parse(SOURCE.read_text())
 tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom, ast.ClassDef))
              or isinstance(node, ast.ClassDef) and node.name == "LegacyRuntime"]
 namespace = {"asyncio": asyncio, "datetime": datetime, "timedelta": timedelta, "timezone": timezone,
+             "Lock": Lock, "get_ident": get_ident,
              "logging": logging, "math": math, "re": re, "Any": object, "Callable": object, "HomeAssistant": object,
              "Store": Mock, "DOMAIN": "load_optimizer", "app_runtime": app_runtime,
              "unquote": unquote, "urlparse": urlparse, "ConfigurationError": ConfigurationError,

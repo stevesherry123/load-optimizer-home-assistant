@@ -8,11 +8,13 @@ from datetime import datetime, timedelta, timezone
 import logging
 import math
 import re
+from threading import Lock, get_ident
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_BLOCKED_WINDOW_ENTITY,
@@ -41,6 +43,7 @@ LOGGER = logging.getLogger(__name__)
 LEGACY_STORE_VERSION = 1
 LEGACY_STORE_KEY = f"{DOMAIN}_legacy_state"
 ADAPTER_MARKER = "__hass_adapter__"
+_ENGINE_LOCK = Lock()
 
 
 @dataclass
@@ -68,9 +71,10 @@ class LegacyRuntime:
         self.published_entities: dict[str, dict[str, Any]] = {}
         self.calendar_events: dict[str, list[dict[str, Any]]] = {}
         self.started = False
+        self._timezones = {}
+        self._loop_thread = get_ident()
         self._state_lock = asyncio.Lock()
         self.external_state_provider: Callable[[str], dict[str, Any] | None] | None = None
-        self._patch_legacy_runtime()
 
     async def async_load(self) -> None:
         """Load persisted legacy state from Home Assistant storage."""
@@ -102,7 +106,13 @@ class LegacyRuntime:
     async def async_scan(self, options: dict[str, Any]) -> LegacyScanResult:
         """Run one legacy compatibility scan."""
         async with self._state_lock:
-            return await self._async_scan(options)
+            task = asyncio.create_task(self._async_scan(options))
+            try:
+                return await asyncio.shield(task)
+            except asyncio.CancelledError:
+                # Cancelling an await does not stop a worker writing learned data.
+                await task
+                raise
 
     async def _async_scan(self, options: dict[str, Any]) -> LegacyScanResult:
         """Serialize scans with imports so persisted learning cannot race."""
@@ -111,13 +121,48 @@ class LegacyRuntime:
             raise RuntimeError("Appliance memory was not loaded")
         options = self._normalise_options(options)
         now = datetime.now(timezone.utc)
+        configs = app_runtime.instance_configs(options)
+        names = {"UTC", "Europe/London", *(str(config.get(CONF_TARIFF_TIMEZONE, "Europe/London")) for config in configs)}
+        for name in names:
+            if name not in self._timezones:
+                zone = await dt_util.async_get_time_zone(name)
+                if zone is None:
+                    raise ValueError("Unknown appliance tariff timezone")
+                self._timezones[name] = zone
+        for config in configs:
+            config["window_timezone"] = self.hass.config.time_zone
+        await self.hass.async_add_executor_job(self._prepare_instances, options, configs, now)
+        await self._async_prefetch_calendar_events(configs, now)
+        signature = await self.hass.async_add_executor_job(self._scan_instances, options, configs, now)
+        if signature != self.last_signature:
+            await self.store.async_save(self.state)
+            self.last_signature = signature
+        return LegacyScanResult(
+            status="ready" if configs else "configuration_required",
+            instance_count=len(configs),
+            entity_count=len(self.published_entities),
+            last_scan=now.isoformat(),
+            entities=dict(self.published_entities),
+            instances={
+                str(config.get("instance_id")): {
+                    "instance_id": str(config.get("instance_id")),
+                    "name": str(config.get("name") or f"Load {config.get('instance_id')}"),
+                }
+                for config in configs
+            },
+            message=None if configs else "Configure learned appliance instances to enable compatibility publishing.",
+        )
+
+    def _prepare_instances(self, options: dict, configs: list[dict], now: datetime) -> None:
+        with _ENGINE_LOCK:
+            self._patch_legacy_runtime()
+            self._prepare_instances_locked(options, configs, now)
+
+    def _prepare_instances_locked(self, options: dict, configs: list[dict], now: datetime) -> None:
         if not self.started:
             app_runtime.PUBLISHED_ENTITY_CACHE.clear()
             app_runtime.LAST_FULL_REPUBLISH_AT = None
         app_runtime.refresh_publish_cache()
-        configs = app_runtime.instance_configs(options)
-        for config in configs:
-            config["window_timezone"] = self.hass.config.time_zone
         if not self.started:
             app_runtime.RUNTIME_STARTED_AT = now
             app_runtime.SCAN_HEALTH_TIMEOUT_SECONDS = max(180, (int(options.get("scan_interval", 60)) * 3) + 30)
@@ -128,7 +173,14 @@ class LegacyRuntime:
             app_runtime.mark_interrupted_captures(self.state, startup_running)
             app_runtime.publish_restart_warning(ADAPTER_MARKER, startup_running)
             self.started = True
-        await self._async_prefetch_calendar_events(configs, now)
+
+    def _scan_instances(self, options: dict, configs: list[dict], now: datetime) -> str:
+        """Bind the shared engine adapters only while this worker owns them."""
+        with _ENGINE_LOCK:
+            self._patch_legacy_runtime()
+            return self._scan_instances_locked(options, configs, now)
+
+    def _scan_instances_locked(self, options: dict, configs: list[dict], now: datetime) -> str:
         reset_status = app_runtime.reset_request_status(self.state, options)
         app_runtime.LAST_SCAN_STARTED_AT = now
         for config in configs:
@@ -151,25 +203,7 @@ class LegacyRuntime:
         app_runtime.LAST_SCAN_COMPLETED_AT = datetime.now(timezone.utc)
         app_runtime.publish_status(ADAPTER_MARKER, len(configs), running=running, reset_status=reset_status)
         app_runtime.publish_logging_diagnostics(ADAPTER_MARKER)
-        signature = app_runtime.state_signature(self.state)
-        if signature != self.last_signature:
-            await self.store.async_save(self.state)
-            self.last_signature = signature
-        return LegacyScanResult(
-            status="ready" if configs else "configuration_required",
-            instance_count=len(configs),
-            entity_count=len(self.published_entities),
-            last_scan=now.isoformat(),
-            entities=dict(self.published_entities),
-            instances={
-                str(config.get("instance_id")): {
-                    "instance_id": str(config.get("instance_id")),
-                    "name": str(config.get("name") or f"Load {config.get('instance_id')}"),
-                }
-                for config in configs
-            },
-            message=None if configs else "Configure learned appliance instances to enable compatibility publishing.",
-        )
+        return app_runtime.state_signature(self.state)
 
     def _normalise_options(self, options: dict[str, Any]) -> dict[str, Any]:
         """Accept either split config-flow fields or a full pasted add-on options block."""
@@ -203,6 +237,16 @@ class LegacyRuntime:
         app_runtime.save_state_if_changed = self._save_state_if_changed_ignored
 
     def _source_state(self, token: str, entity_id: str) -> dict[str, Any] | None:
+        if get_ident() != self._loop_thread:
+            return asyncio.run_coroutine_threadsafe(
+                self._async_source_state(token, entity_id), self.hass.loop
+            ).result()
+        return self._source_state_on_loop(token, entity_id)
+
+    async def _async_source_state(self, token: str, entity_id: str) -> dict[str, Any] | None:
+        return self._source_state_on_loop(token, entity_id)
+
+    def _source_state_on_loop(self, token: str, entity_id: str) -> dict[str, Any] | None:
         if not entity_id:
             return None
         published = self.published_entities.get(entity_id)
@@ -245,7 +289,7 @@ class LegacyRuntime:
 
     def _api_request(self, token: str, path: str, payload: dict | None = None) -> object | None:
         if path == "/services/persistent_notification/create" and payload:
-            self.hass.async_create_task(
+            self.hass.create_task(
                 self.hass.services.async_call(
                     "persistent_notification",
                     "create",
