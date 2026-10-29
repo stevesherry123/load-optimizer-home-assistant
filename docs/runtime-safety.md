@@ -37,6 +37,19 @@ Manual cooldown overrides are not permission to bypass door, connectivity,
 remote-control, ownership or supported-device safety checks. A recommendation
 is not proof that a physical start occurred.
 
+## Tariff source overlap
+
+Appliance costing combines the configured rate sources once per scan. Identical
+slots (the same start, end and price) count once, including zero and negative
+prices. Adjacent slots and genuine gaps remain unchanged; missing coverage is
+not filled with an assumed price.
+
+Conflicting prices for the same slot, or partially overlapping source periods,
+produce `tariff_invalid` instead of a recommendation. Source order does not prove
+which feed is newer. Check the configured sources and let them refresh; a later
+consistent scan can recover without resetting learned data. Explicit special-price
+windows apply after source validation, not as a way to hide conflicting feeds.
+
 ## State and maintenance
 
 Keep settings edits from reloading a known active capture or queued start.

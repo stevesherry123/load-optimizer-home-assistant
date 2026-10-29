@@ -1,0 +1,691 @@
+title: Load Optimizer Beta
+views:
+- title: Overview
+  path: overview
+  icon: mdi:home-lightning-bolt-outline
+  type: sections
+  max_columns: 3
+  sections:
+  - type: grid
+    column_span: 3
+    cards:
+    - type: tile
+      entity: sensor.load_optimizer_1_current_energy_price
+      name: Current import price
+      icon: mdi:cash-clock
+      card_mod:
+        style: "{% set price = states(config.entity) | float(none) %}\n{% set benchmark = states('sensor.load_optimizer_ofgem_price_cap_benchmark') | float(none) %}\n{% if is_number(price) and is_number(benchmark) %}\n  {% set current = price | round(2) %}\n  {% set cap = benchmark | round(2) %}\n  {% if current < cap %}\n    {% set background = '#d9f2df' %}\n    {% set foreground = '#174629' %}\n  {% elif current == cap %}\n    {% set background = '#fff3cd' %}\n    {% set foreground = '#4a3b00' %}\n  {% else %}\n    {% set background = '#ef5350' %}\n    {% set foreground = '#260505' %}\n  {% endif %}\n{% else %}\n  {% set background = 'var(--ha-card-background, var(--card-background-color))' %}\n  {% set foreground = 'var(--primary-text-color)' %}\n{% endif %}\nha-card {\n  background: {{ background }};\n  color: {{ foreground }};\n  {% if is_number(price) and is_number(benchmark) %}\n    --primary-text-color: {{ foreground }};\n    --secondary-text-color: {{ foreground }};\n  {% endif\
+          \ %}\n}\n{% if is_number(price) and is_number(benchmark) %}\n  ha-tile-icon {\n    --tile-color: {{ foreground }} !important;\n  }\n{% endif %}\n"
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.load_optimizer_ofgem_price_cap_benchmark
+      name: Ofgem benchmark
+      icon: mdi:chart-line-variant
+      grid_options:
+        columns: 6
+    - type: custom:apexcharts-card
+      grid_options: &id001
+        columns: full
+      visibility:
+      - condition: state
+        entity: sensor.load_optimizer_1_tariff_horizon
+        state: 24h
+      header: &id002
+        show: true
+        title: Octopus Prices
+        show_states: true
+        colorize_states: true
+      graph_span: 24h
+      span: &id003
+        start: day
+      update_interval: 1min
+      now: &id004
+        show: false
+        label: Now
+        color: '#0ea5e9'
+      experimental: &id005
+        color_threshold: true
+      apex_config: &id006
+        chart:
+          height: 280
+          toolbar:
+            show: false
+          events:
+            updated: "EVAL:function(chart) {\n  const range = window.loadOptimizerTariffChart;\n  if (range && (chart.w.config.xaxis.min !== range.start\n      || chart.w.config.xaxis.max !== range.end)) {\n    chart.updateOptions({ xaxis: { min: range.start, max: range.end } }, false, false, false);\n  }\n  chart.removeAnnotation('load-optimizer-now');\n  chart.addXaxisAnnotation({\n    id: 'load-optimizer-now',\n    x: Date.now(),\n    borderColor: '#0ea5e9',\n    borderWidth: 2,\n    strokeDashArray: 3,\n    label: {\n      text: 'Now (tariff time)',\n      borderColor: '#0ea5e9',\n      style: { color: '#ffffff', background: '#0ea5e9' }\n    }\n  }, false);\n}\n"
+        xaxis:
+          type: datetime
+          tickAmount: 8
+          title:
+            text: Tariff time
+          labels:
+            formatter: "EVAL:function(value, timestamp) {\n  return new Intl.DateTimeFormat('en-GB', {\n    timeZone: window.loadOptimizerTariffTimezone || 'Europe/London',\n    weekday: 'short',\n    hour: '2-digit',\n    minute: '2-digit',\n    hourCycle: 'h23'\n  }).format(new Date(timestamp));\n}\n"
+        yaxis:
+        - min: "EVAL:function(min) {\n  return Math.min(0, min);\n}\n"
+          decimalsInFloat: 2
+          title:
+            text: Import price (p/kWh)
+        stroke:
+          curve: stepline
+        fill:
+          type:
+          - gradient
+          - solid
+          gradient:
+            opacityFrom: 0.55
+            opacityTo: 0.15
+        legend:
+          show: true
+        tooltip:
+          x:
+            formatter: "EVAL:function(value) {\n  return new Intl.DateTimeFormat('en-GB', {\n    timeZone: window.loadOptimizerTariffTimezone || 'Europe/London',\n    timeZoneName: 'short',\n    weekday: 'short',\n    day: '2-digit',\n    month: 'short',\n    hour: '2-digit',\n    minute: '2-digit',\n    hourCycle: 'h23'\n  }).format(new Date(value));\n}\n"
+          y:
+            formatter: EVAL:function(value) { return Number(value).toFixed(2) + ' p/kWh'; }
+        annotations:
+          yaxis:
+          - y: 0
+            borderColor: '#16a34a'
+            strokeDashArray: 4
+            label:
+              text: Free / paid boundary
+              style:
+                color: '#ffffff'
+                background: '#16a34a'
+      all_series_config: &id007
+        type: area
+        unit: p/kWh
+        float_precision: 2
+      series: &id008
+      - entity: sensor.load_optimizer_status
+        name: Import price
+        stroke_width: 2
+        show:
+          in_header: false
+          legend_value: false
+        color_threshold:
+        - value: -50
+          color: '#00b050'
+        - value: 0
+          color: '#00b050'
+        - value: 15
+          color: '#92d050'
+        - value: 25
+          color: '#ffc000'
+        - value: 35
+          color: '#ff8000'
+        - value: 50
+          color: '#c00000'
+        data_generator: "const sourceState = hass.states['sensor.load_optimizer_1_cost_status'];\nwindow.loadOptimizerTariffTimezone = sourceState?.attributes?.tariff_timezone\n  || hass.config.time_zone\n  || 'Europe/London';\nconst partsAt = (timestamp, zone) => Object.fromEntries(\n  new Intl.DateTimeFormat('en-GB', {\n    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',\n    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'\n  }).formatToParts(new Date(timestamp)).map((part) => [part.type, Number(part.value)])\n);\nconst now = Date.now();\nconst local = partsAt(now, window.loadOptimizerTariffTimezone);\nconst midnight = (dayOffset) => {\n  const wall = Date.UTC(local.year, local.month - 1, local.day + dayOffset);\n  let result = wall;\n  for (let attempt = 0; attempt < 4; attempt++) {\n    const part = partsAt(result, window.loadOptimizerTariffTimezone);\n    const delta = wall - Date.UTC(part.year, part.month - 1, part.day, part.hour, part.minute,\
+          \ part.second);\n    result += delta;\n    if (delta === 0) break;\n  }\n  return result;\n};\nconst days = hass.states['sensor.load_optimizer_1_tariff_horizon']?.state === '48h' ? 2 : 1;\nwindow.loadOptimizerTariffChart = { start: midnight(0), end: midnight(days) };\n// Apexcharts-card subtracts this profile offset after data_generator.\n// Counteract that once, retaining real UTC instants for London labels.\nconst useServerTimezone = hass.locale?.time_zone === 'server';\nconst server = partsAt(now, hass.config.time_zone || 'Europe/London');\nconst serverOffset = Date.UTC(server.year, server.month - 1, server.day,\n  server.hour, server.minute, server.second) - Math.floor(now / 1000) * 1000;\nconst browserOffset = -new Date(now).getTimezoneOffset() * 60 * 1000;\nconst cardOffset = useServerTimezone ? browserOffset - serverOffset : 0;\nwindow.loadOptimizerTariffCardOffset = cardOffset;\nconst displayTimestamp = (timestamp) => timestamp + cardOffset;\nconst rawEntities = sourceState?.attributes?.tariff_entities\n\
+          \  || sourceState?.attributes?.tariff_entity\n  || '';\nconst entities = String(rawEntities)\n  .split(',')\n  .map((value) => value.trim())\n  .filter(Boolean);\n\nconst pointsByStart = new Map();\nlet lastEnd = null;\nfor (const entityId of entities) {\n  const rates = hass.states[entityId]?.attributes?.rates;\n  if (!Array.isArray(rates) || rates.length === 0) {\n    continue;\n  }\n  for (const entry of rates) {\n    const startRaw = entry.start || entry.valid_from || entry.from;\n    const endRaw = entry.end || entry.valid_to || entry.to;\n    const priceRaw = entry.price_p_per_kwh\n      ?? entry.value_inc_vat\n      ?? entry.value\n      ?? entry.price;\n    const start = new Date(startRaw).getTime();\n    const end = endRaw ? new Date(endRaw).getTime() : null;\n    let value = Number(priceRaw);\n    if (!Number.isFinite(start) || !Number.isFinite(value)) {\n      continue;\n    }\n\n    if (entry.price_p_per_kwh === undefined) {\n      value = value * 100;\n    }\n\n  \
+          \  const displayStart = displayTimestamp(start);\n    pointsByStart.set(displayStart, [displayStart, value]);\n    if (Number.isFinite(end)) {\n      const displayEnd = displayTimestamp(end);\n      pointsByStart.set(displayEnd, [displayEnd, value]);\n      lastEnd = Math.max(lastEnd || displayEnd, displayEnd);\n    }\n  }\n}\n\nconst points = Array.from(pointsByStart.values())\n  .sort((left, right) => left[0] - right[0]);\nif (points.length > 0 && Number.isFinite(lastEnd)) {\n  points.push([lastEnd + 1, null]);\n}\nreturn points;\n"
+      - entity: sensor.load_optimizer_ofgem_price_cap_benchmark
+        name: Ofgem default-tariff benchmark
+        type: line
+        color: '#0057b8'
+        stroke_width: 5
+        stroke_dash: 8
+        opacity: 1
+        show:
+          in_chart: true
+          in_header: true
+          legend_value: true
+        data_generator: "const references = entity.attributes.references || [];\nconst tariff = hass.states['sensor.load_optimizer_1_cost_status'];\nconst displayTimestamp = (timestamp) => timestamp + (window.loadOptimizerTariffCardOffset || 0);\nconst horizonStart = new Date(tariff?.attributes?.tariff_start).getTime();\nconst horizonEnd = new Date(tariff?.attributes?.tariff_end).getTime();\nconst points = [];\nif (!Number.isFinite(horizonStart) || !Number.isFinite(horizonEnd)) {\n  return points;\n}\nfor (const reference of references) {\n  const start = Math.max(\n    horizonStart,\n    new Date(reference.effective_from_utc).getTime()\n  );\n  const end = Math.min(\n    horizonEnd,\n    new Date(reference.effective_to_utc).getTime()\n  );\n  const value = Number(reference.unit_rate_p_per_kwh);\n  if (Number.isFinite(start) && Number.isFinite(end)\n      && Number.isFinite(value) && end > start) {\n    points.push(\n      [displayTimestamp(start), value],\n      [displayTimestamp(end -\
+          \ 1), value]\n    );\n  }\n}\nreturn points;\n"
+    - type: custom:apexcharts-card
+      grid_options: *id001
+      visibility:
+      - condition: state
+        entity: sensor.load_optimizer_1_tariff_horizon
+        state: 48h
+      header: *id002
+      graph_span: 48h
+      span: *id003
+      update_interval: 1min
+      now: *id004
+      experimental: *id005
+      apex_config: *id006
+      all_series_config: *id007
+      series: *id008
+  - type: grid
+    column_span: 1
+    cards:
+    - type: markdown
+      title: Next wash
+      content: '{% set sensor = ''sensor.load_optimizer_1_automation_explanation'' %}
+
+        {% set queue = state_attr(''sensor.load_optimizer_1_orchestration_status'', ''request'') or {} %}
+
+        {% macro home_time(value) -%}
+
+        {{ (as_datetime(value) | as_local).strftime(''%a %d %b %H:%M %Z'') if as_datetime(value, none) else ''Not recorded'' }}
+
+        {%- endmacro %}
+
+        {% if not has_value(sensor) %}
+
+        **Scheduling status unavailable**
+
+        {% elif queue %}
+
+        **{{ queue.get(''program'', ''Programme'') }} queued**
+
+
+        {{ home_time(queue.get(''start'')) }} to {{ home_time(queue.get(''finish'')) }}
+
+        {% set cost = queue.get(''cost_pence'') | float(none) %}
+
+        {% if is_number(cost) %}Estimated cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**{% endif %}
+
+        {% else %}
+
+        **No wash queued**
+
+        {% endif %}
+
+
+        {{ state_attr(sensor, ''summary'') or ''No scheduling explanation available.'' }}
+
+        {% if state_attr(sensor, ''action_required'') %}
+
+
+        {{ state_attr(sensor, ''action_required'') }}
+
+        {% endif %}'
+    - type: markdown
+      title: Last wash
+      content: '{% set finish = states(''sensor.load_optimizer_1_last_finish'') %}
+
+        {% set native = ''sensor.load_optimizer_1_orchestration_status'' %}
+
+        {% if as_datetime(finish, none) %}
+
+        **{{ states(''sensor.load_optimizer_1_last_program'') }}**
+
+
+        Finished {{ (as_datetime(finish) | as_local).strftime(''%a %d %b %H:%M %Z'') }}
+
+
+        {{ states(''sensor.load_optimizer_1_last_runtime'') }} min / {{ states(''sensor.load_optimizer_1_last_energy'') }} kWh
+
+        {% else %}
+
+        No learned wash recorded.
+
+        {% endif %}
+
+
+        Scheduler result: **{{ state_attr(native, ''last_result'') or ''Not recorded'' }}**'
+  - type: grid
+    column_span: 1
+    cards:
+    - type: entities
+      title: Dishwasher
+      show_header_toggle: false
+      entities:
+      - entity: sensor.load_optimizer_1_cycle_state
+        name: Cycle
+      - entity: sensor.load_optimizer_1_power
+        name: Power
+      - entity: sensor.load_optimizer_1_total_runs
+        name: Learned runs
+    - type: entities
+      title: Washing machine
+      show_header_toggle: false
+      entities:
+      - entity: sensor.load_optimizer_2_cycle_state
+        name: Cycle
+      - entity: sensor.load_optimizer_2_power
+        name: Power
+      - entity: sensor.load_optimizer_2_total_runs
+        name: Learned runs
+  - type: grid
+    column_span: 1
+    cards:
+    - type: entities
+      title: Robot vacuum
+      show_header_toggle: false
+      entities:
+      - entity: sensor.load_optimizer_3_cycle_state
+        name: Cycle
+      - entity: sensor.load_optimizer_3_power
+        name: Power
+      - entity: sensor.load_optimizer_3_total_runs
+        name: Learned runs
+    - type: markdown
+      title: Charging
+      content: '[Charging Test Bench](/charging-test-bench)'
+- title: Dishwasher
+  path: dishwasher
+  icon: mdi:dishwasher
+  type: sections
+  max_columns: 3
+  sections:
+  - type: grid
+    column_span: 1
+    cards:
+    - type: markdown
+      title: Next wash
+      content: '{% set sensor = ''sensor.load_optimizer_1_automation_explanation'' %}
+
+        {% set queue = state_attr(''sensor.load_optimizer_1_orchestration_status'', ''request'') or {} %}
+
+        {% macro home_time(value) -%}
+
+        {{ (as_datetime(value) | as_local).strftime(''%a %d %b %H:%M %Z'') if as_datetime(value, none) else ''Not recorded'' }}
+
+        {%- endmacro %}
+
+        {% if not has_value(sensor) %}
+
+        **Scheduling status unavailable**
+
+        {% elif queue %}
+
+        **{{ queue.get(''program'', ''Programme'') }} queued**
+
+
+        {{ home_time(queue.get(''start'')) }} to {{ home_time(queue.get(''finish'')) }}
+
+        {% set cost = queue.get(''cost_pence'') | float(none) %}
+
+        {% if is_number(cost) %}Estimated cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**{% endif %}
+
+        {% else %}
+
+        **No wash queued**
+
+        {% endif %}
+
+
+        {{ state_attr(sensor, ''summary'') or ''No scheduling explanation available.'' }}
+
+        {% if state_attr(sensor, ''action_required'') %}
+
+
+        {{ state_attr(sensor, ''action_required'') }}
+
+        {% endif %}'
+    - type: markdown
+      title: Scheduling
+      content: '{% set entity = ''sensor.load_optimizer_1_automation_explanation'' %}
+
+        {% set blocks = state_attr(entity, ''blockers'') or [] %}
+
+        {% set warnings = state_attr(entity, ''warnings'') or [] %}
+
+        {% if not has_value(entity) %}
+
+        Scheduling information unavailable.
+
+        {% elif not blocks and not warnings %}
+
+        No outstanding checks reported.
+
+        {% endif %}
+
+        {% for reason in blocks %}
+
+        - {{ reason | replace(''_'', '' '') | capitalize }}
+
+        {% endfor %}
+
+        {% for reason in warnings %}
+
+        - {{ reason | replace(''_'', '' '') | capitalize }}
+
+        {% endfor %}'
+    - type: entities
+      title: Automatic modes
+      show_header_toggle: false
+      entities:
+      - entity: switch.load_optimizer_1_auto_mode_enabled
+        name: Overnight
+      - entity: switch.load_optimizer_1_auto_negative_price_enabled
+        name: Free / negative price
+  - type: grid
+    column_span: 1
+    cards:
+    - type: entities
+      title: Appliance
+      show_header_toggle: false
+      entities:
+      - entity: sensor.load_optimizer_1_cycle_state
+        name: Cycle
+      - entity: sensor.load_optimizer_1_power
+        name: Power
+      - entity: sensor.load_optimizer_1_data_freshness
+        name: Source freshness
+      - entity: sensor.load_optimizer_1_remote_activation_check
+        name: Remote start
+    - type: markdown
+      title: Recommendation
+      content: '{% set entity = ''sensor.load_optimizer_1_overnight_recommendation'' %}
+
+        {% set start = state_attr(entity, ''start'') %}
+
+        {% set cost = state_attr(entity, ''cost_pence'') | float(none) %}
+
+        {% if has_value(entity) and states(entity) != ''not_ready'' and as_datetime(start, none) %}
+
+        **{{ state_attr(entity, ''program'') or states(entity) }}**
+
+
+        {{ (as_datetime(start) | as_local).strftime(''%a %d %b %H:%M %Z'') }}
+
+        {% if is_number(cost) %}
+
+
+        Estimated cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**
+
+        {% endif %}
+
+
+        Recommendation only, not a queued wash.
+
+        {% else %}
+
+        No fully priced recommendation available.
+
+        {% endif %}'
+  - type: grid
+    column_span: 1
+    cards:
+    - type: entities
+      title: Manual programme
+      show_header_toggle: false
+      entities:
+      - entity: select.load_optimizer_1_override_program
+        name: Programme
+    - type: button
+      name: Start selected programme
+      icon: mdi:play-circle-outline
+      show_state: false
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.load_optimizer_1_request_now_override
+        confirmation:
+          text: Start the selected dishwasher programme now?
+    - type: button
+      name: Cancel queued wash
+      icon: mdi:calendar-remove
+      show_state: false
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.load_optimizer_1_cancel_schedule
+        confirmation:
+          text: Cancel the queued dishwasher request? This does not stop a running wash.
+  - type: grid
+    column_span: 3
+    cards:
+    - type: custom:apexcharts-card
+      grid_options:
+        columns: full
+      header:
+        show: true
+        title: Dishwasher 1 - Cost Forecast
+      graph_span: 15h
+      all_series_config:
+        unit: GBP
+      span:
+        start: minute
+      apex_config:
+        chart:
+          height: 280
+        stroke:
+          curve: smooth
+          width: 3
+        markers:
+          size: 3
+        yaxis:
+          title:
+            text: Estimated cost (£)
+          labels:
+            formatter: "EVAL:function(value) {\n  return Number(value).toFixed(2);\n}\n"
+        xaxis:
+          labels:
+            formatter: "EVAL:function(value, timestamp) {\n  const timezone = window.loadOptimizerTariffTimezone || 'Europe/London';\n  return new Intl.DateTimeFormat('en-GB', {\n    timeZone: timezone,\n    weekday: 'short',\n    hour: '2-digit',\n    minute: '2-digit',\n    hourCycle: 'h23'\n  }).format(new Date(timestamp));\n}\n"
+      series:
+      - entity: sensor.load_optimizer_1_cost_forecast
+        name: Quick45
+        type: line
+        data_generator: "window.loadOptimizerTariffTimezone = entity.attributes.tariff_timezone\n  || hass.config.time_zone\n  || 'UTC';\nconst forecast = entity.attributes.forecast || [];\nreturn forecast\n  .filter(row => row.program === \"Quick45\" && typeof row.cost_pence === \"number\")\n  .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);\n"
+      - entity: sensor.load_optimizer_1_cost_forecast
+        name: Quick65
+        type: line
+        data_generator: "const forecast = entity.attributes.forecast || [];\nreturn forecast\n  .filter(row => row.program === \"Quick65\" && typeof row.cost_pence === \"number\")\n  .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);\n"
+      - entity: sensor.load_optimizer_1_cost_forecast
+        name: Super60
+        type: line
+        data_generator: "const forecast = entity.attributes.forecast || [];\nreturn forecast\n  .filter(row => row.program === \"Super60\" && typeof row.cost_pence === \"number\")\n  .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);\n"
+      - entity: sensor.load_optimizer_1_cost_forecast
+        name: Eco50
+        type: line
+        data_generator: "const forecast = entity.attributes.forecast || [];\nreturn forecast\n  .filter(row => row.program === \"Eco50\" && typeof row.cost_pence === \"number\")\n  .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);\n"
+      - entity: sensor.load_optimizer_1_cost_forecast
+        name: Intensiv70
+        type: line
+        data_generator: "const forecast = entity.attributes.forecast || [];\nreturn forecast\n  .filter(row => row.program === \"Intensiv70\" && typeof row.cost_pence === \"number\")\n  .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);\n"
+      - entity: sensor.load_optimizer_1_cost_forecast
+        name: MachineCare
+        type: line
+        data_generator: "const forecast = entity.attributes.forecast || [];\nreturn forecast\n  .filter(row => row.program === \"MachineCare\" && typeof row.cost_pence === \"number\")\n  .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);\n"
+      - entity: sensor.load_optimizer_1_cost_forecast
+        name: PreRinse
+        type: line
+        data_generator: "const forecast = entity.attributes.forecast || [];\nreturn forecast\n  .filter(row => row.program === \"PreRinse\" && typeof row.cost_pence === \"number\")\n  .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);\n"
+      - entity: sensor.load_optimizer_1_cost_forecast
+        name: Auto2
+        type: line
+        data_generator: "const forecast = entity.attributes.forecast || [];\nreturn forecast\n  .filter(row => row.program === \"Auto2\" && typeof row.cost_pence === \"number\")\n  .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);\n"
+      - entity: sensor.load_optimizer_1_cost_forecast
+        name: MixedLoad
+        type: line
+        data_generator: "const forecast = entity.attributes.forecast || [];\nreturn forecast\n  .filter(row => row.program === \"MixedLoad\" && typeof row.cost_pence === \"number\")\n  .map(row => [new Date(row.start).getTime(), Math.round((row.cost_pence / 100) * 100) / 100]);\n"
+      - entity: sensor.load_optimizer_1_cost_forecast
+        name: Saving Session blocked
+        type: area
+        color: '#9ca3af'
+        opacity: 0.22
+        show:
+          in_header: false
+          legend_value: false
+        data_generator: "const windows = entity.attributes.blocked_windows || [];\nconst forecast = entity.attributes.forecast || [];\nconst values = forecast.map(row => Number(row.cost_pence) / 100).filter(Number.isFinite);\nconst ceiling = Math.max(...values, 1);\nreturn windows.flatMap(window => [\n  [new Date(window.start).getTime(), ceiling],\n  [new Date(window.end).getTime(), ceiling]\n]);\n"
+- title: Learning
+  path: learning
+  icon: mdi:brain
+  type: sections
+  max_columns: 3
+  sections:
+  - type: grid
+    column_span: 3
+    cards:
+    - type: markdown
+      title: Dishwasher learning
+      content: '{% set programs = state_attr(''sensor.load_optimizer_1_learned_programs'', ''programs'') or [] %}
+
+        {% set programs = programs | sort(attribute=''confidence'', reverse=true) %}
+
+        {% if programs %}
+
+        | Program | Runs | Runtime | Energy | Peak | Confidence |
+
+        |---|---:|---:|---:|---:|---:|
+
+        {% for item in programs -%}
+
+        | {{ item.program }} | {{ item.runs | int }} | {{ item.expected_runtime_minutes | float(0) | round(0, ''ceil'') | int }} min | {{ item.expected_energy_kwh | float(0) | round(3) }} kWh | {{ item.average_peak_power_w | float(0) | round(0) | int }} W | {{ item.confidence | float(0) | round(0) | int }}% |
+
+        {% endfor -%}
+
+        {% else %}
+
+        No completed cycles have been learned yet.
+
+        {% endif %}
+
+        '
+      grid_options:
+        columns: full
+  - type: grid
+    column_span: 3
+    cards:
+    - type: entities
+      title: Washing machine
+      show_header_toggle: false
+      entities:
+      - entity: sensor.load_optimizer_2_total_runs
+        name: Learned runs
+      - entity: sensor.load_optimizer_2_cost_confidence
+        name: Confidence
+      - entity: sensor.load_optimizer_2_last_finish
+        name: Last finish
+      grid_options:
+        columns: 6
+    - type: entities
+      title: Robot vacuum
+      show_header_toggle: false
+      entities:
+      - entity: sensor.load_optimizer_3_total_runs
+        name: Learned runs
+      - entity: sensor.load_optimizer_3_cost_confidence
+        name: Confidence
+      - entity: sensor.load_optimizer_3_last_finish
+        name: Last finish
+      grid_options:
+        columns: 6
+  - type: grid
+    column_span: 3
+    cards:
+    - type: markdown
+      title: Program Catalogue
+      content: '{% set catalogue = (state_attr(''sensor.load_optimizer_1_program_catalogue'', ''programs'') or []) | sort(attribute=''confidence'', reverse=true) %} {% set capabilities = state_attr(''sensor.load_optimizer_1_program_capabilities'', ''programs'') or [] %}
+
+        | Program | Runs | Runtime | Energy | Confidence | Class | Normal | Negative | Cooldown | Auto | Remote |
+
+        |---|---:|---:|---:|---:|---|---:|---:|---:|---:|---|
+
+        {%- for item in catalogue %}
+
+        {%- set capability = (capabilities | selectattr(''program'', ''eq'', item.program) | list | first) or {} %}
+
+        | {{ item.program }} | {{ item.runs }} | {{ (item.expected_runtime_minutes | round(0, ''ceil'') | int ~ '' min'') if item.expected_runtime_minutes is number else ''unknown'' }} | {{ (item.expected_energy_kwh | round(3) ~ '' kWh'') if item.expected_energy_kwh is number else ''unknown'' }} | {{ item.confidence | round(0) }}% | {{ item.classification | default(''unclassified'') }} | {{ ''yes'' if item.allow_normal_recommendation | default(false) else ''no'' }} | {{ ''yes'' if item.allow_negative_price_run | default(false) else ''no'' }} | {{ item.minimum_hours_between_runs | default(0) }} h | {{ ''yes'' if capability.can_auto_start | default(false) else ''no'' }} | {{ capability.remote_start_status | default(''unknown'') }} |
+
+        {%- endfor %}
+
+        '
+      grid_options:
+        columns: full
+- title: Diagnostics
+  path: diagnostics
+  icon: mdi:stethoscope
+  type: sections
+  max_columns: 3
+  sections:
+  - type: grid
+    column_span: 1
+    cards:
+    - type: markdown
+      title: Execution record
+      content: '{% set native = ''sensor.load_optimizer_1_orchestration_status'' %}
+
+        {% macro home_time(value) -%}
+
+        {{ (as_datetime(value) | as_local).strftime(''%a %d %b %H:%M %Z'') if as_datetime(value, none) else ''Not recorded'' }}
+
+        {%- endmacro %}
+
+        | Record | Value |
+
+        |---|---|
+
+        | Scheduler | {{ states(native) }} |
+
+        | Last start | {{ home_time(state_attr(native, ''last_attempt'')) }} |
+
+        | Programme | {{ state_attr(native, ''last_program'') or ''Not recorded'' }} |
+
+        | Result | {{ state_attr(native, ''last_result'') or ''Not recorded'' }} |
+
+        | Detail | {{ (state_attr(native, ''last_message'') or ''Not recorded'') | replace(''|'', ''/'') | replace(''\n'', '' '') }} |'
+    - type: entities
+      title: Sources
+      show_header_toggle: false
+      entities:
+      - entity: sensor.load_optimizer_1_status
+        name: Optimizer
+      - entity: sensor.load_optimizer_1_data_freshness
+        name: Data freshness
+      - entity: sensor.load_optimizer_1_tariff_horizon
+        name: Published horizon
+    - type: entities
+      title: Readiness
+      show_header_toggle: false
+      entities:
+      - entity: sensor.load_optimizer_1_overnight_readiness
+        name: Overnight
+      - entity: sensor.load_optimizer_1_negative_price_readiness
+        name: Free / negative price
+  - type: grid
+    column_span: 2
+    cards:
+    - type: markdown
+      title: Recent decisions
+      content: '{% set records = state_attr(''sensor.load_optimizer_1_automation_explanation'', ''recent_events'') or [] %}
+
+        {% if records %}
+
+        | Home time | Event | Programme / reason |
+
+        |---|---|---|
+
+        {% for event in records[:12] -%}
+
+        | {{ (as_datetime(event.timestamp) | as_local).strftime(''%d %b %H:%M %Z'') if as_datetime(event.timestamp, none) else ''Not recorded'' }} | {{ event.event | default(''decision'') }} | {{ event.program | default(event.reason | default('''')) | replace(''_'', '' '') }} |
+
+        {% endfor -%}
+
+        {% else %}
+
+        No scheduling events recorded.
+
+        {% endif %}'
+  - type: grid
+    column_span: 3
+    cards:
+    - type: markdown
+      title: Automation Capabilities
+      grid_options:
+        columns: full
+      content: '{% set programs = state_attr(''sensor.load_optimizer_1_program_capabilities'', ''programs'') or [] %}
+
+        {% if programs %}
+
+        {% for item in programs %}
+
+        ### {{ item.program }}
+
+
+        **Learned:** {{ item.runs }} runs, {{ item.confidence }}% confidence, {{ item.classification }}
+
+
+        - **Normal recommendation:** {{ ''eligible'' if item.can_recommend else ''not eligible'' }}
+
+        - **Free / negative price:** {{ ''eligible'' if item.can_negative_price else ''not eligible'' }}
+
+        - **Automatic start:** {{ ''available'' if item.can_auto_start else ''blocked'' }}
+
+        - **Remote start:** {{ item.remote_start_status | replace(''_'', '' '') }}
+
+
+        {% endfor %}
+
+        {% else %}
+
+        No automation-capability data has been published yet.
+
+        {% endif %}'

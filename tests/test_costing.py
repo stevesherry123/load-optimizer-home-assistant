@@ -9,6 +9,7 @@ sys.path.insert(0, str(INTEGRATION_ROOT))
 from legacy.costing import (
     _negative_power_window_fit,
     estimate_cycle_cost,
+    normalize_tariff_periods,
     operational_overnight_window,
     overlay_price_window,
     parse_ai_feed,
@@ -16,6 +17,75 @@ from legacy.costing import (
     recommend_cycle,
     tariff_periods_from_entity,
 )
+
+
+class TariffPeriodNormalizationTests(unittest.TestCase):
+    def setUp(self):
+        self.start = datetime(2026, 10, 29, tzinfo=timezone.utc)
+        self.model = {
+            "representative_profile_w": [2000, 2000],
+            "expected_runtime_minutes": 30,
+            "expected_energy_kwh": 1,
+        }
+
+    def period(self, offset=0, price=1.2345, minutes=30):
+        return {"start": self.start + timedelta(minutes=offset),
+                "end": self.start + timedelta(minutes=offset + minutes),
+                "price_p_per_kwh": price}
+
+    def test_duplicates_do_not_double_energy_or_cost(self):
+        for price in (1.2345, 0, -5):
+            with self.subTest(price=price):
+                period = self.period(price=price)
+                original = [period, dict(period)]
+                periods = normalize_tariff_periods(original)
+                result = estimate_cycle_cost(self.start, self.model, periods)
+                self.assertAlmostEqual(result["energy_cost_pence"], price)
+                self.assertAlmostEqual(result["energy_kwh"], 1)
+                self.assertEqual(len(periods), 1)
+                self.assertEqual(len(original), 2)
+
+    def test_conflicting_correction_is_rejected_in_either_source_order(self):
+        periods = [self.period(), self.period(price=2)]
+        for sources in (periods, list(reversed(periods))):
+            with self.assertRaisesRegex(ValueError, "overlapping"):
+                normalize_tariff_periods(sources)
+
+    def test_partial_and_nested_overlaps_are_rejected_even_at_same_price(self):
+        for offset in (0, 15):
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                normalize_tariff_periods([self.period(minutes=60), self.period(offset=offset)])
+
+    def test_adjacent_slots_sort_without_filling_gaps(self):
+        periods = [self.period(offset=90), self.period(offset=30), self.period()]
+        result = normalize_tariff_periods(periods)
+        self.assertEqual([item["start"] for item in result],
+                         [self.start + timedelta(minutes=i) for i in (0, 30, 90)])
+        self.assertEqual(len(result), 3)
+
+    def test_explicit_free_overlay_applies_after_deduplication(self):
+        period = self.period()
+        result = overlay_price_window(normalize_tariff_periods([period, period]),
+            start=self.start, end=period["end"], price_p_per_kwh=0)
+        self.assertEqual(estimate_cycle_cost(self.start, self.model, result)["energy_cost_pence"], 0)
+        self.assertTrue(result[0]["is_special_price_window"])
+
+    def test_equivalent_offset_timestamps_are_duplicates(self):
+        period = self.period()
+        other = {**period, "start": "2026-10-29T01:00:00+01:00",
+                 "end": "2026-10-29T01:30:00+01:00"}
+        self.assertEqual(len(normalize_tariff_periods([period, other])), 1)
+
+    def test_gap_remains_unpriced(self):
+        periods = normalize_tariff_periods([self.period(minutes=10), self.period(offset=20)])
+        with self.assertRaisesRegex(ValueError, "fully cover"):
+            estimate_cycle_cost(self.start, self.model, periods)
+
+    def test_invalid_prices_and_durations_are_rejected(self):
+        for period in (self.period(price=float("nan")), self.period(price=float("inf")),
+                       self.period(minutes=0), self.period(minutes=-30)):
+            with self.subTest(period=period), self.assertRaises(ValueError):
+                normalize_tariff_periods([period])
 
 
 class NegativePriceSafetyTests(unittest.TestCase):

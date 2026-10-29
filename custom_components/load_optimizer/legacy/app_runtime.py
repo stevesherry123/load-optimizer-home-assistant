@@ -17,10 +17,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .config_validation import ConfigurationError, appliance_document
 
 try:
-    from .costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from .costing import normalize_tariff_periods, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from .observability import EventEngine, configure_logging as configure_event_logging
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
-    from costing import overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from costing import normalize_tariff_periods, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
 APP_VERSION = "1.5.9"
@@ -2521,6 +2521,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                         })
                 if not periods:
                     raise ValueError("No configured tariff entity produced a supported future-rate attribute")
+                periods = normalize_tariff_periods(periods)
                 if manual_window["applied"]:
                     periods = overlay_price_window(
                         periods,
