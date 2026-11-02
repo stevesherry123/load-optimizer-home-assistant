@@ -17,6 +17,10 @@ from custom_components.load_optimizer.orchestration import NativeOrchestrator
 async def main():
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        async def notification(_call):
+            pass
+
+        hass.services.async_register("persistent_notification", "create", notification)
         try:
             for action in ("async_cancel", "async_stop"):
                 for pause in range(5):
