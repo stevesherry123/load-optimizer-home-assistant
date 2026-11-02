@@ -64,14 +64,22 @@ jobs:
         run: pip install "homeassistant==2026.10.2" "home-assistant-frontend==20260930.4" "pyotp==2.10.0" "PyQRCode==1.2.1"
       - name: Import all integration platforms and config flow
         run: python tests/ha_import_smoke.py
+      - name: Verify cold timezone resolution, local midnight caching and DST boundaries
+        run: python tests/ha_timezone_smoke.py
+      - name: Verify worker scans, maintenance outcomes and entity ownership
+        run: python tests/ha_runtime_review_smoke.py
+      - name: Verify appliance cancellation, unload and physical interlocks
+        run: python tests/ha_command_safety_smoke.py
+      - name: Verify travelling-browser tariff chart timezones
+        run: python tests/ha_chart_smoke.py
       - name: Verify experimental worker scans and cancellation safety
         run: python tests/ha_worker_scan_smoke.py
       - name: Verify Octopus version floor and renamed source ownership
         run: python tests/ha_calendar_config_smoke.py
-      - name: Verify appliance cancellation, unload and physical interlocks
-        run: python tests/ha_command_safety_smoke.py
       - name: Verify dashboard price colours with Home Assistant templates
         run: python tests/ha_dashboard_smoke.py
+      - name: Verify the optional beta dashboard templates and control confirmations
+        run: python tests/ha_beta_dashboard_smoke.py
       - name: Verify real EV configuration, reload and restart persistence
         run: python tests/ha_ev_lifecycle_smoke.py
       - name: Verify guided EV review and append-only dashboard without hardware

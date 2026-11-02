@@ -82,6 +82,14 @@ async def verify_options_display():
     assert defaults["bosch_power_switch"] == "switch.migrated_dishwasher"
     assert defaults["bosch_device_id"] == "migrated-device"
     assert view._existing == values
+    for tariff in ("", "sensor.previous_tariff"):
+        view._existing = {"tariff_entity": tariff, "tariff_entities": "event.alternate_rates"}
+        result = await LoadOptimizerOptionsFlow.async_step_appliances_tariff(view)
+        fields = convert(result["data_schema"], custom_serializer=custom_serializer)
+        defaults = result["data_schema"]({})
+        assert "tariff_entity" not in defaults, defaults
+        assert defaults["tariff_entities"] == "event.alternate_rates"
+        assert "default" not in next(f for f in fields if f["name"] == "tariff_entity")
 
 
 asyncio.run(verify_options_display())

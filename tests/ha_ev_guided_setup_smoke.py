@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
+from threading import get_ident
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -20,6 +21,8 @@ from homeassistant.helpers.config_validation import custom_serializer
 from probatio import to_field_list
 
 from custom_components.load_optimizer.ev_dashboard import async_add_ev_view, dashboard_choices
+from custom_components.load_optimizer import coordinator as coordinator_module
+from custom_components.load_optimizer import ev_setup_flow as guided_module
 
 
 async def main():
@@ -64,7 +67,18 @@ async def main():
                 assert flow["step_id"] == "ev_setup"
                 flow = await configure(flow,sources)
                 assert flow["step_id"] == "ev_preferences"
-                flow = await configure(flow,preferences)
+                loop_thread = get_ident()
+                preview_threads = []
+                inspect_setup = guided_module.inspect_ev_setup
+
+                def worker_preview(*args):
+                    assert get_ident() != loop_thread, "Guided EV preview ran on HA's event loop"
+                    preview_threads.append(get_ident())
+                    return inspect_setup(*args)
+
+                with patch.object(guided_module, "inspect_ev_setup", side_effect=worker_preview):
+                    flow = await configure(flow,preferences)
+                assert preview_threads
                 assert flow["step_id"] == "ev_review"
                 assert "Read-only preview" in flow["description_placeholders"]["review"]
                 assert "p/kWh" in flow["description_placeholders"]["review"]
@@ -82,6 +96,25 @@ async def main():
                 entry = hass.config_entries.async_entries("load_optimizer")[0]
                 coordinator = hass.data["load_optimizer"][entry.entry_id]
                 assert not coordinator.ev_controller.enabled and not commands
+                loop_thread = get_ident()
+                workers = []
+                build_plan = coordinator_module.build_ev_plan
+                build_review = coordinator_module.review_snapshot
+
+                def worker_plan(*args):
+                    assert get_ident() != loop_thread, "EV planning ran on HA's event loop"
+                    workers.append("plan")
+                    return build_plan(*args)
+
+                def worker_review(*args):
+                    assert get_ident() != loop_thread, "EV review ran on HA's event loop"
+                    workers.append("review")
+                    return build_review(*args)
+
+                with patch.object(coordinator_module, "build_ev_plan", side_effect=worker_plan), \
+                     patch.object(coordinator_module, "review_snapshot", side_effect=worker_review):
+                    await coordinator.async_request_refresh()
+                assert workers == ["plan", "review"] and not commands
                 saved = await dashboard.async_load(False)
                 assert saved["views"][0] == original["views"][0]
                 assert len(saved["views"]) == 2

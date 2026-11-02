@@ -38,23 +38,12 @@ not access control: the repository and beta branches are public, and advanced
 users can explicitly install a public branch or full commit. Development is
 isolated from normal updates, not secret.
 
-## Two Branches, Two Release Types
+## Development Branches
 
-- `main`: stable product and public documentation.
-- `beta/next`: the single combined testing branch. It includes tariff history,
-  validated import, optional AI narratives and the pending scheduling repairs.
-
-The owner's installed test version is `v1.7.0-beta.9`, verified on 19 October
-after upgrading from `v1.7.0-beta.8`; see [deployment acceptance](power-up-pricing.md#deployment-acceptance-19-october-2026).
-Stable publication remains `v1.5.7`. A beta release is a labelled
-snapshot of `beta/next`, not another installation or a new branch. Future beta
-updates continue on this same branch. Stable promotion requires separate approval
-and successful feature-specific acceptance; combining branches does not waive
-those gates or enable AI.
-
-Old tags/releases remain available for rollback. Superseded branch tips are
-recorded in the [14 October cleanup record](branch-cleanup-2026-10-14.md).
-The [earlier cleanup record](branch-cleanup-2026-10-09.md) is historical.
+`main` may contain unreleased work. Feature and experimental branches have their
+own acceptance gates; their names are not release metadata or a promise of safe
+side-by-side installation. Use published tags and release notes to identify the
+supported installed scope, not a historical branch-cleanup inventory.
 
 ## What Users Read
 
@@ -71,18 +60,17 @@ replace an existing tag merely to update its documentation.
 
 ## Catalogue Acceptance
 
-The request is [hacs/default#11744](https://github.com/hacs/default/pull/11744),
-submitted by the owner on 9 October 2026. Catalogue validation and lint passed;
-maintainer review is pending. A merged request is the acceptance signal. The
+The request is [hacs/default#11744](https://github.com/hacs/default/pull/11744).
+Use that page for current reviews and status rather than a dated work diary.
+A merged request is the acceptance signal. The
 listing follows a scheduled catalogue scan, so it is not instantaneous.
 
-The owner's GitHub account was verified as subscribed to this request. GitHub
-can notify through its inbox, mobile app or email according to account settings.
-Check participating notifications if email is wanted. The request page remains
+GitHub can notify subscribers through its inbox, mobile app or email according to
+their account settings. The request page remains
 the authoritative status; a closed-but-unmerged request is not acceptance.
-Do not send routine status comments, request reviewers or open duplicates while
-waiting. Continue normal repository development and respond to maintainer
-questions when asked.
+Do not send routine queue-status comments or open duplicates while waiting.
+Follow the maintainer's instructions when responding to requested changes or
+returning a submission for review. Normal repository development can continue.
 
 ## Statistics And Privacy
 

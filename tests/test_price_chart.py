@@ -110,7 +110,8 @@ class PriceChartJavascriptTests(unittest.TestCase):
         attributes = {} if periods is None else {"chart_price_periods": periods}
         script = "const input=JSON.parse(require('fs').readFileSync(0,'utf8')); global.window={}; "
         script += "const entity={attributes:input.attributes}; const hass={config:{time_zone:'Europe/London'},locale:{time_zone:input.locale},states:{'sensor.load_optimizer_1_cost_status':{attributes:{tariff_timezone:'Europe/London',tariff_entities:['event.rates']}},'event.rates':{attributes:{rates:input.raw}}}}; "
-        script += "console.log(JSON.stringify(new Function('entity','hass',input.generator)(entity,hass)));"
+        script += "const points=new Function('entity','hass',input.generator)(entity,hass); "
+        script += "console.log(JSON.stringify(points.map(([stamp,value])=>[stamp-(window.loadOptimizerTariffCardOffset||0),value])));"
         result = subprocess.run([self.node, "-e", script], input=json.dumps({"attributes": attributes,
             "generator": self.generator, "locale": locale, "raw": raw or []}), text=True, capture_output=True,
             env={**os.environ, "TZ": browser_timezone}, check=True)
@@ -139,5 +140,5 @@ class PriceChartJavascriptTests(unittest.TestCase):
         server = self.render(periods, browser_timezone="America/New_York")
         local = self.render(periods, browser_timezone="America/New_York", locale="local")
         self.assertEqual(server[0][0], start)
-        self.assertEqual(local[0][0], start + 5 * 3600000)
+        self.assertEqual(local[0][0], start)
         self.assertEqual(local[0][1], 0)

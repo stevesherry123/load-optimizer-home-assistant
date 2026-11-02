@@ -336,7 +336,7 @@ class LoadOptimizerConfigFlow(EVGuidedFlow, _ApplianceValidationFlow, config_ent
 
     async def async_step_ev(self, user_input: dict[str, Any] | None = None):
         """Create a new EV optimizer load."""
-        errors = _ev_input_errors(user_input) if user_input is not None else {}
+        errors = await self.hass.async_add_executor_job(_ev_input_errors, user_input) if user_input is not None else {}
         if user_input is not None and not errors:
             user_input[CONF_SLOT_MINUTES] = int(user_input.get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES))
             user_input[CONF_NAME] = self._name
@@ -482,7 +482,7 @@ class LoadOptimizerOptionsFlow(EVGuidedFlow, _ApplianceValidationFlow, config_en
 
     async def async_step_ev(self, user_input: dict[str, Any] | None = None):
         """Edit EV inputs without replacing its config entry or opt-ins."""
-        errors = _ev_input_errors(user_input) if user_input is not None else {}
+        errors = await self.hass.async_add_executor_job(_ev_input_errors, user_input) if user_input is not None else {}
         if user_input is not None and not errors:
             updates = dict(user_input)
             if CONF_SLOT_MINUTES in updates:
@@ -504,6 +504,8 @@ class LoadOptimizerOptionsFlow(EVGuidedFlow, _ApplianceValidationFlow, config_en
         """Edit appliance sources and tariff inputs."""
         errors = {}
         if user_input is not None:
+            user_input = dict(user_input)
+            user_input.setdefault(CONF_TARIFF_ENTITY, "")
             errors = await self._async_prepare_appliances({**self._existing, **user_input})
             if not errors:
                 self._appliance_pending = dict(user_input)
@@ -534,7 +536,8 @@ class LoadOptimizerOptionsFlow(EVGuidedFlow, _ApplianceValidationFlow, config_en
                     ): vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
                     vol.Optional(
                         CONF_TARIFF_ENTITY,
-                        default=existing.get(CONF_TARIFF_ENTITY, ""),
+                        description={"suggested_value": existing[CONF_TARIFF_ENTITY]}
+                        if existing.get(CONF_TARIFF_ENTITY) else {},
                     ): selector.EntitySelector(selector.EntitySelectorConfig()),
                     vol.Optional(
                         CONF_TARIFF_ENTITIES,

@@ -110,7 +110,8 @@ class LegacyRuntime:
             try:
                 return await asyncio.shield(task)
             except asyncio.CancelledError:
-                # Cancelling an await does not stop a worker writing learned data.
+                # An executor job cannot be cancelled. Finish saving its learning
+                # before releasing the import/scan lock during a reload.
                 await task
                 raise
 
@@ -122,6 +123,8 @@ class LegacyRuntime:
         options = self._normalise_options(options)
         now = datetime.now(timezone.utc)
         configs = app_runtime.instance_configs(options)
+        # Retain resolved zones so synchronous legacy helpers only hit ZoneInfo's
+        # object cache, never a cold timezone-database read on the event loop.
         names = {"UTC", "Europe/London", *(str(config.get(CONF_TARIFF_TIMEZONE, "Europe/London")) for config in configs)}
         for name in names:
             if name not in self._timezones:
@@ -153,7 +156,37 @@ class LegacyRuntime:
             message=None if configs else "Configure learned appliance instances to enable compatibility publishing.",
         )
 
+    def _scan_instances(self, options: dict, configs: list[dict], now: datetime) -> str:
+        """Keep the legacy engine's module-level adapters isolated per worker."""
+        with _ENGINE_LOCK:
+            self._patch_legacy_runtime()
+            return self._scan_instances_locked(options, configs, now)
+
+    def _scan_instances_locked(self, options: dict, configs: list[dict], now: datetime) -> str:
+        """Calculate and buffer publications without accessing HA from a worker."""
+        reset_status = app_runtime.reset_request_status(self.state, options)
+        app_runtime.LAST_SCAN_STARTED_AT = now
+        for config in configs:
+            try:
+                app_runtime.update_instance(ADAPTER_MARKER, self.state, config, now=now)
+            except Exception as error:  # pragma: no cover - defensive integration isolation
+                LOGGER.error("Legacy Load Optimizer scan failed for instance %s (%s)", config.get("instance_id"), type(error).__name__)
+                app_runtime.publish_entity(
+                    ADAPTER_MARKER,
+                    f"sensor.load_optimizer_{config.get('instance_id')}_status",
+                    "error",
+                    {"friendly_name": f"{config.get('name', 'Load Optimizer')} Optimizer Status",
+                     "icon": "mdi:alert-circle", "reason": type(error).__name__},
+                )
+        running = app_runtime.running_instances(self.state, configs)
+        app_runtime.publish_restart_safety(ADAPTER_MARKER, running)
+        app_runtime.LAST_SCAN_COMPLETED_AT = datetime.now(timezone.utc)
+        app_runtime.publish_status(ADAPTER_MARKER, len(configs), running=running, reset_status=reset_status)
+        app_runtime.publish_logging_diagnostics(ADAPTER_MARKER)
+        return app_runtime.state_signature(self.state)
+
     def _prepare_instances(self, options: dict, configs: list[dict], now: datetime) -> None:
+        """Restore startup models in a worker before sizing calendar coverage."""
         with _ENGINE_LOCK:
             self._patch_legacy_runtime()
             self._prepare_instances_locked(options, configs, now)
@@ -173,37 +206,6 @@ class LegacyRuntime:
             app_runtime.mark_interrupted_captures(self.state, startup_running)
             app_runtime.publish_restart_warning(ADAPTER_MARKER, startup_running)
             self.started = True
-
-    def _scan_instances(self, options: dict, configs: list[dict], now: datetime) -> str:
-        """Bind the shared engine adapters only while this worker owns them."""
-        with _ENGINE_LOCK:
-            self._patch_legacy_runtime()
-            return self._scan_instances_locked(options, configs, now)
-
-    def _scan_instances_locked(self, options: dict, configs: list[dict], now: datetime) -> str:
-        reset_status = app_runtime.reset_request_status(self.state, options)
-        app_runtime.LAST_SCAN_STARTED_AT = now
-        for config in configs:
-            try:
-                app_runtime.update_instance(ADAPTER_MARKER, self.state, config, now=now)
-            except Exception as error:  # pragma: no cover - defensive integration isolation
-                LOGGER.error("Legacy Load Optimizer scan failed for instance %s (%s)", config.get("instance_id"), type(error).__name__)
-                app_runtime.publish_entity(
-                    ADAPTER_MARKER,
-                    f"sensor.load_optimizer_{config.get('instance_id')}_status",
-                    "error",
-                    {
-                        "friendly_name": f"{config.get('name', 'Load Optimizer')} Optimizer Status",
-                        "icon": "mdi:alert-circle",
-                        "reason": type(error).__name__,
-                    },
-                )
-        running = app_runtime.running_instances(self.state, configs)
-        app_runtime.publish_restart_safety(ADAPTER_MARKER, running)
-        app_runtime.LAST_SCAN_COMPLETED_AT = datetime.now(timezone.utc)
-        app_runtime.publish_status(ADAPTER_MARKER, len(configs), running=running, reset_status=reset_status)
-        app_runtime.publish_logging_diagnostics(ADAPTER_MARKER)
-        return app_runtime.state_signature(self.state)
 
     def _normalise_options(self, options: dict[str, Any]) -> dict[str, Any]:
         """Accept either split config-flow fields or a full pasted add-on options block."""

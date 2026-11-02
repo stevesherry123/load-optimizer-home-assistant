@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone, tzinfo
 import logging
 from typing import Any
 
@@ -21,10 +22,8 @@ from .const import (
     CONF_TARGET_PERCENT_ENTITY,
     CONF_TARIFF_ENTITY,
     CONF_TARIFF_ENTITIES,
-    CONF_TARIFF_TIMEZONE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_PRICE_CAP_PAYMENT_METHOD,
-    DEFAULT_TARIFF_TIMEZONE,
     DOMAIN,
     LOAD_TYPE_LEARNED_APPLIANCE,
 )
@@ -46,7 +45,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     config_entry: ConfigEntry
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, *, local_timezone: tzinfo) -> None:
         data = {**entry.data, **entry.options}
         update_interval = DEFAULT_SCAN_INTERVAL
         if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
@@ -62,6 +61,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                               if data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE and data.get("ev_charger_switch") else None)
         if self.ev_controller and data.get("ev_charger_switch"):
             self.update_interval = timedelta(seconds=30)
+        self.local_timezone = local_timezone
         self.price_cap_manager = PriceCapManager(hass, entry)
         self.tariff_intelligence = get_service(hass, data)
         self.narrative = OptionalNarrative(hass, self.async_publish_narrative)
@@ -95,7 +95,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 CONF_PRICE_CAP_PAYMENT_METHOD,
                 DEFAULT_PRICE_CAP_PAYMENT_METHOD,
             ),
-            timezone_name=data.get(CONF_TARIFF_TIMEZONE, DEFAULT_TARIFF_TIMEZONE),
+            local_timezone=self.local_timezone,
             now_utc=now,
         )
         intelligence = await self.tariff_intelligence.async_status(price_cap, now)
@@ -125,13 +125,15 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for key in (CONF_BATTERY_ENTITY, CONF_BATTERY_CAPACITY_ENTITY, CONF_TARGET_PERCENT_ENTITY, CONF_CONNECTION_STATUS_ENTITY):
             if data.get(key):
                 sources[data[key]] = self._state_payload(data[key])
-        plan, periods = build_ev_plan(data, sources, now)
+        plan, periods = await self.hass.async_add_executor_job(build_ev_plan, data, sources, now)
         if self.ev_controller:
             self.ev_controller.set_plan(plan, now)
         review_sources = {entity_id: self._state_payload(entity_id) for key, entity_id in data.items()
                           if key.endswith("_entity") or key == "ev_charger_switch" if isinstance(entity_id, str) and entity_id}
-        review = review_snapshot(data, plan, periods, review_sources,
-                                 self.ev_controller.status if self.ev_controller else None, now)
+        control_snapshot = deepcopy(self.ev_controller.status) if self.ev_controller else None
+        review = await self.hass.async_add_executor_job(
+            review_snapshot, data, plan, periods, review_sources,
+            control_snapshot, now)
         return {
             "plan": plan,
             "ev_review": review,

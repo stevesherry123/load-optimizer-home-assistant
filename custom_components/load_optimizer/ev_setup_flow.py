@@ -1,10 +1,10 @@
 """Guided EV source selection and read-only plan review."""
 
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 
 import voluptuous as vol
 from homeassistant.helpers import selector
+from homeassistant.util import dt as dt_util
 
 from .const import EV_CONTROL_ENTITY_FIELDS
 from .ev_dashboard import dashboard_choices
@@ -58,8 +58,8 @@ class EVGuidedFlow:
                 return await self.async_step_ev_review()
         return self.async_show_form(step_id="ev_preferences", data_schema=self._guided_schema(False), errors=errors)
 
-    def _guided_review(self):
-        config = self._ev_pending
+    async def _async_guided_review(self):
+        config = dict(self._ev_pending)
         ids = tariff_entities(config) + [value for key, value in config.items()
             if isinstance(value, str) and (key.endswith("_entity") or key == "ev_charger_switch") and value]
         states = {}
@@ -68,7 +68,8 @@ class EVGuidedFlow:
             if state:
                 states[entity_id] = {"state": state.state, "attributes": dict(state.attributes),
                     "last_reported": (getattr(state, "last_reported", None) or state.last_updated).isoformat()}
-        return inspect_ev_setup(config, states, datetime.now(timezone.utc))
+        return await self.hass.async_add_executor_job(
+            inspect_ev_setup, config, states, datetime.now(timezone.utc))
 
     async def async_step_ev_review(self, user_input=None):
         if not hasattr(self, "_ev_pending"):
@@ -80,7 +81,12 @@ class EVGuidedFlow:
             return await self.async_step_ev_setup()
         if action == "edit_preferences":
             return await self.async_step_ev_preferences()
-        report = self._guided_review()
+        zone = await dt_util.async_get_time_zone(self._ev_pending.get("tariff_timezone", "Europe/London"))
+        report = await self._async_guided_review()
+        if zone is None:
+            zone = timezone.utc
+            report["issues"].append("invalid_tariff_timezone")
+            report["control_ready"] = False
         errors = {}
         choices = dashboard_choices(self.hass)
         if user_input and action == "save":
@@ -115,7 +121,6 @@ class EVGuidedFlow:
         elif not report["control_configured"]:
             rows.append("Advisory only: no charger switch is configured.")
         rows += ["", "| Selected time | Price |", "|---|---:|"]
-        zone = ZoneInfo(self._ev_pending.get("tariff_timezone", "Europe/London"))
         slots = plan.get("selected_slots", [])
         for slot in slots[:12]:
             start = datetime.fromisoformat(slot["start"]).astimezone(zone)
