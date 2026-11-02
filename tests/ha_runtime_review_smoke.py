@@ -26,6 +26,7 @@ from custom_components.load_optimizer.orchestration import NativeOrchestrator
 async def main():
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         try:
             assert await async_from_config_dict({

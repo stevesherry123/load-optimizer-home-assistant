@@ -17,6 +17,7 @@ from custom_components.load_optimizer.orchestration import NativeOrchestrator
 async def main():
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         async def notification(_call):
             pass
 

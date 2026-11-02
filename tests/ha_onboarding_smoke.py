@@ -205,7 +205,10 @@ async def verify_appliance_editing(hass, entry, coordinator, example):
     energy = hass.states.get(appliance["energy_sensor"])
     hass.states.async_set(power.entity_id, power.state, {"unit_of_measurement": "kW"})
     hass.states.async_set(energy.entity_id, "unavailable")
-    result = await hass.config_entries.options.async_configure(flow["flow_id"], {"instances_yaml": example})
+    result = await hass.config_entries.options.async_configure(flow["flow_id"], {
+        "instances_yaml": example,
+        "tariff_entity": {**entry.data, **entry.options}.get("tariff_entity", ""),
+    })
     assert result["type"] == "form" and result["step_id"] == "appliance_review", result
     summary = result["description_placeholders"]["summary"]
     assert "reports W" in summary and "not currently available" in summary, summary
@@ -235,7 +238,9 @@ async def verify_appliance_editing(hass, entry, coordinator, example):
 
     flow = await hass.config_entries.options.async_init(entry.entry_id)
     flow = await hass.config_entries.options.async_configure(flow["flow_id"], {"next_step_id": "appliances_tariff"})
-    result = await hass.config_entries.options.async_configure(flow["flow_id"], {"instances_yaml": example})
+    result = await hass.config_entries.options.async_configure(flow["flow_id"], {
+        "instances_yaml": example, "tariff_entities": "sensor.synthetic_rates",
+    })
     assert result["step_id"] == "appliance_review", result
     instance = coordinator.legacy_runtime.state["instances"]["1"]
     instance["cycle_start"] = Clock.current.isoformat()

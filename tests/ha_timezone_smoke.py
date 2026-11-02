@@ -23,6 +23,7 @@ from custom_components.load_optimizer.legacy_runtime import LegacyRuntime
 async def main():
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         entry = SimpleNamespace(entry_id="timezone_test", data={"tariff_timezone":"Pacific/Chatham"},
             options={}, async_on_unload=Mock(), add_update_listener=Mock())
         hass.config_entries = SimpleNamespace(async_forward_entry_setups=AsyncMock())
