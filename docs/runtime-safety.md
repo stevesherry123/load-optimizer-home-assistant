@@ -37,12 +37,27 @@ Manual cooldown overrides are not permission to bypass door, connectivity,
 remote-control, ownership or supported-device safety checks. A recommendation
 is not proof that a physical start occurred.
 
+Physical interlocks are checked again after command delays for manual starts as
+well as automatic starts. A manual override retains its scheduling/cooldown
+exception, but an opened door, lost connection or disabled remote start prevents
+the next command. Automatic requests additionally revalidate tariff restrictions.
+
+Cancel drains the pending start sequence before reporting cancellation. It does
+not issue an appliance stop or power-off command and cannot retract a command
+already accepted by the appliance. If a wash has already started, use its normal
+controls to stop it. A replacement request is rejected while a start sequence is
+still executing; cancel the old request first.
+
 ## State and maintenance
 
 Keep settings edits from reloading a known active capture or queued start.
 Serialize imports and scans; validate replacement data before changing memory.
 An executor worker cannot be stopped merely by cancelling its awaiting task, so
 finish its state/save work before allowing an import or reload to take ownership.
+Unload removes listeners, prevents new commands, awaits command cancellation and
+drains event-triggered persistence before handing the entry to a new runtime.
+Queued requests remain saved for restart-time safety checks; unloading is not a
+request to stop an already running appliance.
 
 Maintenance outcomes use notifications or actionable service errors. If another
 integration occupies an intended entity ID, Repairs explains the conflict; do

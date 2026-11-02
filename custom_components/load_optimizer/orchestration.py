@@ -92,6 +92,9 @@ class NativeOrchestrator:
         self._loaded = False
         self._remove_listeners: list[Callable[[], None]] = []
         self._execution_task: asyncio.Task | None = None
+        self._background_tasks: set[asyncio.Task] = set()
+        self._stopping = False
+        self._cancelling = False
         self._update_callback: Callable[[dict[str, Any]], None] | None = None
         self._automatic_preflight: Callable[[dict[str, Any]], Awaitable[str | None]] | None = None
 
@@ -225,6 +228,7 @@ class NativeOrchestrator:
 
     async def async_start(self) -> None:
         """Start shadow evaluation and native event tracking."""
+        self._stopping = False
         await self.async_load()
         watched = {
             "sensor.load_optimizer_1_cycle_state",
@@ -257,14 +261,34 @@ class NativeOrchestrator:
 
     async def async_stop(self) -> None:
         """Stop listeners and any pending execution task."""
+        self._stopping = True
         for remove in self._remove_listeners:
             remove()
         self._remove_listeners.clear()
-        if self._execution_task and not self._execution_task.done():
-            self._execution_task.cancel()
+        await self._async_cancel_execution()
+        if self._background_tasks:
+            await asyncio.gather(*self._background_tasks)
+
+    def _async_schedule_background(self, coroutine) -> None:
+        """Keep event-triggered persistence inside this entry's lifecycle."""
+        task = self.hass.async_create_task(coroutine)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _async_cancel_execution(self) -> None:
+        """Drain a cancelled command sequence before changing its ownership."""
+        task = self._execution_task
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     @callback
     def _async_state_changed(self, event: Event) -> None:
+        if self._stopping:
+            return
         entity_id = event.data.get("entity_id")
         new_state = event.data.get("new_state")
         old_state = event.data.get("old_state")
@@ -273,21 +297,21 @@ class NativeOrchestrator:
                 not old_state or old_state.state != RUNNING_OPERATION
             ):
                 self.state["capture_had_reported_run"] = True
-                self.hass.async_create_task(self.async_set(
+                self._async_schedule_background(self.async_set(
                     "confirmed_cycle_started_at", new_state.last_changed.isoformat()
                 ))
-                self.hass.async_create_task(self.async_set("door_opened_since_last_cycle", False))
+                self._async_schedule_background(self.async_set("door_opened_since_last_cycle", False))
         if entity_id == self.config.get("bosch_door_sensor") and new_state:
             if new_state.state in {"on", "open"}:
-                self.hass.async_create_task(self.async_set("door_opened_since_last_cycle", True))
+                self._async_schedule_background(self.async_set("door_opened_since_last_cycle", True))
         if entity_id == "sensor.load_optimizer_1_cycle_state" and new_state:
             if new_state.state == "running" and (not old_state or old_state.state != "running"):
                 self.state["capture_had_reported_run"] = (
                     self._state(self.config.get("bosch_operation_state_sensor")) == RUNNING_OPERATION
                 )
             if old_state and old_state.state == "running" and new_state.state == "idle":
-                self.hass.async_create_task(self._async_record_cycle_end(old_state.last_changed))
-        self.hass.async_create_task(self.async_evaluate())
+                self._async_schedule_background(self._async_record_cycle_end(old_state.last_changed))
+        self._async_schedule_background(self.async_evaluate())
 
     async def _async_interval(self, now: datetime) -> None:
         await self.async_evaluate(now)
@@ -302,6 +326,10 @@ class NativeOrchestrator:
 
     async def async_request(self, mode: str, *, override: bool = False) -> None:
         """Capture a user request from a native button."""
+        if self._stopping or self._cancelling:
+            raise HomeAssistantError("Appliance control is stopping; retry after it finishes")
+        if self._execution_task and not self._execution_task.done():
+            raise HomeAssistantError("Cancel the current start request before replacing it")
         recommendation = self._recommendation(mode)
         selected_override = (
             override
@@ -370,14 +398,19 @@ class NativeOrchestrator:
     async def async_cancel(self) -> None:
         """Cancel a pending native request."""
         request = self.state.get("request") or {}
-        self.state["request"] = None
-        await self._async_outcome(
-            "cancelled",
-            request.get("mode"),
-            request.get("program"),
-            "cancelled_by_user",
-            "Pending dishwasher request cancelled.",
-        )
+        self._cancelling = True
+        try:
+            await self._async_cancel_execution()
+            self.state["request"] = None
+            await self._async_outcome(
+                "cancelled",
+                request.get("mode"),
+                request.get("program"),
+                "cancelled_by_user",
+                "Pending dishwasher request cancelled. An already running wash is not stopped.",
+            )
+        finally:
+            self._cancelling = False
 
     async def async_recalculate(self) -> None:
         """Request a fresh optimizer scan."""
@@ -421,12 +454,7 @@ class NativeOrchestrator:
     async def async_deactivate(self) -> None:
         """Return command ownership to the package automations."""
         self.state["active"] = False
-        if self._execution_task and not self._execution_task.done():
-            self._execution_task.cancel()
-            try:
-                await self._execution_task
-            except asyncio.CancelledError:
-                pass
+        await self._async_cancel_execution()
         self.state["request"] = None
         self.state["execution_status"] = "idle"
         await self._async_save()
@@ -446,6 +474,8 @@ class NativeOrchestrator:
 
     async def async_evaluate(self, now: datetime | None = None) -> None:
         """Evaluate shadow or active scheduling decisions."""
+        if self._stopping or self._cancelling:
+            return
         now = now or datetime.now(timezone.utc)
         options_changed = self._refresh_program_options()
         decision = self._automatic_decision(now)
@@ -488,7 +518,7 @@ class NativeOrchestrator:
         if save_required:
             await self._async_save()
         request = self.state.get("request")
-        if request and self._request_due(request, now):
+        if request and not self._stopping and not self._cancelling and self._request_due(request, now):
             if not self._execution_task or self._execution_task.done():
                 self._execution_task = self.hass.async_create_task(
                     self._async_execute(dict(request)),
@@ -654,13 +684,13 @@ class NativeOrchestrator:
             )
 
     async def _async_start_allowed(self, request: dict[str, Any], *, recheck: bool = False) -> bool:
+        if self._stopping or self._cancelling or not self.state.get("active"):
+            return False
         mode, program = request.get("mode"), request.get("program")
         automatic = request.get("automatic")
         if not isinstance(automatic, bool):
             # Persisted pre-upgrade negative-price requests did not record origin.
             automatic = mode in {"automatic", "negative_price"}
-        if recheck and not automatic:
-            return True
         reason = self._safety_block(mode, program, explicit_override=bool(request.get("explicit_program_override")))
         if not reason and automatic:
             reason = self._automatic_source_block()
