@@ -509,6 +509,127 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.scheduler.state["active"])
         self.hass.services.async_call.assert_not_awaited()
 
+    async def test_manual_start_rechecks_physical_interlocks_after_every_delay(self):
+        for pause in range(4):
+            for entity, value, reason in (
+                ("door", "on", "door_open"),
+                ("door", "unavailable", "door_state_unavailable"),
+                ("connected", "off", "dishwasher_not_connected"),
+                ("remote_control", "off", "remote_control_disabled"),
+                ("remote_start", "off", "remote_start_disabled"),
+            ):
+                with self.subTest(pause=pause, entity=entity, value=value):
+                    for name in ("connected", "remote_control", "remote_start"):
+                        self.put("binary_sensor." + name, "on")
+                    self.put("binary_sensor.door", "off")
+                    self.scheduler.state["door_opened_since_last_cycle"] = False
+                    self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+                    self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+                    self.hass.services.async_call.reset_mock()
+                    calls_at_change = []
+                    sleeps = 0
+
+                    async def delay(_seconds):
+                        nonlocal sleeps
+                        if sleeps == pause:
+                            self.put("binary_sensor." + entity, value)
+                            calls_at_change.extend(self.hass.services.async_call.await_args_list)
+                        sleeps += 1
+
+                    request = {"mode": "now", "program": "MixedLoad", "automatic": False,
+                               "explicit_program_override": True}
+                    with patch.object(asyncio, "sleep", side_effect=delay):
+                        await self.scheduler._async_execute(request)
+                    self.assertEqual(self.scheduler.state["last_reason"], reason)
+                    physical = {"switch", "select", "button", "home_connect_alt", "home_connect"}
+                    after = self.hass.services.async_call.await_args_list[len(calls_at_change):]
+                    self.assertFalse(any(call.args[0] in physical for call in after))
+
+    async def test_cancel_and_unload_drain_each_command_delay_without_later_commands(self):
+        for action in ("async_cancel", "async_stop"):
+            for pause in range(5):
+                with self.subTest(action=action, pause=pause):
+                    self.scheduler._stopping = False
+                    self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+                    self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+                    self.hass.services.async_call.reset_mock()
+                    waiting = asyncio.Event()
+                    sleeps = 0
+
+                    async def delay(_seconds):
+                        nonlocal sleeps
+                        current = sleeps
+                        sleeps += 1
+                        if current == pause:
+                            waiting.set()
+                            await asyncio.Event().wait()
+
+                    request = {"mode": "now", "program": "MixedLoad", "automatic": False,
+                               "explicit_program_override": True}
+                    self.scheduler.state["request"] = request
+                    with patch.object(asyncio, "sleep", side_effect=delay):
+                        task = asyncio.create_task(self.scheduler._async_execute(dict(request)))
+                        self.scheduler._execution_task = task
+                        await asyncio.wait_for(waiting.wait(), 1)
+                        before = list(self.hass.services.async_call.await_args_list)
+                        await getattr(self.scheduler, action)()
+                    self.assertTrue(task.cancelled())
+                    self.assertEqual(self.hass.services.async_call.await_args_list, before)
+                    if action == "async_cancel":
+                        self.assertIsNone(self.scheduler.state["request"])
+                        self.assertEqual(self.scheduler.state["last_reason"], "cancelled_by_user")
+                    else:
+                        self.assertEqual(self.scheduler.state["request"], request)
+                        await self.scheduler.async_evaluate()
+                        self.assertTrue(task.cancelled())
+
+    async def test_inactive_or_stopping_control_cannot_issue_commands(self):
+        request = {"mode": "now", "program": "MixedLoad", "automatic": False,
+                   "explicit_program_override": True}
+        self.scheduler.state["active"] = False
+        self.assertFalse(await self.scheduler._async_start_allowed(request))
+        self.scheduler.state["active"] = True
+        await self.scheduler.async_stop()
+        self.assertFalse(await self.scheduler._async_start_allowed(request))
+        with self.assertRaisesRegex(RuntimeError, "stopping"):
+            await self.scheduler.async_request("now", override=True)
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_cancel_does_not_stop_an_already_running_wash(self):
+        self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+        self.scheduler.state["request"] = {"mode": "now", "program": "MixedLoad"}
+        await self.scheduler.async_cancel()
+        self.assertTrue(self.scheduler._is_running())
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_unload_drains_event_persistence_and_ignores_late_events(self):
+        saving = asyncio.Event()
+        release = asyncio.Event()
+
+        async def save(_payload):
+            saving.set()
+            await release.wait()
+
+        self.scheduler.store.async_save.side_effect = save
+        event = SimpleNamespace(data={"entity_id": "binary_sensor.door",
+                                      "new_state": SimpleNamespace(state="on"), "old_state": None})
+        self.scheduler._async_state_changed(event)
+        await saving.wait()
+        stop = asyncio.create_task(self.scheduler.async_stop())
+        await asyncio.wait_for(self._wait_stopping(), 1)
+        self.assertFalse(stop.done())
+        count = self.hass.async_create_task.call_count
+        self.scheduler._async_state_changed(event)
+        self.assertEqual(self.hass.async_create_task.call_count, count)
+        release.set()
+        await stop
+        self.assertFalse(self.scheduler._background_tasks)
+        self.assertTrue(self.scheduler.state["door_opened_since_last_cycle"])
+
+    async def _wait_stopping(self):
+        while not self.scheduler._stopping:
+            await asyncio.sleep(0)
+
     def test_manual_override_cannot_bypass_unknown_door_state(self):
         for value in ("unknown", "unavailable", "unexpected"):
             self.put("binary_sensor.door", value)
@@ -845,7 +966,11 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="dishwasher")
         self.put("select.programmes", "Dishcare.Dishwasher.Program.Eco50",
                  options=["Dishcare.Dishwasher.Program.MixedLoad"])
-        self.scheduler._is_running = Mock(side_effect=[False, True, True, True])
+        async def command(domain, _service, *_args, **_kwargs):
+            if domain == "button":
+                self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+
+        self.hass.services.async_call.side_effect = command
         with patch.object(asyncio, "sleep", new=AsyncMock()):
             await self.scheduler.async_request("now", override=True)
             await asyncio.gather(*self.tasks)

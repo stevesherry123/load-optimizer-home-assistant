@@ -66,6 +66,8 @@ jobs:
         run: python tests/ha_import_smoke.py
       - name: Verify Octopus version floor and renamed source ownership
         run: python tests/ha_calendar_config_smoke.py
+      - name: Verify appliance cancellation, unload and physical interlocks
+        run: python tests/ha_command_safety_smoke.py
       - name: Verify dashboard price colours with Home Assistant templates
         run: python tests/ha_dashboard_smoke.py
       - name: Verify real EV configuration, reload and restart persistence
@@ -94,6 +96,21 @@ jobs:
         run: python tests/ha_forecast_coverage_smoke.py
       - name: Verify permissions, diagnostic privacy, safe imports and HTTP boundaries
         run: python tests/ha_security_smoke.py
+
+  current_ha:
+    name: Current Home Assistant compatibility
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+      - name: Install current stable Home Assistant
+        run: pip install "homeassistant==2026.10.4" "pyotp==2.8.0" "PyQRCode==1.2.1"
+      - name: Import integration platforms and config flow
+        run: python tests/ha_import_smoke.py
+      - name: Verify appliance cancellation, unload and physical interlocks
+        run: python tests/ha_command_safety_smoke.py
 
   hacs:
     name: HACS validation
