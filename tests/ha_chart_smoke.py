@@ -29,3 +29,8 @@ if not node:
 for zone in ("America/New_York", "Europe/London", "Asia/Tokyo"):
     subprocess.run([node, str(ROOT / "tests/chart_timezone_smoke.js")],
         input=json.dumps(charts), text=True, check=True, env={**os.environ, "TZ": zone})
+
+cost_chart = dashboard["views"][1]["sections"][0]["cards"][0]
+assert cost_chart["header"]["title"] == "Dishwasher 1 - Cost Forecast"
+subprocess.run([node, str(ROOT / "tests/cost_forecast_smoke.js")],
+    input=json.dumps(cost_chart), text=True, check=True)
