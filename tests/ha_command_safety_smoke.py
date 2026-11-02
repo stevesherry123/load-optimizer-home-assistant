@@ -57,7 +57,7 @@ async def main():
                             waiting.set()
                             await asyncio.Event().wait()
 
-                    with patch.object(hass.services, "async_call", calls), patch.object(
+                    with patch.object(type(hass.services), "async_call", calls), patch.object(
                         asyncio, "sleep", side_effect=delay
                     ):
                         task = asyncio.create_task(scheduler._async_execute(dict(request)))
