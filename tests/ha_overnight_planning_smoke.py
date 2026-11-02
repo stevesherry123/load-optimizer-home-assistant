@@ -80,7 +80,9 @@ async def main():
                 })
                 coordinator = hass.data["load_optimizer"][entry.entry_id]
                 controller = coordinator.orchestrator
-                await controller.async_stop()
+                for remove in controller._remove_listeners:
+                    remove()
+                controller._remove_listeners.clear()
                 before_ids = identities(hass, entry.entry_id)
                 instance = coordinator.legacy_runtime.state["instances"]["1"]
                 for programme, duration, energy in (("Quick65", 51, 1), ("Eco50", 244, 0.8)):

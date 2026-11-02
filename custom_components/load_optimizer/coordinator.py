@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
+from functools import partial
 import logging
 from typing import Any
 
@@ -51,7 +52,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     config_entry: ConfigEntry
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, *, local_timezone: tzinfo) -> None:
         data = {**entry.data, **entry.options}
         update_interval = DEFAULT_SCAN_INTERVAL
         if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
@@ -63,6 +64,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=update_interval,
         )
         self.config_entry = entry
+        self.local_timezone = local_timezone
         self.price_cap_manager = PriceCapManager(hass, entry)
         self.tariff_intelligence = get_service(hass, data)
         self.narrative = OptionalNarrative(hass, self.async_publish_narrative)
@@ -96,7 +98,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 CONF_PRICE_CAP_PAYMENT_METHOD,
                 DEFAULT_PRICE_CAP_PAYMENT_METHOD,
             ),
-            timezone_name=data.get(CONF_TARIFF_TIMEZONE, DEFAULT_TARIFF_TIMEZONE),
+            local_timezone=self.local_timezone,
             now_utc=now,
         )
         intelligence = await self.tariff_intelligence.async_status(price_cap, now)
@@ -124,12 +126,12 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         tariff_entity = self._state_payload(data.get(CONF_TARIFF_ENTITY))
         try:
-            periods = tariff_periods_from_entity(
+            periods = await self.hass.async_add_executor_job(partial(tariff_periods_from_entity,
                 tariff_entity or {},
                 reference_utc=now,
                 timezone_name=data.get(CONF_TARIFF_TIMEZONE),
                 price_unit=data.get(CONF_TARIFF_PRICE_UNIT),
-            )
+            ))
             tariff_error = None
         except (TypeError, ValueError) as error:
             periods = []
@@ -144,11 +146,11 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if target_percent is None:
             target_percent = float(data.get(CONF_TARGET_PERCENT, DEFAULT_TARGET_PERCENT))
 
-        deadline = deadline_from_ready_by(
+        deadline = await self.hass.async_add_executor_job(partial(deadline_from_ready_by,
             data.get(CONF_READY_BY),
             reference_utc=now,
             timezone_name=data.get(CONF_TARIFF_TIMEZONE),
-        )
+        ))
         plan = plan_ev_charge(
             periods=periods,
             battery_percent=state_float(battery_entity),

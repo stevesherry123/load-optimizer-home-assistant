@@ -19,11 +19,17 @@ spec.loader.exec_module(runner)
 class ValidationRunnerTests(unittest.TestCase):
     def test_every_acceptance_script_is_discovered_once(self):
         items = runner.checks(["ha"])
-        expected = {p.stem for p in (ROOT / "tests").glob("ha_*_smoke.py")}
+        expected = {p.stem for p in (ROOT / "tests").glob("ha_*_smoke.py")
+                    if p.name != "ha_chart_browser_smoke.py"}
         self.assertEqual({name for name, _ in items}, expected)
         self.assertEqual(len(items), len(expected))
         self.assertEqual(items[0][0], "ha_import_smoke")
         self.assertTrue(all(command[0] == sys.executable for _, command in items))
+
+    def test_browser_harness_has_an_explicit_suite(self):
+        name, command = runner.checks(["browser"])[0]
+        self.assertEqual(name, "ha_chart_browser_smoke")
+        self.assertEqual(Path(command[-1]).name, "ha_chart_browser_smoke.py")
 
     def test_failed_check_does_not_hide_later_pass_or_failure(self):
         with tempfile.TemporaryDirectory() as directory:

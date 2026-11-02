@@ -71,7 +71,11 @@ def checks(suites: list[str]) -> list[tuple[str, list[str]]]:
                          key=lambda p: (p.name != "ha_import_smoke.py", p.name))
         if not any(path.name == "ha_import_smoke.py" for path in scripts):
             raise ValueError("HA acceptance scripts are missing")
-        result.extend((path.stem, [sys.executable, str(path)]) for path in scripts)
+        result.extend((path.stem, [sys.executable, str(path)]) for path in scripts
+                      if path.name != "ha_chart_browser_smoke.py")
+    if "browser" in suites:
+        path = ROOT / "tests/ha_chart_browser_smoke.py"
+        result.append((path.stem, [sys.executable, str(path)]))
     return result
 
 
@@ -109,7 +113,7 @@ def markdown(results: list[dict]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite", action="append", choices=("unit", "security", "ha"))
+    parser.add_argument("--suite", action="append", choices=("unit", "security", "ha", "browser"))
     parser.add_argument("--list", action="store_true", help="List checks without requiring HA")
     parser.add_argument("--preflight", action="store_true", help="Check versions without running tests")
     parser.add_argument("--output", type=Path)

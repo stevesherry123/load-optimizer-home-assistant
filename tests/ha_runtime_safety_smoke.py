@@ -126,6 +126,7 @@ async def main():
                 assert hass.states.get("sensor.load_optimizer_1_now_recommendation").state == "blocked_window_unavailable"
                 controller = coordinator.orchestrator
                 controller.config = dict(CONTROL)
+                controller.state["active"] = True
                 controller.state["door_opened_since_last_cycle"] = True
                 for key in ("bosch_connected_sensor", "bosch_remote_control_sensor", "bosch_remote_start_sensor"):
                     hass.states.async_set(CONTROL[key], "on")

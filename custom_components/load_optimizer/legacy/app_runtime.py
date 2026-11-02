@@ -17,10 +17,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .config_validation import ConfigurationError, appliance_document
 
 try:
-    from .costing import TariffDataUnavailable, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from .costing import TariffDataUnavailable, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from .observability import EventEngine, configure_logging as configure_event_logging
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
-    from costing import TariffDataUnavailable, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from costing import TariffDataUnavailable, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
 APP_VERSION = "1.7.0-beta.9"
@@ -259,10 +259,13 @@ def current_tariff_period(periods: list[dict], reference_utc: datetime) -> dict 
     return None
 
 
-def special_price_window(token: str, *, timezone_name: str, reference_utc: datetime) -> dict:
+def special_price_window(
+    token: str, *, timezone_name: str, reference_utc: datetime,
+    state_reader: Callable[[str], dict | None] | None = None, publish: bool = True,
+) -> dict:
     """Read and validate the manual special-price helpers from Home Assistant."""
     states = {
-        key: source_state(token, entity_id)
+        key: state_reader(entity_id) if state_reader else source_state(token, entity_id)
         for key, entity_id in SPECIAL_PRICE_WINDOW_ENTITIES.items()
     }
     enabled = bool(states["enabled"] and states["enabled"].get("state") == "on")
@@ -305,11 +308,12 @@ def special_price_window(token: str, *, timezone_name: str, reference_utc: datet
         "applied": status in {"scheduled", "active"},
         "helper_entities": SPECIAL_PRICE_WINDOW_ENTITIES,
     }
-    publish_entity(token, "sensor.load_optimizer_special_price_window", status, {
-        "friendly_name": "Load Optimizer Special Price Window",
-        "icon": "mdi:cash-clock",
-        **public,
-    })
+    if publish:
+        publish_entity(token, "sensor.load_optimizer_special_price_window", status, {
+            "friendly_name": "Load Optimizer Special Price Window",
+            "icon": "mdi:cash-clock",
+            **public,
+        })
     return {**public, "start_datetime": start, "end_datetime": end}
 
 
@@ -1748,6 +1752,7 @@ def publish_cost_entities(
     publish_cost_forecast: bool = True,
     cycle_running: bool = False,
     active_cycle_start: str | None = None,
+    reference_utc: datetime | None = None,
 ) -> None:
     status = result.get("status", "error")
     common = {
@@ -1829,7 +1834,13 @@ def publish_cost_entities(
         tariff_hours = max(0.0, (tariff_end - tariff_start).total_seconds() / 3600)
     except ValueError:
         pass
-    tariff_horizon_hours = 48 if tariff_hours > 24.5 else 24
+    local_now = (reference_utc or datetime.now(timezone.utc)).astimezone(
+        configured_timezone(result.get("schedule_timezone") or "Europe/London")
+    )
+    next_midnight = (local_now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    tariff_horizon_hours = 24
+    if tariff_hours and tariff_end.astimezone(timezone.utc) > next_midnight.astimezone(timezone.utc):
+        tariff_horizon_hours = 48
     publish_entity(token, f"{prefix}_tariff_horizon", f"{tariff_horizon_hours}h", {
         "friendly_name": f"{name} Tariff Horizon",
         "icon": "mdi:calendar-range",
@@ -2312,9 +2323,11 @@ def publish_execution_entities(token: str, prefix: str, name: str, instance_id: 
     })
 
 
-def remote_start_blocked_programs(token: str, instance_id: str) -> list[str]:
+def remote_start_blocked_programs(
+    token: str, instance_id: str, *, state_reader: Callable[[str], dict | None] | None = None,
+) -> list[str]:
     helper = f"input_text.load_optimizer_{instance_id}_remote_start_blocked_programs"
-    state = source_state(token, helper) or {}
+    state = (state_reader(helper) if state_reader else source_state(token, helper)) or {}
     raw = str(state.get("state") or "").strip()
     if raw in {"", "unknown", "unavailable", "none", "None"}:
         return []
@@ -2678,6 +2691,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                         })
                 if not periods:
                     raise ValueError("No configured tariff entity produced a supported future-rate attribute")
+                periods = normalize_tariff_periods(periods)
                 free_entity = config.get("free_window_entity", "")
                 chart_start, chart_end = price_chart_bounds(now, config["tariff_timezone"])
                 chart_windows, _ = free_windows_from_entity(
@@ -2804,6 +2818,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         publish_cost_forecast=config.get("publish_cost_forecast", True),
         cycle_running=bool(instance.get("cycle_start")),
         active_cycle_start=instance.get("cycle_start"),
+        reference_utc=now,
     )
     publish_schedule_entities(
         token,

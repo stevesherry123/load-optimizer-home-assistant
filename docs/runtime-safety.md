@@ -1,0 +1,81 @@
+# Runtime Safety
+
+This describes the main-branch safety contract. Main may contain unreleased
+improvements; match support expectations to your installed release's README and
+changelog. These rules do not authorize appliance commands or change opt-ins.
+
+## Capture and source failures
+
+Missing, unknown, unavailable, negative or non-finite power is not a measured
+low-power completion. Retain the capture identity and valid samples, publish
+source health, and avoid growing the profile with fabricated readings.
+
+Valid high-power recovery resumes capture; genuine low-power readings restart
+the normal finish debounce. Explicit supported appliance terminal states can
+still end a capture. A capture with an observed source gap is excluded from
+learning rather than estimating energy across missing observations. A restart
+exclusion may take precedence. Successfully learned counts/models remain intact.
+
+Do not infer sensor freshness from a successful optimiser refresh or an old
+`last_changed` value alone. Investigate source health through the appliance's
+entities and redacted diagnostics.
+
+## Automatic starts and calendars
+
+Configured mandatory no-run feeds must be readable. A valid empty feed differs
+from a missing entity, unavailable state, malformed response or failed request.
+Check every configured source and the whole expected cycle, not just its start.
+Optional greener-window failures remain advisory.
+
+Before automatic power-on, programme selection, start or fallback commands,
+revalidate current readiness and no-run evidence. All-day calendar dates follow
+HA's home timezone, not the viewing browser. A newly overlapping event can block
+a previously queued plan. Candidate start horizons do not justify ignoring a
+restriction later in the expected cycle.
+
+Manual cooldown overrides are not permission to bypass door, connectivity,
+remote-control, ownership or supported-device safety checks. A recommendation
+is not proof that a physical start occurred.
+
+Physical interlocks are checked again after command delays for manual starts as
+well as automatic starts. A manual override retains its scheduling/cooldown
+exception, but an opened door, lost connection or disabled remote start prevents
+the next command. Automatic requests additionally revalidate tariff restrictions.
+
+Cancel drains the pending start sequence before reporting cancellation. It does
+not issue an appliance stop or power-off command and cannot retract a command
+already accepted by the appliance. If a wash has already started, use its normal
+controls to stop it. A replacement request is rejected while a start sequence is
+still executing; cancel the old request first.
+
+## Tariff source overlap
+
+Appliance costing combines the configured rate sources once per scan. Identical
+slots (the same start, end and price) count once, including zero and negative
+prices. Adjacent slots and genuine gaps remain unchanged; missing coverage is
+not filled with an assumed price.
+
+Conflicting prices for the same slot, or partially overlapping source periods,
+produce `tariff_invalid` instead of a recommendation. Source order does not prove
+which feed is newer. Check the configured sources and let them refresh; a later
+consistent scan can recover without resetting learned data. Explicit special-price
+windows apply after source validation, not as a way to hide conflicting feeds.
+
+## State and maintenance
+
+Keep settings edits from reloading a known active capture or queued start.
+Serialize imports and scans; validate replacement data before changing memory.
+An executor worker cannot be stopped merely by cancelling its awaiting task, so
+finish its state/save work before allowing an import or reload to take ownership.
+Unload removes listeners, prevents new commands, awaits command cancellation and
+drains event-triggered persistence before handing the entry to a new runtime.
+Queued requests remain saved for restart-time safety checks; unloading is not a
+request to stop an already running appliance.
+
+Maintenance outcomes use notifications or actionable service errors. If another
+integration occupies an intended entity ID, Repairs explains the conflict; do
+not delete that integration's entity automatically. Review obsolete package
+definitions yourself before removing them, then reload Load Optimizer.
+
+See [troubleshooting](troubleshooting.md), [migration](migration-addon-to-integration.md)
+and [clean-install acceptance](onboarding-acceptance.md).

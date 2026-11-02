@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from homeassistant.auth.const import GROUP_ID_ADMIN
 from homeassistant.bootstrap import async_from_config_dict
 from homeassistant.core import Context, HomeAssistant
-from homeassistant.exceptions import Unauthorized, UnknownUser
+from homeassistant.exceptions import ServiceValidationError, Unauthorized, UnknownUser
 from homeassistant import loader
 
 from custom_components.load_optimizer import async_setup
@@ -54,6 +54,10 @@ async def permissions(hass):
         }
         actions.update({name: {"entry_id": "beta-security-entry", **data}
                         for name, data in beta_actions.items()})
+    hass.data[DOMAIN].update({"permissions-test": SimpleNamespace(
+        legacy_runtime=SimpleNamespace(async_import_state=AsyncMock(return_value={"status": "imported", "instances": []})),
+        orchestrator=None, async_request_refresh=AsyncMock(),
+    )})
     for service, data in actions.items():
         response = service in beta_actions and service != "analyse_tariffs"
         for user_id, exception in ((ordinary.id, Unauthorized), ("missing-user", UnknownUser)):
@@ -71,6 +75,17 @@ async def permissions(hass):
         # System automations keep HA's documented administrator-service behaviour.
         await hass.services.async_call(DOMAIN, service, data, blocking=True, return_response=response)
     await hass.async_block_till_done()
+    for entity_id in ("sensor.load_optimizer_migration_status",
+                      "sensor.load_optimizer_legacy_addon_status", "sensor.load_optimizer_recovery_status"):
+        assert hass.states.get(entity_id) is None, "Maintenance actions created an unregistered sensor"
+    hass.data[DOMAIN] = {}
+    try:
+        await hass.services.async_call(DOMAIN, "import_legacy_state",
+            {"legacy_state_json": '{"instances":{}}'}, blocking=True, context=Context(user_id=admin.id))
+    except ServiceValidationError:
+        pass
+    else:
+        raise AssertionError("Import without a learned runtime must report an actionable error")
     print(f"All {len(actions)} maintenance/history/AI actions reject ordinary and unknown users; admin/system calls work")
 
 

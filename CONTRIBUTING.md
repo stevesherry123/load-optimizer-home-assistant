@@ -4,20 +4,16 @@ Use GitHub Issues for bugs and small proposals. Include the integration release,
 Home Assistant version, affected load type and steps to reproduce. Redact
 credentials, addresses, device identifiers and private entity data.
 
-`main` contains stable functionality and approved unreleased improvements;
-the latest full GitHub release, not the branch tip, is the published stable
-product. `beta/next` is the single combined testing branch for tariff analysis,
-history import, optional AI and scheduling repairs. The old stacked tariff
-branches are retired. Open a focused pull request for proposed changes; do not
-promote beta work just to prepare a HACS submission or tidy the branch list.
+`main` is the default development branch and may contain unreleased changes.
+Work in a separate branch and open a pull request. Keep experimental features
+separate until their own acceptance gates pass; a catalogue submission is not a
+reason to merge unfinished work. Published tags define released product scope.
 
-Use the [version-checked validation environment](docs/validation.md) and run
-`python dev/validate.py` before pushing changes. Local acceptance and GitHub use
-the same declared HA/frontend and Python minor versions. Every independent HA
-check runs, even if an earlier check fails; the overall result still fails.
-The standalone unit suite also remains available through
-`python -m unittest discover -s tests` with PyYAML installed. CI must additionally
-pass HACS, hassfest and the security/credential scans without ignored failures.
+The standalone unit suite needs `PyYAML==6.0.2` (already supplied by the declared
+minimum Home Assistant); install it in your test environment if necessary.
+Run `python -m unittest discover -s tests`. CI must also pass HACS validation,
+hassfest and the declared-minimum Home Assistant import smoke test without
+ignored failures. The import smoke test is not a full fresh-install test.
 
 For onboarding changes, also run `python tests/ha_onboarding_smoke.py` in the
 minimum-HA environment. See [clean-install acceptance](docs/onboarding-acceptance.md)
@@ -41,13 +37,8 @@ publish an experimental branch as a full stable GitHub release: HACS follows
 release status, not the branch's name. Public betas are isolated from normal
 updates, not hidden from GitHub visitors. See [release channels](docs/release-channels.md).
 
-Delete completed short-lived feature/fix branches after their changes are merged.
-Retain `main` and `beta/next`; keep feature-specific acceptance gates in the
-roadmap rather than creating a new permanent branch for each beta version.
-Preserve unique superseded work with an explicit archive tag before retiring
-its branch; an archive tag is not a GitHub release. The
-[14 October cleanup record](docs/branch-cleanup-2026-10-14.md) records the earlier
-consolidation and recoverable history. Experimental charger control remains on
-`feature/ev-charger-control`; general repairs are selectively carried into the
-shared beta without its physical-control code. Do not delete the separate HACS
-submission fork branch while the upstream request is open.
+Delete completed feature/fix branches only after verifying their work is retained.
+Keep active experimental branches while their promotion gates remain open.
+Preserve unique superseded work before retiring a branch; an archive tag is not
+a GitHub release. Do not delete a submission fork branch while its upstream
+request is open. Documentation-only maintenance need not publish a new version.

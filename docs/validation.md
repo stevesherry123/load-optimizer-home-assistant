@@ -36,6 +36,13 @@ Results go to a unique ignored `.local/validation/` directory with per-check log
 checks without importing HA. Do not commit generated logs or private local files.
 Gitleaks, HACS and hassfest remain additional GitHub checks, not replaced by this runner.
 
+The optional real-card browser harness is a separate explicit `--suite browser`.
+It needs Playwright, Chrome and the official ApexCharts Card asset configured as
+described in that script. It is not part of the standard HA dependency set.
+Requesting that suite without its prerequisites fails; it is never reported as
+a pass merely because it was not selected. Standard HA checks still execute the
+shipped chart JavaScript across browser timezones and profile preferences.
+
 ## GitHub Triggers
 
 - Pull requests run the full validation workflow, including the prospective merge.

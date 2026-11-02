@@ -1,4 +1,10 @@
 {
+  "issues": {
+    "legacy_status_conflict": {
+      "title": "Old package sensors occupy Load Optimizer entity IDs",
+      "description": "These entity IDs are still owned by another integration: {entities}. Load Optimizer has left them untouched. If they belong to the retired Load Optimizer YAML package, remove only those obsolete sensor definitions from that package and reload the template integration or restart Home Assistant. Remove any remaining obsolete registry entries yourself, then reload Load Optimizer so its registered sensors can claim the free IDs. Do not remove sensors you still use. Learned appliance memory is not affected."
+    }
+  },
   "config": {
     "error": {
       "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",

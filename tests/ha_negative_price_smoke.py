@@ -101,7 +101,9 @@ async def main():
                 await hass.async_block_till_done()
                 coordinator = hass.data[DOMAIN][entry.entry_id]
                 controller = coordinator.orchestrator
-                await controller.async_stop()
+                for remove in controller._remove_listeners:
+                    remove()
+                controller._remove_listeners.clear()
                 assert controller.state["auto_negative_price_enabled"] is False
                 before_ids = identities(hass, entry.entry_id)
                 instance = coordinator.legacy_runtime.state["instances"]["1"]
