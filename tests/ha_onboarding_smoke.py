@@ -128,6 +128,51 @@ async def configure(hass, kind, name, values):
     return entry
 
 
+async def verify_pending_command_reload(hass, entry):
+    """A clean-install entry drains old work without losing its saved plan or IDs."""
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    controller = coordinator.orchestrator
+    before = identities(hass, entry.entry_id)
+    def learning(runtime):
+        return {
+            key: deepcopy({name: instance.get(name) for name in ("runs", "program_models", "history")})
+            for key, instance in runtime.state.get("instances", {}).items()
+        }
+
+    learned_before = learning(coordinator.legacy_runtime)
+    start = datetime.now(timezone.utc) + timedelta(days=1)
+    request = {"mode": "overnight", "program": "MixedLoad", "automatic": False,
+               "start": start.isoformat(), "finish": (start + timedelta(hours=2)).isoformat()}
+    controller.state.update(request=request, execution_status="queued")
+    await controller._async_save()
+    waiting = asyncio.Event()
+
+    async def pending_command():
+        waiting.set()
+        await asyncio.Event().wait()
+        raise AssertionError("Old command survived entry reload")
+
+    task = asyncio.create_task(pending_command())
+    controller._execution_task = task
+    await waiting.wait()
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    replacement = hass.data[DOMAIN][entry.entry_id]
+    assert replacement is not coordinator
+    assert task.cancelled() and controller._stopping
+    assert not controller._remove_listeners and not controller._background_tasks
+    assert identities(hass, entry.entry_id) == before
+    assert learning(replacement.legacy_runtime) == learned_before
+    assert replacement.orchestrator.state["request"] == request
+    assert replacement.orchestrator.state["active"]
+    assert not replacement.orchestrator.state["auto_mode_enabled"]
+    assert not replacement.orchestrator.state["auto_negative_price_enabled"]
+    await replacement.orchestrator.async_cancel()
+    assert replacement.orchestrator.state["request"] is None
+    print("Fresh-install command reload: old task drained; queued plan, identities, learning and opt-ins preserved")
+    return replacement
+
+
 async def verify_appliance_editing(hass, entry, coordinator, example):
     """Invalid/cancelled edits cannot reload the runtime or change learned memory."""
     options_before = dict(entry.options)
@@ -401,6 +446,8 @@ async def session(config_dir, example_name, snapshot=None):
                 assert not controller.state["auto_mode_enabled"]
                 assert not controller.state["auto_negative_price_enabled"]
                 assert controller.state["request"] is None
+                if is_dishwasher:
+                    coordinator = await verify_pending_command_reload(hass, entry)
                 before = identities(hass, entry.entry_id)
                 await hass.config_entries.async_reload(entry.entry_id)
                 await hass.async_block_till_done()
