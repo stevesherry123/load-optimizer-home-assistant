@@ -16,7 +16,7 @@ flowchart LR
   M --> O
   O --> R[Recommendations]
   R --> E[Execution safety layer]
-  E --> A[Optional HA automation]
+  E --> A[Native request and execution controller]
   A --> HC[Appliance adapter / Home Connect]
   HC --> F[Confirmed cycle]
   F --> L
@@ -32,7 +32,7 @@ windows, and learned programme models.
 
 1. Home Assistant exposes power, energy, programme, appliance state, tariff,
    calendar, and optional local-energy entities.
-2. The app samples the appliance and detects cycle start and finish.
+2. The integration samples the appliance and detects cycle start and finish.
 3. Completed cycles become learned programme models containing runtime, energy,
    confidence, and a representative power profile.
 4. The provider layer normalizes tariff periods and optional green, blocked,
@@ -41,42 +41,42 @@ windows, and learned programme models.
    window and calculates energy and operating cost.
 6. Policy and safety constraints remove ineligible candidates.
 7. The remaining candidates are ranked and published as recommendations.
-8. Optional Home Assistant automations queue and execute a request.
+8. The optionally activated native controller persists and executes authorised requests; external scripts can request or cancel a wash.
 9. Execution is confirmed from appliance state; request, confirmation, failure,
    and queue-cancellation events are recorded separately.
 
-## Automatic execution decision tree
+## Development normal-wash request flow
+
+The unreleased overnight scheduling work separates permission from a priced plan:
 
 ~~~mermaid
 flowchart TD
-  T[Scheduler tick or request change] --> Q{Automatic request queued?}
-  Q -- No --> W[Wait]
-  Q -- Yes --> D{Is the request due?}
-  D -- No --> V{Has the recommendation changed materially?}
-  V -- Yes --> C[Cancel queue and publish reason]
-  V -- No --> W
-  D -- Yes --> S{Is the request still within the start-lag safety window?}
-  S -- No --> X[Expire request and notify missed start]
-  S -- Yes --> I{Is the appliance idle?}
-  I -- No --> B[Block and report active cycle]
-  I -- Yes --> R{Is remote execution safe?}
-  R -- No --> B2[Block and report readiness reason]
-  R -- Yes --> G{Normal run needs a fresh door opening?}
-  G -- No --> P[Power on if configured, select programme, send start]
-  G -- Yes --> H{Door opened since previous cycle?}
-  H -- No --> B3[Block and request door opening]
-  H -- Yes --> P
-  P --> K{Appliance confirms running?}
-  K -- Yes --> Y[Record confirmed start]
-  K -- No --> N[Record failed start with state diagnostics]
-  Y --> L[Monitor cycle and learn profile]
-  N --> Z[Notify and optionally block programme for retry]
+  R[Explicit request or opted-in door rule] --> P[Persist permission and original start window]
+  P --> T{Complete price coverage and eligible programmes?}
+  T -- No --> N[Notify and wait inside original window]
+  N --> T
+  T -- Yes --> F{Any cycle finishes inside window?}
+  F -- Yes --> C[Choose cheapest fitting cycle]
+  F -- No --> L[Choose cheapest cycle starting inside window]
+  C --> Q[Persist and reassess plan]
+  L --> Q
+  Q --> D{Due inside original start window?}
+  D -- No --> W[Wait or expire when window closes]
+  D -- Yes --> S[Recheck prices, authority and physical safety]
+  S --> X[Send commands and confirm appliance start]
+  X --> M[Monitor outcome and learn]
 ~~~
 
-The queued plan is revalidated before its due time. Once due, the captured
-programme and start time are preserved for execution, subject to safety and
-staleness checks. A later recommendation refresh must not silently replace a
-due request.
+New default windows are 21:00–07:00 in the configured tariff timezone. Explicit
+YAML windows are retained; native time controls override defaults for subsequent
+requests. Fallback cycles may finish late, but cannot start outside the window.
+Cancelling or expiring permission prevents later price recovery from reviving it.
+Normal requests take priority over opportunistic extra runs.
+
+A valid queued plan follows revisions until two minutes before its saved start.
+Missing or invalid prices pause execution, including during the freeze. The
+controller checks the original window again before each start-command path.
+Existing manual programme overrides retain their explicit programme/time behaviour.
 
 ## Safety gates
 
@@ -87,7 +87,7 @@ Automatic execution must pass all applicable gates:
 - the appliance is idle
 - Home Connect is connected
 - remote control and remote start are enabled
-- the door requirement is satisfied
+- the physical door is closed; optional door-based authorisation is satisfied for automatic normal requests
 - the programme is selectable
 - negative-price runs fit the power-hungry portion inside the eligible window
 - the request has not exceeded its maximum start lag

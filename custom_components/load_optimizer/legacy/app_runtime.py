@@ -970,10 +970,13 @@ def overnight_planning_coverage(config: dict, summaries: list[dict], policies: l
                                 latest: datetime | None = None) -> dict:
     """Require the whole operational night, including possible cycle tails."""
     window_start, window_end = operational_overnight_window(
-        now, config.get("schedule_overnight_start", "20:00"),
-        config.get("schedule_overnight_end", "08:00"),
+        now, config.get("schedule_overnight_start", "21:00"),
+        config.get("schedule_overnight_end", "07:00"),
         config.get("tariff_timezone", "Europe/London"),
     )
+    if config.get("schedule_request_window_start") and config.get("schedule_request_window_end"):
+        window_start = datetime_from_value(config["schedule_request_window_start"])
+        window_end = datetime_from_value(config["schedule_request_window_end"])
     allowed = {p["program"] for p in policies if p.get("enabled") and p.get("allow_normal_recommendation")}
     runtimes = [float(m["expected_runtime_minutes"]) for m in summaries
                 if m.get("program") in allowed and m.get("expected_runtime_minutes") is not None]
@@ -1312,8 +1315,8 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "schedule_equivalent_cost_tolerance_pence": float(_option_or_env(options, f"{prefix}_schedule_equivalent_cost_tolerance_pence", 0)),
         "schedule_preference_weight_pence": float(_option_or_env(options, f"{prefix}_schedule_preference_weight_pence", options.get("schedule_preference_weight_pence", 0.1))),
         "schedule_window_preference": str(_option_or_env(options, f"{prefix}_schedule_window_preference", "any")),
-        "schedule_overnight_start": str(_option_or_env(options, f"{prefix}_schedule_overnight_start", "20:00")),
-        "schedule_overnight_end": str(_option_or_env(options, f"{prefix}_schedule_overnight_end", "08:00")),
+        "schedule_overnight_start": str(_option_or_env(options, f"{prefix}_schedule_overnight_start", "21:00")),
+        "schedule_overnight_end": str(_option_or_env(options, f"{prefix}_schedule_overnight_end", "07:00")),
         "schedule_earliest_start_entity": str(_option_or_env(options, f"{prefix}_schedule_earliest_start_entity", "")).strip(),
         "schedule_latest_finish_entity": str(_option_or_env(options, f"{prefix}_schedule_latest_finish_entity", "")).strip(),
         "program_policies": options.get(f"{prefix}_program_policies", []),
@@ -1360,8 +1363,8 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "schedule_equivalent_cost_tolerance_pence": float(entry.get("schedule_equivalent_cost_tolerance_pence", 0)),
         "schedule_preference_weight_pence": float(entry.get("schedule_preference_weight_pence", options.get("schedule_preference_weight_pence", 0.1))),
         "schedule_window_preference": str(entry.get("schedule_window_preference", "any")),
-        "schedule_overnight_start": str(entry.get("schedule_overnight_start", "20:00")),
-        "schedule_overnight_end": str(entry.get("schedule_overnight_end", "08:00")),
+        "schedule_overnight_start": str(entry.get("schedule_overnight_start", "21:00")),
+        "schedule_overnight_end": str(entry.get("schedule_overnight_end", "07:00")),
         "schedule_earliest_start_entity": str(entry.get("schedule_earliest_start_entity", "")).strip(),
         "schedule_latest_finish_entity": str(entry.get("schedule_latest_finish_entity", "")).strip(),
         "program_policies": entry.get("program_policies", []),
@@ -2742,8 +2745,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     equivalent_cost_tolerance_pence=config.get("schedule_equivalent_cost_tolerance_pence", 0),
                     preference_weight_pence=config.get("schedule_preference_weight_pence", 0.1),
                     window_preference=config.get("schedule_window_preference", "any"),
-                    overnight_start=config.get("schedule_overnight_start", "20:00"),
-                    overnight_end=config.get("schedule_overnight_end", "08:00"),
+                    overnight_start=config.get("schedule_overnight_start", "21:00"),
+                    overnight_end=config.get("schedule_overnight_end", "07:00"),
                     schedule_timezone=config.get("tariff_timezone", "Europe/London"),
                     earliest_start_utc=earliest_start_utc,
                     latest_finish_utc=latest_finish_utc,
@@ -2752,6 +2755,10 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     green_windows=green_windows,
                     blocked_windows=blocked_windows,
                     excluded_programs=blocked_remote_start_programs,
+                    overnight_window_utc=(
+                        datetime_from_value(config["schedule_request_window_start"]),
+                        datetime_from_value(config["schedule_request_window_end"]),
+                    ) if config.get("schedule_request_window_start") and config.get("schedule_request_window_end") else None,
                 )
                 cost_result.update({
                     **price_chart_data(chart_periods, now=now, timezone_name=config["tariff_timezone"]),

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Persist one-wash overnight permission independently of tariff recommendations;
+  notify for missing prices and resume inside the original window when they return.
+- Add native Overnight Start and Dishes Ready By time controls, with new defaults
+  of 21:00–07:00 while retaining explicit YAML windows. Prefer complete cycle fits;
+  otherwise allow a later finish while keeping the start inside the window.
+- Keep normal washing ahead of opportunistic runs, permit explicit scheduling
+  without door-based authorisation, and recheck full-cycle prices and window bounds
+  before sending start commands. Cancellation and expiry prevent request revival.
 - Use one version-checked local/CI acceptance runner, report all independent
   failures in one run, and remove duplicate beta push/PR validation runs.
 - Carry multiline appliance editing, visible optimisation values and migrated

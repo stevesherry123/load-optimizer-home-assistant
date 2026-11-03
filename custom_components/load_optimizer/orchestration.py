@@ -20,6 +20,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
+from .legacy.costing import operational_overnight_window, parse_clock
 from .orchestration_migration import LEGACY_AUTOMATION_IDS, OrchestrationMigration
 
 LOGGER = logging.getLogger(__name__)
@@ -36,6 +37,8 @@ CONTROL_DEFAULTS: dict[str, Any] = {
     "auto_negative_price_enabled": False,
     "door_opened_since_last_cycle": False,
     "door_open_minimum_minutes": 2.0,
+    "overnight_start": None,
+    "overnight_end": None,
     "override_program": "engine",
     "special_price_window_enabled": False,
     "special_price_window_start": None,
@@ -102,6 +105,147 @@ class NativeOrchestrator:
         self._update_callback: Callable[[dict[str, Any]], None] | None = None
         self._automatic_preflight: Callable[[dict[str, Any]], Awaitable[str | None]] | None = None
         self._door_opened_at: datetime | None = None
+        self.schedule_config = {"schedule_overnight_start": "21:00", "schedule_overnight_end": "07:00",
+                                "tariff_timezone": hass.config.time_zone}
+
+    def configure_schedule(self, config: dict) -> dict:
+        """Apply native time settings to appliance 1, preserving other instances."""
+        if str(config.get("instance_id")) != "1":
+            return config
+        config = dict(config)
+        for key in ("start", "end"):
+            config[f"schedule_overnight_{key}"] = self.state.get(f"overnight_{key}") or config.get(
+                f"schedule_overnight_{key}", "21:00" if key == "start" else "07:00",
+            )
+        self.schedule_config = dict(config)
+        request = self.state.get("request") or {}
+        if request.get("normal_wash"):
+            config.update(schedule_request_window_start=request["window_start"],
+                          schedule_request_window_end=request["window_end"])
+            # Editing defaults affects the next request, not existing authority.
+            for key in ("start", "end"):
+                config[f"schedule_overnight_{key}"] = request[f"window_clock_{key}"]
+            config["tariff_timezone"] = request["timezone"]
+        return config
+
+    def overnight_time(self, key: str) -> str:
+        return self.state.get(f"overnight_{key}") or self.schedule_config[f"schedule_overnight_{key}"]
+
+    def _new_normal_request(self, now: datetime, *, automatic: bool) -> None:
+        start_clock, end_clock = self.overnight_time("start"), self.overnight_time("end")
+        zone = self.schedule_config["tariff_timezone"]
+        start, end = operational_overnight_window(now, start_clock, end_clock, zone)
+        self.state["request"] = {
+            "mode": "automatic" if automatic else "overnight", "normal_wash": True,
+            "automatic": automatic, "explicit_program_override": False,
+            "created_at": now.isoformat(), "window_start": start.isoformat(),
+            "window_end": end.isoformat(), "window_clock_start": start_clock,
+            "window_clock_end": end_clock, "timezone": zone,
+            "program": None, "start": None, "finish": None,
+        }
+        self.state["execution_status"] = "awaiting_plan"
+        self.state["last_message"] = "One wash authorised for the selected overnight window."
+        if automatic:
+            self.state["last_auto_normal_request"] = now.isoformat()
+        self._record_schedule_event("authorised", "one_normal_wash_requested", now=now,
+                                    automatic=automatic, window_start=start.isoformat(), window_end=end.isoformat())
+
+    async def _async_normal_attention(self, request: dict, reason: str, message: str) -> None:
+        """Notify once per unresolved reason, retaining the authorised request."""
+        request["waiting_reason"] = reason
+        if request.get("notified_reason") == reason:
+            return
+        request["notified_reason"] = reason
+        self._record_schedule_event("waiting", reason, message=message)
+        await self.hass.services.async_call("persistent_notification", "create", {
+            "notification_id": "load_optimizer_1_schedule_attention",
+            "title": "Dishwasher scheduling needs attention", "message": message,
+        }, blocking=False)
+
+    async def _async_dismiss_normal_attention(self, request: dict) -> None:
+        if request.pop("notified_reason", None):
+            await self.hass.services.async_call("persistent_notification", "dismiss", {
+                "notification_id": "load_optimizer_1_schedule_attention",
+            }, blocking=False)
+
+    def _overnight_revision(self) -> str | None:
+        recommendation = self._recommendation("overnight")
+        if recommendation is None:
+            return None
+        reported = (getattr(recommendation, "last_reported", None)
+                    or getattr(recommendation, "last_updated", None)
+                    or getattr(recommendation, "last_changed", None))
+        return reported.isoformat() if reported else None
+
+    async def _async_refresh_normal_request(self, now: datetime) -> bool:
+        """Resolve a durable wash permission without extending its start window."""
+        request = self.state.get("request") or {}
+        if not request.get("normal_wash") or self._execution_task and not self._execution_task.done():
+            return False
+        before = deepcopy(request)
+        window_start = self._parse_datetime(request["window_start"])
+        window_end = self._parse_datetime(request["window_end"])
+        if now >= window_end:
+            await self._async_dismiss_normal_attention(request)
+            self.state["request"] = None
+            self.state["door_opened_since_last_cycle"] = False
+            await self._async_outcome("expired", request["mode"], request.get("program"),
+                                      "authorised_window_closed", "The dishwasher start window closed without a confirmed start.")
+            return True
+        if request.get("automatic") and not self.state.get("auto_mode_enabled"):
+            self.state["execution_status"] = "awaiting_plan"
+            request["waiting_reason"] = "automatic_overnight_mode_off"
+            return request != before
+        if ("price_failure_revision" in request
+                and request["price_failure_revision"] == self._overnight_revision()):
+            # A command-time price failure needs a new planner report. Polling
+            # the same cached recommendation cannot resolve the outage.
+            return False
+        recommendation = self._recommendation("overnight")
+        attributes = recommendation.attributes if recommendation else {}
+        coverage = attributes.get("overnight_planning_coverage", {})
+        next_start = self._parse_datetime(attributes.get("start"))
+        finish = self._parse_datetime(attributes.get("finish"))
+        reason = self._overnight_planning_block(recommendation)
+        if reason:
+            self.state["execution_status"] = "awaiting_plan"
+            await self._async_normal_attention(request, reason,
+                "No complete overnight price comparison is available. Check tariff data and the search horizon. "
+                "Planning will resume automatically if data returns before the authorised window closes.")
+        elif (attributes.get("status") != "ready" or not next_start or not finish
+              or not window_start <= next_start < window_end or finish <= next_start
+              or self._parse_datetime(coverage.get("window_start")) != window_start
+              or self._parse_datetime(coverage.get("window_end")) != window_end):
+            self.state["execution_status"] = "awaiting_plan"
+            await self._async_normal_attention(request, "no_eligible_plan_in_window",
+                "No eligible dishwasher plan is available inside the authorised start window. Review programme policy and readiness.")
+        elif not self._recommendation_confident(recommendation):
+            self.state["execution_status"] = "awaiting_plan"
+            await self._async_normal_attention(request, "confidence_below_threshold",
+                "The selected dishwasher programme needs more reliable learning before scheduled control.")
+        else:
+            old_start = self._parse_datetime(request.get("start"))
+            # Freeze an existing valid plan shortly before execution. A recovered
+            # missing-price plan is reassessed before it can start.
+            frozen = (self.state.get("execution_status") == "queued" and old_start
+                      and now >= old_start - timedelta(minutes=OVERNIGHT_PLAN_FREEZE_MINUTES))
+            if not frozen:
+                plan = {"program": attributes.get("program") or recommendation.state,
+                        "start": attributes["start"], "finish": attributes["finish"],
+                        "cost_pence": attributes.get("cost_pence"), "planning_coverage": deepcopy(coverage),
+                        "late_finish": finish > window_end,
+                        "plan_reason": attributes.get("reason")}
+                if any(request.get(key) != value for key, value in plan.items()):
+                    previous_program, previous_start = request.get("program"), request.get("start")
+                    request.update(plan, replanned_at=now.isoformat())
+                    self._record_schedule_event("replanned" if previous_start else "queued", "normal_wash_plan_updated", now=now,
+                                                previous_program=previous_program, previous_start=previous_start,
+                                                program=plan["program"], start=plan["start"], finish=plan["finish"])
+            request.pop("waiting_reason", None)
+            request.pop("price_failure_revision", None)
+            await self._async_dismiss_normal_attention(request)
+            self.state["execution_status"] = "queued"
+        return request != before
 
     def set_automatic_preflight(self, check: Callable[[dict[str, Any]], Awaitable[str | None]]) -> None:
         """Use the source adapter for fresh automatic command-time checks."""
@@ -340,12 +484,21 @@ class NativeOrchestrator:
 
     async def async_set(self, key: str, value: Any) -> None:
         """Update and persist one native orchestration value."""
+        if key in {"overnight_start", "overnight_end"}:
+            if not isinstance(value, str) or len(value) != 5:
+                raise ValueError("Use a local time in HH:MM format")
+            parse_clock(value)
+            other = self.overnight_time("end" if key == "overnight_start" else "start")
+            if value == other:
+                raise ValueError("The overnight start and finish must differ")
         if key == "door_open_minimum_minutes":
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0.5 <= value <= 60:
                 raise ValueError("Door-open minimum must be between 0.5 and 60 minutes")
         self.state[key] = value
         await self._async_save()
         self._publish()
+        if key in {"overnight_start", "overnight_end"}:
+            await self.async_recalculate()
         if key in {"auto_mode_enabled", "auto_negative_price_enabled"}:
             await self.async_evaluate()
 
@@ -355,6 +508,20 @@ class NativeOrchestrator:
             raise HomeAssistantError("Appliance control is stopping; retry after it finishes")
         if self._execution_task and not self._execution_task.done():
             raise HomeAssistantError("Cancel the current start request before replacing it")
+        if mode == "overnight" and not override:
+            if not self.state.get("active"):
+                raise HomeAssistantError("Activate native dishwasher control before scheduling a wash")
+            if not (self.state.get("request") or {}).get("normal_wash"):
+                self._new_normal_request(datetime.now(timezone.utc), automatic=False)
+                await self._async_save()
+                await self.async_recalculate()
+            elif self.state["request"].get("automatic"):
+                # Explicit permission supersedes the optional door rule while
+                # preserving the same single wash and original window.
+                self.state["request"].update(automatic=False, mode="overnight")
+                await self._async_save()
+            await self.async_evaluate()
+            return
         recommendation = self._recommendation(mode)
         selected_override = (
             override
@@ -426,6 +593,7 @@ class NativeOrchestrator:
         self._cancelling = True
         try:
             await self._async_cancel_execution()
+            await self._async_dismiss_normal_attention(request)
             self.state["request"] = None
             self.state["door_opened_since_last_cycle"] = False
             await self._async_outcome(
@@ -440,7 +608,7 @@ class NativeOrchestrator:
 
     async def async_recalculate(self) -> None:
         """Request a fresh optimizer scan."""
-        coordinator = self.hass.data[DOMAIN].get(self.entry.entry_id)
+        coordinator = getattr(self.hass, "data", {}).get(DOMAIN, {}).get(self.entry.entry_id)
         if coordinator:
             await coordinator.async_request_refresh()
 
@@ -481,6 +649,7 @@ class NativeOrchestrator:
         """Return command ownership to the package automations."""
         self.state["active"] = False
         await self._async_cancel_execution()
+        await self._async_dismiss_normal_attention(self.state.get("request") or {})
         self.state["request"] = None
         self.state["execution_status"] = "idle"
         await self._async_save()
@@ -504,10 +673,18 @@ class NativeOrchestrator:
             return
         now = now or datetime.now(timezone.utc)
         options_changed = self._refresh_program_options()
+        normal_created = False
+        if (self.state.get("active") and self.state.get("request") is None
+                and self.state.get("auto_mode_enabled") and self.state.get("door_opened_since_last_cycle")
+                and self._state("sensor.load_optimizer_1_cycle_state") == "idle" and not self._is_running()
+                and not self._automatic_source_block() and self._overnight_window_unused(now)):
+            self._new_normal_request(now, automatic=True)
+            normal_created = True
+        normal_changed = await self._async_refresh_normal_request(now) if self.state.get("active") else False
         plan_changed = self._refresh_automatic_overnight_request(now) if self.state.get("active") else False
         decision = self._automatic_decision(now)
         changed = decision != self.state.get("shadow_decision")
-        save_required = changed or options_changed or plan_changed
+        save_required = changed or options_changed or plan_changed or normal_created or normal_changed
         self.state["shadow_decision"] = decision
         if changed:
             self._record_schedule_event(
@@ -547,7 +724,9 @@ class NativeOrchestrator:
         if save_required:
             await self._async_save()
         request = self.state.get("request")
-        if request and not self._stopping and not self._cancelling and self._request_due(request, now):
+        if (request and not self._stopping and not self._cancelling
+                and (not request.get("normal_wash") or self.state.get("execution_status") == "queued")
+                and self._request_due(request, now)):
             if not self._execution_task or self._execution_task.done():
                 self._execution_task = self.hass.async_create_task(
                     self._async_execute(dict(request)),
@@ -565,7 +744,7 @@ class NativeOrchestrator:
         """Follow revised plans only before an automatic overnight start is committed."""
         request = self.state.get("request") or {}
         start = self._parse_datetime(request.get("start"))
-        if (request.get("mode") != "automatic" or request.get("automatic") is False
+        if (request.get("normal_wash") or request.get("mode") != "automatic" or request.get("automatic") is False
                 or self.state.get("execution_status") != "queued" or not start
                 or now >= start - timedelta(minutes=OVERNIGHT_PLAN_FREEZE_MINUTES)
                 or self._execution_task and not self._execution_task.done()
@@ -785,9 +964,17 @@ class NativeOrchestrator:
         # Automatic preflight prices this request; a published fit may describe another programme.
         reason = self._safety_block(
             mode, program, explicit_override=bool(request.get("explicit_program_override")),
-            check_negative_fit=not automatic,
+            check_negative_fit=not automatic, require_door_permission=bool(automatic),
         )
-        if not reason and automatic:
+        if request.get("normal_wash"):
+            now = datetime.now(timezone.utc)
+            if not self._request_due(request, now):
+                reason = "outside_authorised_start_window"
+            elif automatic and not self.state.get("auto_mode_enabled"):
+                reason = "automatic_overnight_mode_off"
+            elif self._overnight_planning_block(self._recommendation("overnight")):
+                reason = "overnight_tariff_coverage_incomplete"
+        if not reason and (automatic or request.get("normal_wash")):
             reason = self._automatic_source_block()
             if not reason:
                 if self._automatic_preflight is None:
@@ -799,8 +986,21 @@ class NativeOrchestrator:
                         LOGGER.warning("Automatic source preflight failed (%s)", type(error).__name__)
                         reason = "automatic_preflight_unavailable"
             if not reason:
-                reason = self._safety_block(mode, program, explicit_override=False, check_negative_fit=False)
+                reason = self._safety_block(mode, program, explicit_override=False, check_negative_fit=False,
+                                            require_door_permission=bool(automatic))
+            if not reason and request.get("normal_wash") and not self._request_due(request, datetime.now(timezone.utc)):
+                reason = "outside_authorised_start_window"
         if reason:
+            if request.get("normal_wash") and ("tariff" in reason or "fully_priced" in reason):
+                saved = self.state.get("request")
+                if saved and saved.get("created_at") == request.get("created_at"):
+                    self.state["execution_status"] = "awaiting_plan"
+                    saved["price_failure_revision"] = self._overnight_revision()
+                    await self._async_normal_attention(saved, reason,
+                        "Dishwasher prices could not be verified before starting. The request will resume inside its original window when prices return.")
+                    await self._async_save()
+                    self._publish()
+                    return False
             self.state["request"] = None
             await self._async_outcome("blocked", mode, program, reason, reason.replace("_", " "))
             return False
@@ -826,6 +1026,7 @@ class NativeOrchestrator:
         *,
         explicit_override: bool = False,
         check_negative_fit: bool = True,
+        require_door_permission: bool = True,
     ) -> str | None:
         if not program or str(program).lower() in UNKNOWN_STATES:
             return "program_missing"
@@ -857,7 +1058,7 @@ class NativeOrchestrator:
             ):
                 return "power_hungry_window_outside_negative_price"
         if (
-            mode != "negative_price"
+            require_door_permission and mode != "negative_price"
             and not (mode == "now" and explicit_override)
             and not self.state.get("door_opened_since_last_cycle")
         ):
@@ -1025,6 +1226,10 @@ class NativeOrchestrator:
 
     def _request_due(self, request: dict[str, Any], now: datetime) -> bool:
         start = self._parse_datetime(request.get("start"))
+        if request.get("normal_wash"):
+            first = self._parse_datetime(request.get("window_start"))
+            last = self._parse_datetime(request.get("window_end"))
+            return bool(start and first and last and first <= now < last and start <= now)
         return start is None or start <= now + timedelta(minutes=1)
 
     @property
@@ -1219,6 +1424,10 @@ class NativeOrchestrator:
             action_required = "Use the dishwasher controls to change its timer. Load Optimizer will not replace it with a new start command."
             if request:
                 action_required += " A separate optimizer request is still queued and remains subject to start-time safety checks."
+        elif request and request.get("normal_wash") and self.state.get("execution_status") == "awaiting_plan":
+            state, reason = "waiting", request.get("waiting_reason", "awaiting_plan")
+            summary = messages.get(reason, "One wash is authorised; waiting for an eligible plan inside its start window.")
+            action_required = summary if request.get("notified_reason") else None
         elif request:
             state, reason = "scheduled", "request_queued"
             summary = f"{request.get('program', 'Programme')} is queued for a start-time safety check."
@@ -1252,6 +1461,10 @@ class NativeOrchestrator:
             "action_required": action_required,
             "queued_program": request.get("program"), "queued_start": request.get("start"),
             "queued_finish": request.get("finish"),
+            "authorised_window_start": request.get("window_start"),
+            "authorised_window_end": request.get("window_end"),
+            "late_finish": request.get("late_finish", False),
+            "plan_reason": request.get("plan_reason"),
             "queued_cost_pence": request.get("cost_pence"),
             "overnight_planning_coverage": (self._recommendation("overnight").attributes.get("overnight_planning_coverage", {})
                                             if self._recommendation("overnight") else {}),

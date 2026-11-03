@@ -1123,8 +1123,8 @@ def recommend_cycle(
     equivalent_cost_tolerance_pence: float = 0.0,
     preference_weight_pence: float = 0.1,
     window_preference: str = "any",
-    overnight_start: str = "20:00",
-    overnight_end: str = "08:00",
+    overnight_start: str = "21:00",
+    overnight_end: str = "07:00",
     schedule_timezone: str = "Europe/London",
     earliest_start_utc: datetime | None = None,
     latest_finish_utc: datetime | None = None,
@@ -1134,6 +1134,7 @@ def recommend_cycle(
     green_windows: list[dict] | None = None,
     blocked_windows: list[dict] | None = None,
     excluded_programs: list[str] | None = None,
+    overnight_window_utc: tuple[datetime, datetime] | None = None,
 ) -> dict:
     """Find the least-cost policy-eligible program and start time."""
     if not math.isfinite(search_hours) or not 0 <= search_hours <= 72:
@@ -1388,7 +1389,7 @@ def recommend_cycle(
         now_cost = None
         now_breakdown = []
         now_operating_breakdown = None
-    operational_overnight_start, operational_overnight_end = operational_overnight_window(
+    operational_overnight_start, operational_overnight_end = overnight_window_utc or operational_overnight_window(
         reference_utc,
         overnight_start,
         overnight_end,
@@ -1408,7 +1409,17 @@ def recommend_cycle(
             and max(reference_utc, operational_overnight_start) <= candidate["start"] < operational_overnight_end
         )
     ]
-    best_overnight = best_window_candidate(operational_overnight_candidates, overnight=True)
+    # A requested wash first fulfils the preferred finish. Only relax the finish
+    # when no eligible cycle fits; the authorised start window never changes.
+    fitting = [candidate for candidate in operational_overnight_candidates
+               if candidate["finish"] <= operational_overnight_end]
+    overnight_pool = fitting or operational_overnight_candidates
+    best_overnight = min(overnight_pool, key=lambda item: (
+        item["total_cost_pence"], item["preference_rank"], item["finish"], item["start"],
+    )) if overnight_pool else None
+    overnight_late_finish = bool(best_overnight and best_overnight["finish"] > operational_overnight_end)
+    # Programme choices obey the same finish preference as the selected plan.
+    operational_overnight_candidates = overnight_pool
     best_daytime = best_window_candidate(normal_candidates, overnight=False)
     greenest = best_green_candidate(normal_candidates)
     immediate_candidate = min(
@@ -1550,7 +1561,7 @@ def recommend_cycle(
             reference_utc=reference_utc,
             now_cost=now_cost,
             ready_to_start=False,
-            reason="best_overnight",
+            reason="cheapest_start_in_window_late_finish" if overnight_late_finish else "best_overnight",
             program_options=overnight_program_options,
             display_program_options=overnight_display_program_options,
         ),
