@@ -234,7 +234,10 @@ class NativeOrchestrator:
                         "start": attributes["start"], "finish": attributes["finish"],
                         "cost_pence": attributes.get("cost_pence"), "planning_coverage": deepcopy(coverage),
                         "late_finish": finish > window_end,
-                        "plan_reason": attributes.get("reason")}
+                        "plan_reason": attributes.get("reason"),
+                        "net_benefit_pence": attributes.get("net_benefit_pence"),
+                        "operating_cost_breakdown": deepcopy(attributes.get("operating_cost_breakdown")),
+                        "unconfigured_costs": list(attributes.get("unconfigured_costs", []))}
                 if any(request.get(key) != value for key, value in plan.items()):
                     previous_program, previous_start = request.get("program"), request.get("start")
                     request.update(plan, replanned_at=now.isoformat())
@@ -708,6 +711,9 @@ class NativeOrchestrator:
                     "automatic": True,
                     "created_at": now.isoformat(),
                     "cost_pence": recommendation.attributes.get("cost_pence"),
+                    "net_benefit_pence": recommendation.attributes.get("net_benefit_pence"),
+                    "operating_cost_breakdown": deepcopy(recommendation.attributes.get("operating_cost_breakdown")),
+                    "unconfigured_costs": list(recommendation.attributes.get("unconfigured_costs", [])),
                     "planning_coverage": recommendation.attributes.get("overnight_planning_coverage", {}),
                 }
                 self.state["execution_status"] = "queued"
@@ -795,8 +801,10 @@ class NativeOrchestrator:
             if not negative or negative.attributes.get("status") != "ready":
                 reported = negative.attributes.get("reason") if negative else None
                 reason = reported if reported in {
-                    "maximum_runs_per_window_reached", "negative_run_history_incomplete",
+                    "maximum_runs_per_window_reached", "negative_run_history_incomplete", "no_positive_net_benefit",
                 } else "negative_price_recommendation_not_ready"
+            elif negative.attributes.get("positive_net_benefit") is not True:
+                reason = "no_positive_net_benefit"
             elif negative.attributes.get("ready_to_start") is not True:
                 reason = "negative_window_not_started"
             elif not self._recommendation_confident(negative):
@@ -1049,6 +1057,8 @@ class NativeOrchestrator:
             return "door_state_unavailable"
         if mode == "negative_price" and check_negative_fit:
             recommendation = self._recommendation("negative_price")
+            if not recommendation or recommendation.attributes.get("positive_net_benefit") is not True:
+                return "no_positive_net_benefit"
             if (
                 recommendation
                 and recommendation.attributes.get(
@@ -1331,6 +1341,8 @@ class NativeOrchestrator:
             < self._confidence_threshold()
         ):
             warnings.append("confidence_relaxed_for_cooldown_rotation")
+        if mode == "negative_price" and recommendation and recommendation.attributes.get("status") == "ready" and recommendation.attributes.get("positive_net_benefit") is not True:
+            blockers.append("no_positive_net_benefit")
         blockers.extend(self.remote_activation_status["blockers"])
         if mode == "overnight" and not self.state.get("door_opened_since_last_cycle"):
             blockers.append("door_not_opened_since_last_cycle")
@@ -1338,7 +1350,7 @@ class NativeOrchestrator:
             mode == "negative_price"
             and recommendation
             and recommendation.attributes.get("reason")
-            in {"maximum_runs_per_window_reached", "negative_run_history_incomplete"}
+            in {"maximum_runs_per_window_reached", "negative_run_history_incomplete", "no_positive_net_benefit"}
         ):
             blockers.append(recommendation.attributes["reason"])
         enabled_key = (
@@ -1404,6 +1416,7 @@ class NativeOrchestrator:
             "confidence_below_threshold": "The overnight programme's learning confidence is below the allowed threshold.",
             "negative_price_confidence_below_threshold": "The free/negative-price programme's learning confidence is below the allowed threshold.",
             "negative_price_recommendation_not_ready": "Waiting for a fully priced programme explicitly allowed for free/negative-price runs.",
+            "no_positive_net_benefit": "No extra run has a positive estimated return after electricity and configured operating costs. Normal requested washing is unaffected.",
             "negative_window_not_started": "A free/negative-price opportunity is available later, but it is not ready to start now.",
             "negative_price_retry_cooldown": "Waiting for the 30-minute automatic request interval before another free/negative-price run.",
             "maximum_runs_per_window_reached": "The allowed programme runs for this free/negative-price window have been used. Waiting for another eligible programme or window.",

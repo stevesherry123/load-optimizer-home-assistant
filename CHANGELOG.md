@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Require strictly positive whole-cycle net benefit for opportunistic extra runs,
+  using unrounded electricity and operating costs. Keep normal requested washing
+  eligible when it costs money; zero-return free cycles no longer authorise extras.
+- Rank profitable extra runs by net benefit per run, with programme priority as
+  a tie-breaker. Revalidate live costs before automatic commands.
+- Add separate consumables costs, preserve the legacy overhead alias, disclose
+  unconfigured costs and show a full cycle-cost breakdown in both dashboards.
 - Persist one-wash overnight permission independently of tariff recommendations;
   notify for missing prices and resume inside the original window when they return.
 - Add native Overnight Start and Dishes Ready By time controls, with new defaults

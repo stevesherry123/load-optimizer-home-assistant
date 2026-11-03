@@ -120,6 +120,14 @@ class AdapterSourceSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.options["instances_yaml"] = self.options["instances_yaml"].replace("allow_normal_recommendation: true", "allow_normal_recommendation: false")
         self.assertEqual(await self.negative_check(), "normal_wash_program_not_permitted")
 
+    async def test_negative_preflight_rechecks_live_operating_costs_before_command(self):
+        self.negative_fixture()
+        self.assertIsNone(await self.negative_check())
+        before = deepcopy(self.runtime.state)
+        self.options["instances_yaml"] += "      consumables_cost_pence: 1\n"
+        self.assertEqual(await self.negative_check(), "no_positive_net_benefit")
+        self.assertEqual(self.runtime.state, before)
+
     async def test_negative_preflight_reprices_actual_programme_without_mutating_learning(self):
         self.negative_fixture()
         before = deepcopy(self.runtime.state)
@@ -142,7 +150,7 @@ class AdapterSourceSafetyTests(unittest.IsolatedAsyncioTestCase):
         events = [{"start": self.now.isoformat(), "end": (self.now + timedelta(hours=1)).isoformat()}]
         self.hass.services.async_call.return_value = {"calendar.no_run": {"events": []}, "calendar.free": {"events": events}}
         before = deepcopy(self.runtime.state)
-        self.assertIsNone(await self.negative_check())
+        self.assertEqual(await self.negative_check(), "no_positive_net_benefit")
         self.assertEqual(self.runtime.state, before)
         self.hass.services.async_call.return_value["calendar.free"]["events"] = []
         self.assertEqual(await self.negative_check(), "power_hungry_window_outside_negative_price")
@@ -241,6 +249,8 @@ class AdapterSourceSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.put(helpers["start"], self.now.isoformat())
         self.put(helpers["end"], (self.now + timedelta(hours=1)).isoformat())
         self.put(helpers["price"], "0")
+        self.assertEqual(await self.negative_check(), "no_positive_net_benefit")
+        self.put(helpers["price"], "-1")
         self.assertIsNone(await self.negative_check())
         self.put(helpers["enabled"], "off")
         self.assertEqual(await self.negative_check(), "power_hungry_window_outside_negative_price")

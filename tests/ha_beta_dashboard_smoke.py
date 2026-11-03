@@ -51,6 +51,14 @@ async def main():
             card = next(card for card in templates if card["title"] == "Next wash")
             rendered = Template(card["content"], hass).async_render(parse_result=False)
             assert "MixedLoad queued" in rendered and "GBP 0.40" in rendered and "GMT" in rendered
+            economics = next(card for card in templates if card["title"] == "Cycle costs")
+            hass.states.async_set("sensor.load_optimizer_1_negative_price_recommendation", "Quick45", {
+                "status": "ready", "program": "Quick45", "net_benefit_pence": 0.000001,
+                "operating_cost_breakdown": {"energy_cost_pence": -0.000001, "total_cost_pence": -0.000001},
+                "unconfigured_costs": ["consumables_cost_pence", "wear_cost_pence"]})
+            rendered = Template(economics["content"], hass).async_render(parse_result=False)
+            assert "less than 0.01" in rendered and "consumables, wear" in rendered
+            assert "treated as zero" in rendered
             print(f"{len(templates)} beta Markdown cards passed missing/live-state fixtures; queue, UK time and confirmed actions passed")
         finally:
             await hass.async_stop()

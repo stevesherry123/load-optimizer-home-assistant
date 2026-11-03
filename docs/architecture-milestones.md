@@ -31,7 +31,7 @@ Use observed device consumption and tariff analysis to automate useful appliance
 - Do not silently extend the authorised start window while waiting for prices.
 - If complete prices return while an eligible start remains inside the original window, automatically resume planning and execution under the existing permission. Do not require a second scheduling request. Cancellation or expiry prevents resumption.
 - Evaluate electricity plus configured water, consumables and wear costs. Unspecified additional operating costs count as zero and remain visibly unconfigured; this convention does not apply to missing tariff data.
-- Any strictly positive estimated net benefit can qualify an independently authorised opportunistic run.
+- Any strictly positive estimated net benefit can qualify an independently authorised opportunistic run. Rank usable extra runs by highest net benefit per run; programme priority breaks ties. A current usable opportunity retains precedence over future opportunities.
 - Reassess unstarted plans as inputs change, retaining the agreed short pre-start freeze. Do not interrupt running cycles to chase savings.
 - Keep routine decisions and outcomes in event history. Notify when action is needed. A routine pre-wash announcement is a separate optional feature.
 
@@ -127,9 +127,13 @@ At the initial review, the dishwasher script guide required a ready recommendati
 
 Development has started in the isolated `load-optimizer` checkout in this workspace, on `feat/overnight-scheduling-milestones`, based on shared-beta commit `3184482`. The first batch implements durable normal-wash requests, native window controls, late-finish fallback, price-recovery notifications, normal-run priority and command-time revalidation. Existing door-based automatic mode remains an opt-in that is off by default.
 
-No deployment or release has been performed. Installed-version verification and supervised physical-appliance acceptance remain outstanding. Total-benefit precision review, broader user experience work and both EV milestones remain separate delivery work.
+No deployment or release has been performed. Installed-version verification and supervised physical-appliance acceptance remain outstanding. The second batch implements and validates total-cost precision, explicit consumables costs, unconfigured-cost disclosure, strictly positive extra-run eligibility and ranking by net benefit per run. Financial breakdown cards are included in both dashboard templates. Broader user experience work and both EV milestones remain separate delivery work.
 
 Local validation for this batch passed 513 unit tests, Bandit and all 20 isolated Home Assistant acceptance checks against Python 3.14.2 and Home Assistant 2026.10.2. The checks include price recovery, native time controls, one confirmed synthetic start, cancellation, restart persistence and a command sequence blocked when the start window closes. This is synthetic acceptance, not proof from a physical dishwasher.
+
+## Total-benefit implementation acceptance
+
+The second batch passed 529 unit tests, Bandit and all 20 isolated Home Assistant acceptance checks. Financial cases cover exact break-even, tiny positive returns, decimal cancellation across tariff periods, operating-cost changes before a command, free electricity without profit, positive-price normal washing and missing-cost disclosures. The full and beta dashboard cost templates render successfully with missing data and sub-penny benefits. No physical appliance was operated. See `docs/operating-costs.md` in the development checkout for configuration.
 
 ## Confirmed window and price recovery
 

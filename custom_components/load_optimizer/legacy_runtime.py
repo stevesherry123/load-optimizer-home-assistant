@@ -528,7 +528,7 @@ class LegacyRuntime:
         if recommendation.get("ready_to_start") is True and recommendation.get("program") == program:
             return None
         reason = recommendation.get("reason")
-        if reason in {"maximum_runs_per_window_reached", "negative_run_history_incomplete"}:
+        if reason in {"maximum_runs_per_window_reached", "negative_run_history_incomplete", "no_positive_net_benefit"}:
             return reason
         diagnostic = next(iter(result.get("program_diagnostics", [])), {})
         if result.get("rejected_constraints") or constraints.get("earliest_start_utc", now) > now:

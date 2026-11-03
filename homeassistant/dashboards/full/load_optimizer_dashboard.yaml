@@ -503,6 +503,37 @@ views:
 
               {% if negative_blockers %}**Blockers:** {{ negative_blockers | join(', ') }}{% endif %}
               {% if negative_warnings %}**Waiting:** {{ negative_warnings | join(', ') }}{% endif %}
+          - type: markdown
+            title: Cycle costs
+            content: |
+              {% set labels = {'fixed_cost_pence': 'other per-run costs', 'consumables_cost_pence': 'consumables', 'water_litres': 'water use', 'water_cost_pence_per_litre': 'water price', 'wear_cost_pence': 'wear'} %}
+              {% for title, recommendation in [('Normal overnight wash', 'sensor.load_optimizer_1_overnight_recommendation'), ('Profitable extra run', 'sensor.load_optimizer_1_negative_price_recommendation')] %}
+              ### {{ title }}
+              {% set costs = state_attr(recommendation, 'operating_cost_breakdown') or {} %}
+              {% if state_attr(recommendation, 'status') == 'ready' and costs %}
+              **{{ state_attr(recommendation, 'program') }}**
+
+              | Estimate | Pence per cycle |
+              |---|---:|
+              | Electricity | {{ '%.4f' | format(costs.get('energy_cost_pence', 0)) }} |
+              | Consumables | {{ '%.4f' | format(costs.get('consumables_cost_pence', 0)) }} |
+              | Water | {{ '%.4f' | format(costs.get('water_cost_pence', 0)) }} |
+              | Wear | {{ '%.4f' | format(costs.get('wear_cost_pence', 0)) }} |
+              | Other per-run costs | {{ '%.4f' | format(costs.get('fixed_cost_pence', 0)) }} |
+              | **Total cost** | **{{ '%.4f' | format(costs.get('total_cost_pence', 0)) }}** |
+
+              {% if title == 'Profitable extra run' %}
+              {% set benefit = state_attr(recommendation, 'net_benefit_pence') | float(0) %}
+              Estimated net benefit: **{{ 'less than 0.01' if 0 < benefit < 0.01 else ('%.2f' | format(benefit)) }} p**.
+              {% endif %}
+              {% set missing = state_attr(recommendation, 'unconfigured_costs') or [] %}
+              {% if missing %}
+              Unconfigured costs treated as zero: {% for field in missing %}{{ labels.get(field, field) }}{{ ', ' if not loop.last else '.' }}{% endfor %}
+              {% endif %}
+              {% else %}
+              {{ 'No profitable extra run is currently available. This does not prevent a requested normal wash.' if title == 'Profitable extra run' else 'No complete normal-wash cost estimate is currently available.' }}
+              {% endif %}
+              {% endfor %}
       - type: grid
         cards:
           - type: entities

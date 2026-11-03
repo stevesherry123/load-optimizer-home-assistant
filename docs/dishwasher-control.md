@@ -130,6 +130,9 @@ Promotional events do not automatically alter tariff prices or enrol you in an
 offer. Free/negative scheduling needs usable zero/negative rates or an explicit
 special-price overlay. Water, detergent and wear can outweigh electricity
 credits; a negative electricity estimate is not guaranteed whole-cycle profit.
+The unreleased development build requires strictly positive whole-cycle net
+benefit for extra runs. See [operating costs](operating-costs.md) for the cost
+fields, zero-return behaviour and dashboard breakdown.
 
 To stop automatic scheduling, turn both modes off and cancel queued requests
 separately. To relinquish ownership, call

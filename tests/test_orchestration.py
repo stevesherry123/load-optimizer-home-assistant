@@ -86,6 +86,8 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         Clock.current = datetime(2026, 10, 8, 15, 13, tzinfo=timezone.utc)
 
     def put(self, entity_id, state, **attributes):
+        if entity_id == "sensor.load_optimizer_1_negative_price_recommendation" and attributes.get("status") == "ready":
+            attributes.setdefault("positive_net_benefit", True)
         if entity_id == "sensor.load_optimizer_1_overnight_recommendation":
             if attributes.get("start"):
                 attributes.setdefault("finish", (datetime.fromisoformat(attributes["start"]) + timedelta(hours=2)).isoformat())
@@ -504,6 +506,19 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(explanation["mode"], "negative_price")
                 self.assertNotIn("overnight", explanation["summary"].lower())
 
+    async def test_extra_run_without_verified_profit_cannot_queue_or_claim_readiness(self):
+        self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=True,
+                                    door_opened_since_last_cycle=False)
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "Quick45", status="ready",
+                 ready_to_start=True, confidence=90, positive_net_benefit=False,
+                 power_hungry_window_fits_negative_price=True)
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.automation_explanation["reason_code"], "no_positive_net_benefit")
+        self.assertIn("no_positive_net_benefit", self.scheduler.readiness("negative_price")["blockers"])
+        self.assertEqual(self.scheduler._safety_block("negative_price", "Quick45"), "no_positive_net_benefit")
+        self.hass.services.async_call.assert_not_awaited()
+
     async def test_negative_runs_keep_opt_in_physical_checks_and_pending_requests(self):
         self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=False,
                                     door_opened_since_last_cycle=False)
@@ -554,7 +569,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                      "preference_rank": 50, "negative_price_priority": 50} for model in models]
         periods = [{"start": start + timedelta(hours=first), "end": start + timedelta(hours=last),
                     "price_p_per_kwh": price}
-                   for first, last, price in ((0, 1, -1), (1, 2, 0), (2, 3, 20), (3, 4.5, -2), (4.5, 6, 20))]
+                   for first, last, price in ((0, 1, -1), (1, 2, -0.5), (2, 3, 20), (3, 4.5, -2), (4.5, 6, 20))]
         self.put("select.programmes", "Dishcare.Dishwasher.Program.Quick45",
                  options=["Dishcare.Dishwasher.Program." + model["program"] for model in models])
 
@@ -1035,7 +1050,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                      "preference_rank": 50, "negative_price_priority": 50} for m in models]
         periods = [
             {"start": start, "end": start + timedelta(hours=1), "price_p_per_kwh": -1},
-            {"start": start + timedelta(hours=1), "end": start + timedelta(hours=2), "price_p_per_kwh": 0},
+            {"start": start + timedelta(hours=1), "end": start + timedelta(hours=2), "price_p_per_kwh": -0.5},
             {"start": start + timedelta(hours=2), "end": start + timedelta(hours=3), "price_p_per_kwh": 20},
             {"start": start + timedelta(hours=3), "end": start + timedelta(hours=4, minutes=30), "price_p_per_kwh": -2},
             {"start": start + timedelta(hours=4, minutes=30), "end": start + timedelta(hours=6), "price_p_per_kwh": 20},

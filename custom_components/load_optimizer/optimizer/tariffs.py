@@ -6,6 +6,7 @@ import math
 import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, localcontext
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 FEED_ENTRY = re.compile(
@@ -404,54 +405,68 @@ def _apply_negative_run_limit(model: dict, policy: dict, negative_fit: dict) -> 
 
 def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> dict:
     """Overlay a scaled learned profile on tariff periods."""
-    if start.tzinfo is None or start.utcoffset() is None:
-        raise ValueError("Cycle start must be timezone-aware")
-    start = start.astimezone(timezone.utc)
-    cost = 0.0
-    energy = 0.0
-    breakdown_by_start: dict[datetime, dict] = {}
-    for segment in _profile_segments(model):
-        segment_start = start + timedelta(seconds=segment["offset_start"])
-        segment_end = start + timedelta(seconds=segment["offset_end"])
-        covered_seconds = 0.0
-        for period in periods:
-            overlap_start = max(segment_start, period["start"])
-            overlap_end = min(segment_end, period["end"])
-            if overlap_end <= overlap_start:
-                continue
-            seconds = (overlap_end - overlap_start).total_seconds()
-            segment_energy = segment["power_w"] * seconds / 3_600_000
-            segment_cost = segment_energy * period["price_p_per_kwh"]
-            energy += segment_energy
-            cost += segment_cost
-            covered_seconds += seconds
-            bucket = breakdown_by_start.setdefault(period["start"], {
-                "start": period["start"],
-                "end": period["end"],
-                "price_p_per_kwh": period["price_p_per_kwh"],
-                "energy_kwh": 0.0,
-                "energy_cost_pence": 0.0,
-            })
-            bucket["energy_kwh"] += segment_energy
-            bucket["energy_cost_pence"] += segment_cost
-        if covered_seconds + 0.001 < (segment_end - segment_start).total_seconds():
-            raise ValueError("Tariff does not fully cover the cycle")
-    breakdown = [
-        {
-            "start": item["start"].isoformat(),
-            "end": item["end"].isoformat(),
-            "price_p_per_kwh": item["price_p_per_kwh"],
-            "energy_kwh": round(item["energy_kwh"], 6),
-            "energy_cost_pence": round(item["energy_cost_pence"], 4),
+    with localcontext() as context:
+        context.prec = 80
+        if start.tzinfo is None or start.utcoffset() is None:
+            raise ValueError("Cycle start must be timezone-aware")
+        start = start.astimezone(timezone.utc)
+        cost = Decimal(0)
+        energy = Decimal(0)
+        segments = _profile_segments(model)
+        breakdown_by_start: dict[datetime, dict] = {}
+        for segment in segments:
+            segment_start = start + timedelta(seconds=segment["offset_start"])
+            segment_end = start + timedelta(seconds=segment["offset_end"])
+            covered_seconds = 0.0
+            for period in periods:
+                overlap_start = max(segment_start, period["start"])
+                overlap_end = min(segment_end, period["end"])
+                if overlap_end <= overlap_start:
+                    continue
+                seconds = (overlap_end - overlap_start).total_seconds()
+                price = Decimal(str(period["price_p_per_kwh"]))
+                if not price.is_finite():
+                    raise ValueError("Tariff price must be finite")
+                # Accumulate watt-second weights before division. Equal credits
+                # and charges then cancel exactly, even with repeating fractions.
+                segment_energy = Decimal(str(segment["power_w"])) * Decimal(str(seconds))
+                segment_cost = segment_energy * price
+                energy += segment_energy
+                cost += segment_cost
+                covered_seconds += seconds
+                bucket = breakdown_by_start.setdefault(period["start"], {
+                    "start": period["start"],
+                    "end": period["end"],
+                    "price_p_per_kwh": period["price_p_per_kwh"],
+                    "energy_kwh": Decimal(0),
+                    "energy_cost_pence": Decimal(0),
+                })
+                bucket["energy_kwh"] += segment_energy
+                bucket["energy_cost_pence"] += segment_cost
+            if covered_seconds + 0.001 < (segment_end - segment_start).total_seconds():
+                raise ValueError("Tariff does not fully cover the cycle")
+        expected_energy = Decimal(str(model["expected_energy_kwh"]))
+        if not energy.is_finite() or energy <= 0 or not expected_energy.is_finite() or expected_energy <= 0:
+            raise ValueError("Program model must contain finite positive energy")
+        scale = expected_energy / energy
+        cost *= scale
+        energy = expected_energy
+        breakdown = [
+            {
+                "start": item["start"].isoformat(),
+                "end": item["end"].isoformat(),
+                "price_p_per_kwh": item["price_p_per_kwh"],
+                "energy_kwh": float(round(item["energy_kwh"] * scale, 6)),
+                "energy_cost_pence": float(round(item["energy_cost_pence"] * scale, 4)),
+            }
+            for item in sorted(breakdown_by_start.values(), key=lambda value: value["start"])
+            if item["energy_kwh"] > 0
+        ]
+        return {
+            "energy_kwh": float(energy),
+            "energy_cost_pence": float(cost),
+            "cost_breakdown": breakdown,
         }
-        for item in sorted(breakdown_by_start.values(), key=lambda value: value["start"])
-        if item["energy_kwh"] > 0
-    ]
-    return {
-        "energy_kwh": round(energy, 6),
-        "energy_cost_pence": round(cost, 4),
-        "cost_breakdown": breakdown,
-    }
 
 
 def _next_candidate(reference: datetime, interval_minutes: int) -> datetime:
@@ -617,40 +632,64 @@ def best_green_candidate(candidates: list[dict]) -> dict | None:
     )
 
 
+OPERATING_COST_FIELDS = (
+    "fixed_cost_pence", "consumables_cost_pence", "water_litres",
+    "water_cost_pence_per_litre", "wear_cost_pence",
+)
+
+
+def _operating_values(policy: dict) -> dict[str, Decimal]:
+    values = {}
+    for key in OPERATING_COST_FIELDS:
+        raw = policy.get(key, policy.get("estimated_overhead_cost_pence", 0) if key == "fixed_cost_pence" else 0)
+        if isinstance(raw, bool):
+            raise ValueError("Operating costs must be finite non-negative numbers")
+        try:
+            value = Decimal(str(raw))
+        except (InvalidOperation, ValueError):
+            raise ValueError("Operating costs must be finite non-negative numbers") from None
+        if not value.is_finite() or value < 0:
+            raise ValueError("Operating costs must be finite non-negative numbers")
+        values[key] = value
+    return values
+
+
 def non_energy_cost_breakdown(policy: dict) -> dict:
-    """Return configurable non-energy cycle costs for one program policy."""
-    fixed_cost = float(policy.get("fixed_cost_pence", policy.get("estimated_overhead_cost_pence", 0)) or 0)
-    water_litres = float(policy.get("water_litres", 0) or 0)
-    water_cost_per_litre = float(policy.get("water_cost_pence_per_litre", 0) or 0)
-    water_cost = water_litres * water_cost_per_litre
-    wear_cost = float(policy.get("wear_cost_pence", 0) or 0)
-    total = fixed_cost + water_cost + wear_cost
-    return {
-        "fixed_cost_pence": round(fixed_cost, 4),
-        "water_litres": round(water_litres, 4),
-        "water_cost_pence_per_litre": round(water_cost_per_litre, 6),
-        "water_cost_pence": round(water_cost, 4),
-        "wear_cost_pence": round(wear_cost, 4),
-        "non_energy_cost_pence": round(total, 4),
-    }
+    """Keep missing operating costs visible while treating them as zero."""
+    with localcontext() as context:
+        context.prec = 80
+        values = _operating_values(policy)
+        water = values["water_litres"] * values["water_cost_pence_per_litre"]
+        total = (values["fixed_cost_pence"] + values["consumables_cost_pence"]
+                 + water + values["wear_cost_pence"])
+        if not math.isfinite(float(total)):
+            raise ValueError("Operating cost total must be finite")
+        unconfigured = policy.get("unconfigured_costs")
+        if unconfigured is None:
+            unconfigured = [key for key in OPERATING_COST_FIELDS if key not in policy
+                            and not (key == "fixed_cost_pence" and "estimated_overhead_cost_pence" in policy)]
+        return {
+            **{key: float(value) for key, value in values.items()},
+            "water_cost_pence": float(water), "non_energy_cost_pence": float(total),
+            "unconfigured_costs": list(unconfigured),
+        }
 
 
 def apply_operating_costs(estimate: dict, policy: dict) -> dict:
-    """Combine tariff energy cost with configurable per-cycle operating costs."""
-    non_energy = non_energy_cost_breakdown(policy)
-    energy_cost = float(estimate["energy_cost_pence"])
-    total_cost = energy_cost + non_energy["non_energy_cost_pence"]
-    return {
-        **estimate,
-        **non_energy,
-        "energy_cost_pence": round(energy_cost, 4),
-        "total_cost_pence": round(total_cost, 4),
-        "operating_cost_breakdown": {
-            "energy_cost_pence": round(energy_cost, 4),
-            **non_energy,
-            "total_cost_pence": round(total_cost, 4),
-        },
-    }
+    """Use unrounded total cost for ranking and strictly positive net benefit."""
+    with localcontext() as context:
+        context.prec = 80
+        non_energy = non_energy_cost_breakdown(policy)
+        values = _operating_values(policy)
+        energy = Decimal(str(estimate["energy_cost_pence"]))
+        total = (energy + values["fixed_cost_pence"] + values["consumables_cost_pence"]
+                 + values["water_litres"] * values["water_cost_pence_per_litre"] + values["wear_cost_pence"])
+        if not energy.is_finite() or not math.isfinite(float(total)):
+            raise ValueError("Cycle cost must be finite")
+        financial = {"energy_cost_pence": float(energy), **non_energy,
+                     "total_cost_pence": float(total), "net_benefit_pence": float(-total),
+                     "positive_net_benefit": total < 0}
+        return {**estimate, **financial, "operating_cost_breakdown": dict(financial)}
 
 
 def summarize_window_candidate(candidate: dict | None, now_cost: float | None) -> dict | None:
@@ -666,6 +705,10 @@ def summarize_window_candidate(candidate: dict | None, now_cost: float | None) -
         "cost_pence": candidate.get("total_cost_pence"),
         "energy_cost_pence": candidate.get("energy_cost_pence"),
         "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
+        "net_benefit_pence": candidate.get("net_benefit_pence"),
+        "positive_net_benefit": candidate.get("positive_net_benefit", False),
+        "unconfigured_costs": candidate.get("unconfigured_costs", []),
+        "operating_cost_breakdown": candidate.get("operating_cost_breakdown"),
         "saving_vs_now_pence": saving,
         "energy_kwh": candidate.get("energy_kwh"),
         "confidence": candidate.get("confidence"),
@@ -715,6 +758,10 @@ def summarize_decision(
         "cost_pence": cost,
         "energy_cost_pence": candidate.get("energy_cost_pence"),
         "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
+        "net_benefit_pence": candidate.get("net_benefit_pence"),
+        "positive_net_benefit": candidate.get("positive_net_benefit", False),
+        "unconfigured_costs": candidate.get("unconfigured_costs", []),
+        "operating_cost_breakdown": candidate.get("operating_cost_breakdown"),
         "saving_vs_now_pence": saving,
         "energy_kwh": candidate.get("energy_kwh"),
         "confidence": candidate.get("confidence"),
@@ -759,6 +806,10 @@ def summarize_program_option(candidate: dict, reference_utc: datetime, now_cost:
         "cost_pence": cost,
         "energy_cost_pence": candidate.get("energy_cost_pence"),
         "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
+        "net_benefit_pence": candidate.get("net_benefit_pence"),
+        "positive_net_benefit": candidate.get("positive_net_benefit", False),
+        "unconfigured_costs": candidate.get("unconfigured_costs", []),
+        "operating_cost_breakdown": candidate.get("operating_cost_breakdown"),
         "saving_vs_now_pence": saving,
         "energy_kwh": candidate.get("energy_kwh"),
         "confidence": candidate.get("confidence"),
@@ -783,10 +834,9 @@ def summarize_program_option(candidate: dict, reference_utc: datetime, now_cost:
 def _negative_candidate_sort_key(candidate: dict, reference_utc: datetime) -> tuple:
     return (
         candidate["start"] > reference_utc,
-        -candidate.get("negative_price_priority", 50),
-        -candidate.get("energy_kwh_per_minute", 0),
-        -candidate.get("energy_kwh", 0),
         candidate["total_cost_pence"],
+        -candidate.get("negative_price_priority", 50),
+        candidate["finish"] - candidate["start"],
         candidate.get("preference_rank", 50),
     )
 
@@ -974,6 +1024,10 @@ def summarize_forecast_candidates(candidates: list[dict], limit: int = 300) -> l
             "cost_pence": candidate.get("total_cost_pence"),
             "energy_cost_pence": candidate.get("energy_cost_pence"),
             "non_energy_cost_pence": candidate.get("non_energy_cost_pence"),
+            "net_benefit_pence": candidate.get("net_benefit_pence"),
+            "positive_net_benefit": candidate.get("positive_net_benefit", False),
+            "unconfigured_costs": candidate.get("unconfigured_costs", []),
+            "operating_cost_breakdown": candidate.get("operating_cost_breakdown"),
             "energy_kwh": candidate.get("energy_kwh"),
             "confidence": candidate.get("confidence"),
             "is_overnight_start": candidate.get("is_overnight_start"),
@@ -1068,7 +1122,11 @@ def forecast_cycle_costs(
                 policy,
                 _negative_power_window_fit(start, model, periods),
             )
-            negative_eligible = policy["allow_negative_price_run"] and negative_fit["fits"]
+            estimate = apply_operating_costs(estimate, policy)
+            negative_eligible = bool(policy["allow_negative_price_run"] and negative_fit["fits"]
+                                     and estimate["positive_net_benefit"])
+            if policy["allow_negative_price_run"] and negative_fit["fits"] and not estimate["positive_net_benefit"]:
+                diagnostic["rejected_unprofitable_points"] = diagnostic.get("rejected_unprofitable_points", 0) + 1
             if policy["allow_negative_price_run"] and not negative_fit["fits"]:
                 diagnostic["rejected_negative_power_window_points"] += 1
             normal_eligible = bool(policy["allow_normal_recommendation"] and not cooldown_active)
@@ -1077,7 +1135,6 @@ def forecast_cycle_costs(
                 if negative_eligible:
                     diagnostic["negative_cooldown_bypass_points"] += 1
             if normal_eligible or negative_eligible:
-                estimate = apply_operating_costs(estimate, policy)
                 diagnostic["priced_points"] += 1
                 is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
                 candidate = {
@@ -1087,6 +1144,10 @@ def forecast_cycle_costs(
                     "total_cost_pence": estimate["total_cost_pence"],
                     "energy_cost_pence": estimate["energy_cost_pence"],
                     "non_energy_cost_pence": estimate["non_energy_cost_pence"],
+                    "net_benefit_pence": estimate["net_benefit_pence"],
+                    "positive_net_benefit": estimate["positive_net_benefit"],
+                    "unconfigured_costs": estimate["unconfigured_costs"],
+                    "operating_cost_breakdown": estimate["operating_cost_breakdown"],
                     "energy_kwh": estimate["energy_kwh"],
                     "confidence": model.get("confidence", 0),
                     "is_overnight_start": is_overnight,
@@ -1102,6 +1163,8 @@ def forecast_cycle_costs(
                 reason = "cooldown_active"
             elif diagnostic["rejected_blocked_points"]:
                 reason = "blocked_window"
+            elif diagnostic.get("rejected_unprofitable_points"):
+                reason = "no_positive_net_benefit"
             elif diagnostic["rejected_negative_power_window_points"]:
                 reason = "negative_power_window_mismatch"
             else:
@@ -1242,7 +1305,11 @@ def recommend_cycle(
                 policy,
                 _negative_power_window_fit(start, model, periods),
             )
-            negative_eligible = policy["allow_negative_price_run"] and negative_fit["fits"]
+            estimate = apply_operating_costs(estimate, policy)
+            negative_eligible = bool(policy["allow_negative_price_run"] and negative_fit["fits"]
+                                     and estimate["positive_net_benefit"])
+            if policy["allow_negative_price_run"] and negative_fit["fits"] and not estimate["positive_net_benefit"]:
+                diagnostic["rejected_unprofitable_points"] = diagnostic.get("rejected_unprofitable_points", 0) + 1
             if policy["allow_negative_price_run"] and not negative_fit["fits"]:
                 diagnostic["rejected_negative_power_window_points"] += 1
                 if negative_fit.get("reason") == "maximum_runs_per_window_reached":
@@ -1253,7 +1320,6 @@ def recommend_cycle(
                     rejected_negative_run_history += 1
             if immediate_probe and not negative_eligible:
                 continue
-            estimate = apply_operating_costs(estimate, policy)
             normal_eligible = bool(
                 policy["allow_normal_recommendation"] and not cooldown_active and not immediate_probe
             )
@@ -1272,6 +1338,10 @@ def recommend_cycle(
                 "cost_breakdown": estimate["cost_breakdown"],
                 "overhead_cost_pence": estimate["fixed_cost_pence"],
                 "fixed_cost_pence": estimate["fixed_cost_pence"],
+                "consumables_cost_pence": estimate["consumables_cost_pence"],
+                "net_benefit_pence": estimate["net_benefit_pence"],
+                "positive_net_benefit": estimate["positive_net_benefit"],
+                "unconfigured_costs": estimate["unconfigured_costs"],
                 "water_litres": estimate["water_litres"],
                 "water_cost_pence_per_litre": estimate["water_cost_pence_per_litre"],
                 "water_cost_pence": estimate["water_cost_pence"],
@@ -1325,6 +1395,8 @@ def recommend_cycle(
                 diagnostic.update(status="excluded", reason="maximum_runs_per_window_reached")
             elif diagnostic.get("rejected_negative_run_history_points"):
                 diagnostic.update(status="excluded", reason="negative_run_history_incomplete")
+            elif diagnostic.get("rejected_unprofitable_points"):
+                diagnostic.update(status="excluded", reason="no_positive_net_benefit")
             elif diagnostic["rejected_negative_power_window_points"]:
                 diagnostic.update(status="excluded", reason="negative_power_window_mismatch")
             else:
@@ -1333,6 +1405,7 @@ def recommend_cycle(
     negative_unavailable_reason = (
         "maximum_runs_per_window_reached" if rejected_negative_run_limits
         else "negative_run_history_incomplete" if rejected_negative_run_history
+        else "no_positive_net_benefit" if any(item.get("rejected_unprofitable_points") for item in program_diagnostics)
         else "no_negative_price_candidate"
     )
     if not candidates:
@@ -1572,7 +1645,7 @@ def recommend_cycle(
             now_cost=now_cost,
             ready_to_start=bool(best_negative and best_negative["start"] <= reference_utc),
             reason=(
-                "best_negative_price_energy_intensity"
+                "best_negative_price_net_benefit"
                 if best_negative else
                 negative_unavailable_reason
             ),

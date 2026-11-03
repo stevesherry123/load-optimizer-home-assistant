@@ -1,5 +1,9 @@
 # Optional Dashboard
 
+The unreleased full and beta templates include a **Cycle costs** card showing
+electricity, consumables, water, wear, total cost and unconfigured assumptions.
+See [operating costs](operating-costs.md) for the calculation and configuration.
+
 ## Start With One Appliance
 
 For the [new-install guide](getting-started.md), start with

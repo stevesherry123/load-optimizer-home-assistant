@@ -153,7 +153,7 @@ def build():
         section(deepcopy(next_wash), schedule, controls),
         section(entities("Appliance", 1, [("cycle_state", "Cycle"), ("power", "Power"),
             ("data_freshness", "Source freshness"), ("remote_activation_check", "Remote start")]),
-            recommendation),
+            recommendation, deepcopy(next(card for card in walk(full) if card.get("title") == "Cycle costs"))),
         section(manual,
             command("Start selected programme", "button.load_optimizer_1_request_now_override",
                 "Start the selected dishwasher programme now?", "play-circle-outline"),
