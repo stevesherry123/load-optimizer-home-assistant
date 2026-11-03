@@ -35,6 +35,7 @@ CONTROL_DEFAULTS: dict[str, Any] = {
     "auto_mode_enabled": False,
     "auto_negative_price_enabled": False,
     "door_opened_since_last_cycle": False,
+    "door_open_minimum_minutes": 2.0,
     "override_program": "engine",
     "special_price_window_enabled": False,
     "special_price_window_start": None,
@@ -100,6 +101,7 @@ class NativeOrchestrator:
         self._cancelling = False
         self._update_callback: Callable[[dict[str, Any]], None] | None = None
         self._automatic_preflight: Callable[[dict[str, Any]], Awaitable[str | None]] | None = None
+        self._door_opened_at: datetime | None = None
 
     def set_automatic_preflight(self, check: Callable[[dict[str, Any]], Awaitable[str | None]]) -> None:
         """Use the source adapter for fresh automatic command-time checks."""
@@ -265,6 +267,7 @@ class NativeOrchestrator:
     async def async_stop(self) -> None:
         """Stop listeners and any pending execution task."""
         self._stopping = True
+        self._door_opened_at = None
         for remove in self._remove_listeners:
             remove()
         self._remove_listeners.clear()
@@ -304,9 +307,25 @@ class NativeOrchestrator:
                     "confirmed_cycle_started_at", new_state.last_changed.isoformat()
                 ))
                 self._async_schedule_background(self.async_set("door_opened_since_last_cycle", False))
-        if entity_id == self.config.get("bosch_door_sensor") and new_state:
-            if new_state.state in {"on", "open"}:
-                self._async_schedule_background(self.async_set("door_opened_since_last_cycle", True))
+        if entity_id == self.config.get("bosch_door_sensor"):
+            previous = old_state.state if old_state else None
+            current = new_state.state if new_state else None
+            if current in {"on", "open"} and previous in {"off", "closed"}:
+                self._door_opened_at = None if self._is_running() else datetime.now(timezone.utc)
+            elif current in {"off", "closed"} and previous in {"on", "open"}:
+                opened_at, self._door_opened_at = self._door_opened_at, None
+                if opened_at is not None:
+                    seconds = (datetime.now(timezone.utc) - opened_at).total_seconds()
+                    qualifies = seconds >= self.door_open_minimum_minutes * 60
+                    self._record_schedule_event(
+                        "door_closed", "door_loading_duration_met" if qualifies else "door_open_too_brief",
+                        open_seconds=round(seconds, 1),
+                    )
+                    if qualifies:
+                        self.state["door_opened_since_last_cycle"] = True
+                    self._async_schedule_background(self._async_save())
+            elif current not in {"on", "open"} or previous not in {"on", "open"}:
+                self._door_opened_at = None
         if entity_id == "sensor.load_optimizer_1_cycle_state" and new_state:
             if new_state.state == "running" and (not old_state or old_state.state != "running"):
                 self.state["capture_had_reported_run"] = (
@@ -321,6 +340,9 @@ class NativeOrchestrator:
 
     async def async_set(self, key: str, value: Any) -> None:
         """Update and persist one native orchestration value."""
+        if key == "door_open_minimum_minutes":
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0.5 <= value <= 60:
+                raise ValueError("Door-open minimum must be between 0.5 and 60 minutes")
         self.state[key] = value
         await self._async_save()
         self._publish()
@@ -405,6 +427,7 @@ class NativeOrchestrator:
         try:
             await self._async_cancel_execution()
             self.state["request"] = None
+            self.state["door_opened_since_last_cycle"] = False
             await self._async_outcome(
                 "cancelled",
                 request.get("mode"),
@@ -1003,6 +1026,12 @@ class NativeOrchestrator:
     def _request_due(self, request: dict[str, Any], now: datetime) -> bool:
         start = self._parse_datetime(request.get("start"))
         return start is None or start <= now + timedelta(minutes=1)
+
+    @property
+    def door_open_minimum_minutes(self) -> float:
+        """Use a safe default for old or malformed stored settings."""
+        value = self.state.get("door_open_minimum_minutes", 2.0)
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and 0.5 <= value <= 60 else 2.0
 
     @staticmethod
     def _parse_datetime(value: Any) -> datetime | None:

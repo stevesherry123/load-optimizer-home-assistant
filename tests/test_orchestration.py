@@ -129,6 +129,77 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         projected = self.scheduler.legacy_state("input_text.load_optimizer_1_last_start_decision_snapshot")
         self.assertEqual(projected["state"], "{}")
 
+    async def door_event(self, previous, current):
+        self.put("binary_sensor.door", current)
+        self.scheduler._async_state_changed(SimpleNamespace(data={
+            "entity_id": "binary_sensor.door",
+            "old_state": SimpleNamespace(state=previous) if previous is not None else None,
+            "new_state": self.values["binary_sensor.door"],
+        }))
+        if self.scheduler._background_tasks:
+            await asyncio.gather(*self.scheduler._background_tasks)
+
+    async def test_door_duration_authorises_only_at_or_above_threshold(self):
+        self.scheduler.state["active"] = False
+        for seconds, expected in ((119, False), (120, True), (180, True)):
+            self.scheduler.state["door_opened_since_last_cycle"] = False
+            await self.door_event("off", "on")
+            self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+            Clock.current += timedelta(seconds=seconds)
+            await self.door_event("on", "off")
+            self.assertEqual(self.scheduler.state["door_opened_since_last_cycle"], expected)
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_restored_door_state_outage_and_running_cycle_never_authorise(self):
+        self.scheduler.state.update(active=False, door_opened_since_last_cycle=False)
+        await self.door_event(None, "on")
+        Clock.current += timedelta(minutes=3)
+        await self.door_event("on", "off")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        await self.door_event("off", "on")
+        Clock.current += timedelta(minutes=3)
+        await self.door_event("on", "unavailable")
+        await self.door_event("unavailable", "off")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        await self.door_event("off", "on")
+        self.scheduler._async_state_changed(SimpleNamespace(data={
+            "entity_id": "binary_sensor.door", "old_state": self.values["binary_sensor.door"],
+            "new_state": None,
+        }))
+        Clock.current += timedelta(minutes=3)
+        await self.door_event(None, "on")
+        await self.door_event("on", "off")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        self.put("sensor.load_optimizer_1_cycle_state", "running")
+        await self.door_event("off", "on")
+        Clock.current += timedelta(minutes=3)
+        await self.door_event("on", "off")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+
+    async def test_threshold_is_configurable_and_short_reopening_preserves_permission(self):
+        self.scheduler.state.update(active=False, door_opened_since_last_cycle=False)
+        await self.scheduler.async_set("door_open_minimum_minutes", 3)
+        await self.door_event("closed", "open")
+        Clock.current += timedelta(minutes=2)
+        await self.door_event("open", "closed")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        await self.door_event("closed", "open")
+        Clock.current += timedelta(minutes=3)
+        await self.door_event("open", "closed")
+        self.assertTrue(self.scheduler.state["door_opened_since_last_cycle"])
+        await self.door_event("closed", "open")
+        Clock.current += timedelta(seconds=10)
+        await self.door_event("open", "closed")
+        self.assertTrue(self.scheduler.state["door_opened_since_last_cycle"])
+        for value in (0, 61, float("nan"), True, "2"):
+            with self.assertRaises(ValueError):
+                await self.scheduler.async_set("door_open_minimum_minutes", value)
+
+    async def test_cancellation_clears_normal_wash_permission(self):
+        await self.scheduler.async_cancel()
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        self.assertIsNone(self.scheduler.state["request"])
+
     async def test_overnight_waits_for_whole_night_prices_without_consuming_reservation(self):
         for coverage, reason in (({}, "overnight_tariff_coverage_incomplete"),
                                  ({"complete": False, "search_complete": False}, "overnight_search_horizon_incomplete")):
