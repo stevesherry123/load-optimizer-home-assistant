@@ -70,6 +70,10 @@ jobs:
         run: python tests/ha_runtime_review_smoke.py
       - name: Verify appliance cancellation, unload and physical interlocks
         run: python tests/ha_command_safety_smoke.py
+      - name: Verify dishwasher door readiness and script actions without hardware
+        run: |
+          python tests/ha_door_readiness_smoke.py
+          python tests/ha_dishwasher_scripts_smoke.py
       - name: Verify travelling-browser tariff chart timezones
         run: python tests/ha_chart_smoke.py
       - name: Verify experimental worker scans and cancellation safety
