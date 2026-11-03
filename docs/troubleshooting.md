@@ -50,6 +50,15 @@ are separate checks.
 
 ## Dishwasher Starts
 
+The orchestration status attribute `last_start_decision_snapshot` retains the
+request used when the last execution attempt began, including its capture time.
+It is separate from `shadow_decision`, which describes the current evaluation.
+Older saved installations have no historical snapshot until a new attempt; the
+integration does not reconstruct one from today's recommendation. The legacy
+text entity is limited to 255 characters; inspect the orchestration attribute
+for the full structured record. Live connection, door and operation readings
+remain current telemetry, not historical interlock evidence.
+
 - **`shadow`:** native control is inactive. Completing learning or filling control
   references does not activate it. Follow the fresh-install
   [control guide](dishwasher-control.md), or the separate legacy migration guide.

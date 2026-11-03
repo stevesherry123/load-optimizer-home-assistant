@@ -2,6 +2,7 @@
 
 import ast
 import asyncio
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import logging
 from pathlib import Path
@@ -19,7 +20,7 @@ from legacy.costing import recommend_cycle
 tree = ast.parse(SOURCE.read_text())
 tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
 namespace = {
-    "asyncio": asyncio, "datetime": datetime, "timedelta": timedelta,
+    "asyncio": asyncio, "deepcopy": deepcopy, "datetime": datetime, "timedelta": timedelta,
     "timezone": timezone, "logging": logging, "ZoneInfo": ZoneInfo,
     "dt_util": SimpleNamespace(as_local=lambda now: now.astimezone(ZoneInfo("Europe/London"))),
     "Any": object, "Callable": object, "HomeAssistant": object, "ConfigEntry": object,
@@ -92,6 +93,41 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
             })
         self.values[entity_id] = SimpleNamespace(state=state, attributes=attributes,
                                                 last_changed=Clock.current)
+
+    async def test_start_snapshot_is_detached_and_survives_later_decisions_and_reload(self):
+        request = {"mode": "automatic", "program": "Eco50", "automatic": True,
+                   "start": Clock.current.isoformat(), "cost_pence": 23.5,
+                   "planning_coverage": {"complete": True}}
+        self.scheduler._async_start_allowed = AsyncMock(return_value=True)
+        # No selectable programme: exercise capture/persistence without hardware calls.
+        await self.scheduler._async_execute(request)
+        captured = deepcopy(self.scheduler.state["last_start_decision_snapshot"])
+        self.assertEqual(captured["request"], request)
+        self.assertEqual(captured["captured_at"], self.scheduler.state["last_attempt"])
+        request["planning_coverage"]["complete"] = False
+        self.scheduler.state["shadow_decision"] = {"action": "wait", "reason": "appliance_not_idle"}
+        self.assertEqual(self.scheduler.state["last_start_decision_snapshot"], captured)
+        saved = deepcopy(self.scheduler.store.async_save.await_args.args[0])
+        restored = NativeOrchestrator(self.hass, SimpleNamespace(entry_id="restored", data={}, options={}), None)
+        restored.store = SimpleNamespace(async_load=AsyncMock(return_value=saved), async_save=AsyncMock())
+        await restored.async_load()
+        self.assertEqual(restored.state["last_start_decision_snapshot"], captured)
+        projected = restored.legacy_state("input_text.load_optimizer_1_last_start_decision_snapshot")
+        self.assertIn("execute", projected["state"])
+        self.assertNotIn("appliance_not_idle", projected["state"])
+
+    async def test_preflight_veto_does_not_replace_previous_execution_snapshot(self):
+        previous = {"action": "execute", "request": {"program": "Eco50"}}
+        self.scheduler.state["last_start_decision_snapshot"] = deepcopy(previous)
+        self.scheduler._async_start_allowed = AsyncMock(return_value=False)
+        await self.scheduler._async_execute({"mode": "now", "program": "MixedLoad"})
+        self.assertEqual(self.scheduler.state["last_start_decision_snapshot"], previous)
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_old_store_does_not_invent_a_historical_decision(self):
+        self.scheduler.state["shadow_decision"] = {"action": "wait", "reason": "current_only"}
+        projected = self.scheduler.legacy_state("input_text.load_optimizer_1_last_start_decision_snapshot")
+        self.assertEqual(projected["state"], "{}")
 
     async def test_overnight_waits_for_whole_night_prices_without_consuming_reservation(self):
         for coverage, reason in (({}, "overnight_tariff_coverage_incomplete"),

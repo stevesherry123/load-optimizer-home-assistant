@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any, Awaitable, Callable
@@ -48,6 +49,7 @@ CONTROL_DEFAULTS: dict[str, Any] = {
     "last_program": None,
     "last_mode": None,
     "last_attempt": None,
+    "last_start_decision_snapshot": None,
     "last_auto_negative_price_request": None,
     "last_auto_normal_request": None,
     "run_history": [],
@@ -644,6 +646,11 @@ class NativeOrchestrator:
             return
         self.state["execution_status"] = "commanding"
         self.state["last_attempt"] = datetime.now(timezone.utc).isoformat()
+        self.state["last_start_decision_snapshot"] = {
+            "action": "execute",
+            "captured_at": self.state["last_attempt"],
+            "request": deepcopy(request),
+        }
         self._publish()
         program_key = str(program)
         if not program_key.startswith(PROGRAM_PREFIX):
@@ -1360,7 +1367,7 @@ class NativeOrchestrator:
                 "last_message"
             ),
             "input_text.load_optimizer_1_last_start_decision_snapshot": str(
-                self.state.get("shadow_decision") or {}
+                self.state.get("last_start_decision_snapshot") or {}
             )[:255],
             "input_text.load_optimizer_1_remote_start_blocked_programs": "",
         }
