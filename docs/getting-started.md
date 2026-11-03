@@ -12,11 +12,15 @@ recommendation. Automatic starting is a separate, optional step.
   sensor in **kWh**. A switch alone is not a power sensor.
 - Check the [compatibility guide](compatibility.md) before planning device control.
 
-In HACS, add `https://github.com/stevesherry123/load-optimizer-home-assistant` as
-a custom repository of type **Integration**, then download Load Optimizer.
+Open **HACS**, search for **Load Optimizer** in the default catalogue and
+download the integration. If it is not listed in your catalogue, add
+`https://github.com/stevesherry123/load-optimizer-home-assistant` through
+**Custom repositories** with category **Integration** as a fallback, then download it.
 Restart Home Assistant and choose **Settings > Devices & services > Add
 integration > Load Optimizer**. Downloading and configuring are separate steps.
 Choose a stable release; prereleases are for opted-in testers.
+Existing custom-repository users do not need to remove or recreate their
+integration when it becomes available in the default catalogue.
 
 ## One Appliance: Learning And Recommendations
 

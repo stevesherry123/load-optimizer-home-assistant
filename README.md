@@ -26,20 +26,26 @@ Your existing tariff, appliance and vehicle integrations remain required.
 
 ## HACS Installation
 
-Until this repository is included as a default HACS repository, add it as a
-custom repository:
+Load Optimizer is included in the default HACS catalogue.
+
+1. Open **HACS** in Home Assistant and search for **Load Optimizer**.
+2. Download the integration, choosing the latest **stable GitHub release**.
+3. Restart Home Assistant.
+4. Go to **Settings > Devices & services > Add integration**, then search for
+   **Load Optimizer** to configure it.
+
+If it does not appear in your HACS catalogue, use **Custom repositories** as a
+fallback. Add the following URL with category **Integration**, then download
+**Load Optimizer** and follow the restart and configuration steps above:
 
 ```text
 https://github.com/stevesherry123/load-optimizer-home-assistant
 ```
 
-Choose category **Integration**, install **Load Optimizer**, restart Home
-Assistant, then add **Load Optimizer** from Settings > Devices & services.
-
-Choose the latest **stable GitHub release**, not a development branch. The
-HACS catalogue request is [#11744](https://github.com/hacs/default/pull/11744);
-submission is not acceptance. Once accepted and scanned, users can find the
-integration directly in HACS without adding a custom repository.
+Do not choose a development branch for a normal installation. Catalogue
+inclusion was [approved and merged](https://github.com/hacs/default/pull/11744)
+on 2 November 2026. Existing custom-repository installations do not need to be
+removed or recreated; keep your configured integration and its learning data.
 
 Home Assistant **2024.12 or later** is required. The Ofgem benchmark is for
 Great Britain; other supplier integrations can supply compatible tariff data.

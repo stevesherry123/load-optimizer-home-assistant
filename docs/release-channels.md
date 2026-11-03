@@ -60,10 +60,15 @@ replace an existing tag merely to update its documentation.
 
 ## Catalogue Acceptance
 
-The request is [hacs/default#11744](https://github.com/hacs/default/pull/11744).
-Use that page for current reviews and status rather than a dated work diary.
-A merged request is the acceptance signal. The
-listing follows a scheduled catalogue scan, so it is not instantaneous.
+Load Optimizer was approved and added to the default HACS catalogue on
+2 November 2026 through
+[hacs/default#11744](https://github.com/hacs/default/pull/11744).
+New users should search for **Load Optimizer** in HACS; custom-repository setup
+is a fallback if their catalogue has not refreshed. Existing custom-repository
+users do not need to remove their configured integration or re-import learning.
+
+A merged request is the acceptance signal. Catalogue distribution follows a
+scheduled scan, so inclusion is not instantaneous after a merge.
 
 GitHub can notify subscribers through its inbox, mobile app or email according to
 their account settings. The request page remains
