@@ -36,25 +36,44 @@ async def permissions(hass):
         "mothball_legacy_addon": {}, "recover": {}, "prepare_orchestration_migration": {},
         "activate_native_orchestration": {}, "deactivate_native_orchestration": {},
     }
-    hass.data[DOMAIN] = {"permissions-test": SimpleNamespace(
+    hass.data[DOMAIN] = {}
+    beta_actions = {}
+    if hass.services.has_service(DOMAIN, "analyse_tariffs"):
+        coordinator = SimpleNamespace(
+            tariff_intelligence=SimpleNamespace(async_export=AsyncMock(return_value={}),
+                                                async_import=AsyncMock(return_value={})),
+            narrative=SimpleNamespace(async_generate=AsyncMock(), snapshot=Mock(return_value={"status": "disabled"})),
+            data={"tariff_intelligence": {}}, async_request_refresh=AsyncMock(), async_update_listeners=Mock(),
+            legacy_runtime=None, orchestrator=None, orchestration_migration=None,
+        )
+        hass.data[DOMAIN]["beta-security-entry"] = coordinator
+        beta_actions = {
+            "analyse_tariffs": {}, "export_tariff_history": {},
+            "import_tariff_history": {"history_json": "{}"},
+            "generate_tariff_summary": {"ai_task_entity": "ai_task.synthetic_security_test"},
+        }
+        actions.update({name: {"entry_id": "beta-security-entry", **data}
+                        for name, data in beta_actions.items()})
+    hass.data[DOMAIN].update({"permissions-test": SimpleNamespace(
         legacy_runtime=SimpleNamespace(async_import_state=AsyncMock(return_value={"status": "imported", "instances": []})),
         orchestrator=None, async_request_refresh=AsyncMock(),
-    )}
+    )})
     for service, data in actions.items():
+        response = service in beta_actions and service != "analyse_tariffs"
         for user_id, exception in ((ordinary.id, Unauthorized), ("missing-user", UnknownUser)):
             before = list(hass.states.async_all())
             try:
                 await hass.services.async_call(DOMAIN, service, data, blocking=True,
-                                               context=Context(user_id=user_id))
+                                               context=Context(user_id=user_id), return_response=response)
             except exception:
                 pass
             else:
                 raise AssertionError(f"Unauthorized action allowed: {service}")
             assert list(hass.states.async_all()) == before
         await hass.services.async_call(DOMAIN, service, data, blocking=True,
-                                       context=Context(user_id=admin.id))
+                                       context=Context(user_id=admin.id), return_response=response)
         # System automations keep HA's documented administrator-service behaviour.
-        await hass.services.async_call(DOMAIN, service, data, blocking=True)
+        await hass.services.async_call(DOMAIN, service, data, blocking=True, return_response=response)
     await hass.async_block_till_done()
     for entity_id in ("sensor.load_optimizer_migration_status",
                       "sensor.load_optimizer_legacy_addon_status", "sensor.load_optimizer_recovery_status"):
@@ -67,7 +86,7 @@ async def permissions(hass):
         pass
     else:
         raise AssertionError("Import without a learned runtime must report an actionable error")
-    print("All six maintenance actions reject ordinary and unknown users; admin/system calls work")
+    print(f"All {len(actions)} maintenance/history/AI actions reject ordinary and unknown users; admin/system calls work")
 
 
 async def privacy(hass):
@@ -208,6 +227,7 @@ async def http_boundaries():
 async def main():
     with tempfile.TemporaryDirectory(prefix="load-optimizer-security-") as config_dir:
         hass = HomeAssistant(config_dir)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         try:
             assert await async_from_config_dict({"homeassistant": {"name": "Isolated security test"}}, hass) is hass

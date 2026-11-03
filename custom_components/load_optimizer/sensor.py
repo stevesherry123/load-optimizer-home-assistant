@@ -124,6 +124,21 @@ async def async_setup_entry(
 ) -> None:
     """Set up Load Optimizer sensors."""
     coordinator: LoadOptimizerCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([
+        LoadOptimizerIntelligenceSensor(coordinator, key, name, unit)
+        for key, name, unit in (
+            ("status", "Analysis Status", None),
+            ("tomorrow_classification", "Tomorrow Classification", None),
+            ("tomorrow_average", "Tomorrow Average Price", "p/kWh"),
+            ("volatility", "Volatility", None),
+            ("pattern", "Price Pattern", None),
+            ("evening_peak", "Evening Peak", None),
+            ("data_quality", "Data Quality", None),
+            ("summary", "Daily Summary", None),
+            ("ai_summary_status", "Optional Summary Status", None),
+            *((f"window_{hours}", f"Cheapest {hours} Hour Start", None) for hours in range(1, 5)),
+        )
+    ])
     if entry.data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
         entities = [
             LoadOptimizerRuntimeSensor(coordinator),
@@ -147,6 +162,52 @@ async def async_setup_entry(
         [LoadOptimizerSensor(coordinator, description) for description in SENSOR_DESCRIPTIONS]
         + [LoadOptimizerPriceCapSensor(coordinator)]
     )
+
+
+class LoadOptimizerIntelligenceSensor(LoadOptimizerEntity, SensorEntity):
+    """Compact tariff analysis on its own device, without exposing history."""
+
+    _attr_icon = "mdi:chart-bell-curve"
+
+    def __init__(self, coordinator, key, name, unit):
+        super().__init__(coordinator, f"tariff_intelligence_{key}", name)
+        self.key = key
+        self._attr_native_unit_of_measurement = unit
+        if key.startswith("window_"):
+            self._attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    def device_info(self):
+        entry = self.coordinator.config_entry
+        return DeviceInfo(identifiers={(DOMAIN, f"{entry.entry_id}_tariff_intelligence")},
+                          manufacturer=MANUFACTURER, name=f"{entry.title} Tariff Intelligence",
+                          model="Deterministic tariff analysis",
+                          **registered_hub_link(self.coordinator.hass, entry))
+
+    @property
+    def native_value(self):
+        result = self.coordinator.data.get("tariff_intelligence", {})
+        if self.key == "ai_summary_status":
+            return result.get("narrative", {}).get("status", "disabled")
+        if self.key.startswith("window_"):
+            value = result.get("windows", {}).get(self.key[-1])
+            return datetime.fromisoformat(value["start"]) if value else None
+        if self.key == "tomorrow_average":
+            return result.get("tomorrow_statistics", {}).get("mean")
+        return result.get(self.key)
+
+    @property
+    def extra_state_attributes(self):
+        result = self.coordinator.data.get("tariff_intelligence", {})
+        if self.key == "ai_summary_status":
+            return result.get("narrative", {})
+        if self.key.startswith("window_"):
+            return result.get("windows", {}).get(self.key[-1])
+        if self.key == "status":
+            return {key: value for key, value in result.items() if key not in {"summary", "windows"}}
+        if self.key in {"tomorrow_average", "tomorrow_classification", "volatility", "evening_peak", "pattern", "summary"}:
+            return {key: result.get(key) for key in ("tomorrow_date", "analysis_scope", "forecast_coverage")}
+        return None
 
 
 class LoadOptimizerSensor(LoadOptimizerEntity, SensorEntity):

@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - "beta/**"
   pull_request:
   schedule:
     - cron: "0 3 * * 1"
@@ -59,31 +58,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - name: Install declared minimum Home Assistant
-        run: pip install "homeassistant==2024.12.0" "home-assistant-frontend==20241127.4" "pyotp==2.8.0" "PyQRCode==1.2.1"
-      - name: Import all integration platforms and config flow
-        run: python tests/ha_import_smoke.py
-      - name: Verify cold timezone resolution, local midnight caching and DST boundaries
-        run: python tests/ha_timezone_smoke.py
-      - name: Verify worker scans, maintenance outcomes and entity ownership
-        run: python tests/ha_runtime_review_smoke.py
-      - name: Verify appliance cancellation, unload and physical interlocks
-        run: python tests/ha_command_safety_smoke.py
-      - name: Verify travelling-browser tariff chart timezones
-        run: python tests/ha_chart_smoke.py
-      - name: Verify dashboard price colours with Home Assistant templates
-        run: python tests/ha_dashboard_smoke.py
-      - name: Verify the optional beta dashboard templates and control confirmations
-        run: python tests/ha_beta_dashboard_smoke.py
-      - name: Verify real EV configuration, reload and restart persistence
-        run: python tests/ha_ev_lifecycle_smoke.py
-      - name: Verify documented clean-install examples and safe control defaults
-        run: python tests/ha_onboarding_smoke.py
-      - name: Verify sensor-outage learning and automatic no-run source enforcement
-        run: python tests/ha_runtime_safety_smoke.py
-      - name: Verify permissions, diagnostic privacy, safe imports and HTTP boundaries
-        run: python tests/ha_security_smoke.py
+        run: pip install -r dev/requirements-validation.txt
+      - name: Check the validation environment
+        run: python dev/validate.py --preflight
+      - name: Run every isolated Home Assistant acceptance check
+        run: python dev/validate.py --suite ha --output .local/ci-validation
+      - name: Publish acceptance summary
+        if: always()
+        run: |
+          if [ -f .local/ci-validation/summary.md ]; then
+            cat .local/ci-validation/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' 'Acceptance checks did not complete. Inspect the preceding environment/setup step.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f .local/ci-validation/results.json ]; then
+            python -c "import json,pathlib; p=pathlib.Path('.local/ci-validation'); r=json.loads((p/'results.json').read_text()); [(print('FAILED: '+c['name']),print((p/c['log']).read_text()[-16000:])) for c in r['checks'] if not c['passed']]"
+          fi
 
   current_ha:
     name: Current Home Assistant compatibility

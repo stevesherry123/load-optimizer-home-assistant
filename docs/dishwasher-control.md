@@ -75,6 +75,40 @@ larger template or the device's corresponding select/button entities.
 
 ## Opt Into Automatic Modes Separately
 
+Normal automatic washing requires an observed door opening followed by closure.
+The door must remain open for at least **two minutes** by default. Configure
+**Door Open Minimum** on the dishwasher device
+(`number.load_optimizer_1_door_open_minimum_minutes`, 0.5-60 minutes).
+Shorter openings do not create a new normal-wash permission. This is a loading
+heuristic, not proof of dirty dishes. Initial/restored states, interrupted door
+telemetry and openings during a running wash do not qualify. A short reopening
+does not revoke an existing permission; the closed-door safety check still applies.
+
+### Script And Voice Requests
+
+[`examples/dishwasher-scripts.yaml`](examples/dishwasher-scripts.yaml) contains
+three optional scripts: **Schedule dishwasher**, **Start dishwasher now** and
+**Cancel dishwasher schedule**. Its contents are a `scripts.yaml` mapping; merge
+them into your existing scripts configuration rather than overwriting it.
+Replace the button IDs if your registered IDs differ.
+
+The schedule and start-now scripts hand programme selection to the optimiser,
+using eligible learned programmes rather than the manual override selection.
+They require a ready recommendation and active native controller; scheduling
+before forecast data is available is not a durable request to wait for prices.
+The current schedule script uses the existing overnight window and configured
+finish constraints. It does not yet add the proposed household wake-up setting.
+Cancellation clears the pending request and normal door-based permission; it
+does not stop a running wash or disable separately opted-in negative-price runs.
+An explicit script request does not require a qualifying door opening, but all
+physical safety checks remain enforced.
+
+Scripts can be exposed through your existing Alexa/Home Assistant connection;
+optional Alexa routines can provide your chosen phrases. Load Optimizer does
+not configure Alexa, install these scripts, or send voice announcements itself.
+
+### Automatic Modes
+
 - **Automatic mode:** normal overnight scheduling. Requires a suitable policy,
   confidence, window and physical readiness. Recommendation permission alone
   does not enable automatic starts.

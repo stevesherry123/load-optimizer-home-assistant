@@ -1,11 +1,16 @@
-# EV Options Beta
+# EV Options Acceptance History
 
-Branch: `beta/ev-options-v1.5.2`, updated from stable main for v1.5.5-beta.1
-acceptance and v1.5.5 stable promotion.
-It does not include or promote the v1.6/v1.7 tariff-intelligence branches.
+This is the dated acceptance record for the now-retired
+`beta/ev-options-v1.5.2` branch and v1.5.5-beta.1/stable promotion, not a current
+installation guide. The EV editor is retained in stable v1.5.7 and the owner's
+installed combined v1.7.0-beta.7. Current branches are `main` and `beta/next`;
+see [release channels](release-channels.md).
+
+The original isolated EV slice did not promote tariff intelligence.
 The editor is now merged and released in v1.5.5, retained in v1.5.6. The latter
 adds minimum-HA appliance device-link compatibility and expands actual registry
-acceptance; 209 stable unit tests pass. Use v1.5.6 for public installation.
+acceptance; 209 stable unit tests passed at that point. Use the latest validated
+full stable release for public installation, not a historical version from this record.
 
 Implemented: the EV entry's Configure menu offers EV charging settings and
 Price-cap benchmark. Setup and editing share one schema. Saved options override

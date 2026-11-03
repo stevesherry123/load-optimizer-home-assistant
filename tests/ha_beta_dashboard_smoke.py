@@ -24,6 +24,7 @@ async def main():
     assert dashboard["views"][-1]["sections"][-1]["cards"][-1]["title"] == "Automation Capabilities"
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         dt_util.set_default_time_zone(await dt_util.async_get_time_zone("Europe/London"))
         try:
             templates = [card for card in walk(dashboard) if card.get("type") == "markdown"]

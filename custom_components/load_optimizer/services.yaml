@@ -29,3 +29,76 @@ activate_native_orchestration:
 deactivate_native_orchestration:
   name: Deactivate native orchestration
   description: Administrator only. Cancel pending native commands, stop native ownership and re-enable the captured package automations. An already running wash is not stopped.
+analyse_tariffs:
+  name: Analyse tariffs
+  description: Administrator only. Recalculate the selected entry's read-only tariff analysis.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+export_tariff_history:
+  name: Export tariff history
+  description: Administrator only. Return complete historical days as portable JSON, separate from appliance learning.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    retention_days:
+      default: 90
+      selector:
+        number:
+          min: 1
+          max: 365
+import_tariff_history:
+  name: Import tariff history
+  description: Administrator only. Validate portable history with a dry run by default. Live history is protected unless explicitly overridden.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    history_json:
+      required: true
+      selector:
+        text:
+          multiline: true
+    format:
+      default: portable
+      selector:
+        select:
+          options:
+            - portable
+            - agile_buddy
+    history_tariff_code:
+      description: Verified tariff code for the legacy cache. Must match the live destination tariff; do not infer it from a filename.
+      selector:
+        text:
+    dry_run:
+      default: true
+      selector:
+        boolean:
+    overwrite_live:
+      default: false
+      selector:
+        boolean:
+    retention_days:
+      default: 90
+      selector:
+        number:
+          min: 1
+          max: 365
+generate_tariff_summary:
+  name: Generate optional tariff summary
+  description: Administrator only. Explicitly request a compact narrative from a selected Home Assistant AI Task entity. Provider charges may apply. No automatic AI calls occur.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    ai_task_entity:
+      required: true
+      selector:
+        entity:
+          domain: ai_task
