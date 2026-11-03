@@ -76,6 +76,70 @@ LEGACY_CONFIG_HELPERS = {
 }
 
 
+REASON_MESSAGES = {
+    "power_source_unavailable": "Automatic starts are paused until valid appliance power readings return.",
+    "blocked_window_source_unavailable": "Automatic starts are paused because a configured no-run source cannot be read. Restore the source or explicitly remove it from the configuration.",
+    "automatic_overnight_mode_off": "Automatic overnight mode is off.",
+    "door_not_opened_since_last_cycle": "Waiting for the dishwasher to be loaded: the door has not opened since the last wash.",
+    "overnight_recommendation_not_ready": "Waiting for a fully priced, eligible overnight programme.",
+    "overnight_tariff_coverage_incomplete": "Waiting for prices covering the whole overnight search and possible cycle finishes before choosing a start time.",
+    "overnight_search_horizon_incomplete": "The configured search horizon does not cover the overnight window. Increase the search hours to compare the whole night.",
+    "confidence_below_threshold": "The overnight programme's learning confidence is below the allowed threshold.",
+    "negative_price_confidence_below_threshold": "The free/negative-price programme's learning confidence is below the allowed threshold.",
+    "negative_price_recommendation_not_ready": "Waiting for a fully priced programme explicitly allowed for free/negative-price runs.",
+    "no_positive_net_benefit": "No extra run has a positive estimated return after electricity and configured operating costs. Normal requested washing is unaffected.",
+    "negative_window_not_started": "A free/negative-price opportunity is available later, but it is not ready to start now.",
+    "negative_price_retry_cooldown": "Waiting for the 30-minute automatic request interval before another free/negative-price run.",
+    "maximum_runs_per_window_reached": "The allowed programme runs for this free/negative-price window have been used. Waiting for another eligible programme or window.",
+    "negative_run_history_incomplete": "A finite run limit cannot be verified from the retained learning history. Automatic free/negative-price runs are paused for this opportunity.",
+    "automatic_window_already_used": "No wash is queued. A previous automatic request has already reserved this overnight window.",
+    "appliance_not_idle": "A cycle capture is active; no new automatic request will be created.",
+    "automatic_request_available": "An automatic recommendation is available; a saved request has not yet been created.",
+    "awaiting_plan": "One wash is authorised; waiting for an eligible plan inside its start window.",
+    "no_eligible_plan_in_window": "No eligible programme can start inside the authorised window. Review programme permissions and available prices.",
+    "normal_wash_tariff_unavailable": "Required electricity prices are unavailable. Planning will resume automatically if prices return inside the original window.",
+    "normal_wash_tariff_invalid": "Electricity prices could not be verified. Restore valid tariff data before this window closes.",
+    "normal_wash_cycle_not_fully_priced": "Prices do not cover the complete wash. The request will resume when full coverage returns inside its window.",
+    "automatic_mode_off": "This automatic mode is off. Explicit wash requests remain available.",
+    "recommendation_not_ready": "No fully priced, eligible programme is available yet.",
+    "optimizer_not_ready": "Appliance learning or source data is not ready for scheduling.",
+    "request_already_pending": "A request is already pending; another automatic request will not be added.",
+    "door_currently_open": "Close the dishwasher door before a wash can start.",
+    "door_open": "Close the dishwasher door before a wash can start.",
+    "door_state_unavailable": "The dishwasher door state is unavailable; starting is blocked.",
+    "connected": "The dishwasher is disconnected.",
+    "dishwasher_not_connected": "The dishwasher is disconnected.",
+    "remote_control": "Enable remote control on the dishwasher.",
+    "remote_control_disabled": "Enable remote control on the dishwasher.",
+    "remote_start": "Enable remote start on the dishwasher.",
+    "remote_start_disabled": "Enable remote start on the dishwasher.",
+    "free_window_source_unavailable": "The free-electricity calendar could not be verified.",
+    "confidence_relaxed_for_cooldown_rotation": "A lower learning-confidence threshold applies during programme cooldown rotation.",
+    "outside_authorised_start_window": "The start no longer falls inside the authorised window. Request another wash if needed.",
+    "authorised_window_closed": "The authorised start window closed without a confirmed start. Request another wash if needed.",
+    "cancelled_by_user": "The pending schedule was cancelled. An active wash is not stopped.",
+    "one_normal_wash_requested": "One normal wash was authorised for the selected overnight window.",
+    "normal_wash_plan_updated": "The pending wash programme or start time was updated.",
+    "user_request_queued": "The requested wash was scheduled for a start-time safety check.",
+    "automatic_request_queued": "An authorised automatic wash was scheduled.",
+    "overnight_recommendation_updated": "The overnight plan was updated after a new recommendation.",
+    "door_loading_duration_met": "The observed door opening met the loading-duration threshold.",
+    "door_open_too_brief": "The door opening was too brief to authorise another wash.",
+    "capture_not_confirmed_as_wash": "A power capture was ignored because a wash was not confirmed.",
+    "cycle_state_returned_to_idle": "The recorded wash ended and the appliance returned to idle.",
+    "appliance_already_running": "The dishwasher is already washing; another start is blocked.",
+    "power_hungry_window_outside_negative_price": "The programme's high-power section no longer fits the free or negative-price period.",
+    "automatic_preflight_unavailable": "Fresh source checks could not be completed; starting is blocked.",
+    "blocked_window_overlap": "The wash would overlap a configured no-run period.",
+    "program_missing": "No eligible programme has been selected.",
+}
+
+
+def explain_reason(reason: str | None) -> str:
+    """Keep internal reason codes separate from household-facing wording."""
+    return REASON_MESSAGES.get(reason, "A scheduling check needs review; inspect the source and programme settings.")
+
+
 class NativeOrchestrator:
     """Own requests, safety checks, and appliance execution after handover."""
 
@@ -1010,7 +1074,7 @@ class NativeOrchestrator:
                     self._publish()
                     return False
             self.state["request"] = None
-            await self._async_outcome("blocked", mode, program, reason, reason.replace("_", " "))
+            await self._async_outcome("blocked", mode, program, reason, explain_reason(reason))
             return False
         return True
 
@@ -1275,7 +1339,8 @@ class NativeOrchestrator:
 
     def _record_schedule_event(self, event: str, reason: str, *, now=None, **detail) -> None:
         item = {"timestamp": (now or datetime.now(timezone.utc)).isoformat(),
-                **detail, "event": event, "reason": reason}
+                **detail, "event": event, "reason": reason,
+                "description": detail.get("message") or explain_reason(reason)}
         self.state["schedule_events"] = [item, *self.state.get("schedule_events", [])][:20]
         LOGGER.info("Dishwasher scheduling: %s (%s)", event, reason)
 
@@ -1324,6 +1389,8 @@ class NativeOrchestrator:
 
     def readiness(self, mode: str) -> dict[str, Any]:
         recommendation = self._recommendation(mode)
+        request = self.state.get("request") or {}
+        explicit_permission = mode == "overnight" and request.get("normal_wash") and request.get("automatic") is False
         blockers: list[str] = []
         warnings: list[str] = []
         if reason := self._automatic_source_block():
@@ -1344,7 +1411,7 @@ class NativeOrchestrator:
         if mode == "negative_price" and recommendation and recommendation.attributes.get("status") == "ready" and recommendation.attributes.get("positive_net_benefit") is not True:
             blockers.append("no_positive_net_benefit")
         blockers.extend(self.remote_activation_status["blockers"])
-        if mode == "overnight" and not self.state.get("door_opened_since_last_cycle"):
+        if mode == "overnight" and not explicit_permission and not self.state.get("door_opened_since_last_cycle"):
             blockers.append("door_not_opened_since_last_cycle")
         if (
             mode == "negative_price"
@@ -1358,8 +1425,10 @@ class NativeOrchestrator:
             if mode == "overnight"
             else "auto_negative_price_enabled"
         )
-        if not self.state.get(enabled_key):
+        if not explicit_permission and not self.state.get(enabled_key):
             warnings.append("automatic_mode_off")
+        if mode == "overnight" and request.get("normal_wash") and self.state.get("execution_status") == "awaiting_plan" and request.get("waiting_reason"):
+            blockers.append(request["waiting_reason"])
         delayed_start = self._state(self.config.get("bosch_operation_state_sensor")) == "BSH.Common.EnumType.OperationState.DelayedStart"
         if delayed_start:
             blockers.append("appliance_delayed_start_pending")
@@ -1369,8 +1438,12 @@ class NativeOrchestrator:
             warnings.append("request_already_pending")
         elif mode == "overnight" and self.state.get("auto_mode_enabled") and not self._overnight_window_unused(datetime.now(timezone.utc)):
             warnings.append("automatic_window_already_used")
-        if self._state(self.config.get("bosch_door_sensor")) in {"on", "open"}:
+        door = self._state(self.config.get("bosch_door_sensor"))
+        if door in {"on", "open"}:
+            blockers.append("door_open")
             warnings.append("door_currently_open")
+        elif door not in {"off", "closed"}:
+            blockers.append("door_state_unavailable")
         if (
             mode == "negative_price"
             and recommendation
@@ -1385,6 +1458,8 @@ class NativeOrchestrator:
             "state": status,
             "blockers": sorted(set(blockers)),
             "warnings": sorted(set(warnings)),
+            "blocker_messages": [explain_reason(code) for code in sorted(set(blockers))],
+            "warning_messages": [explain_reason(code) for code in sorted(set(warnings))],
             "program": recommendation.attributes.get("program") if recommendation else None,
             "start": recommendation.attributes.get("start") if recommendation else None,
             "confidence": recommendation.attributes.get("confidence") if recommendation else None,
@@ -1405,26 +1480,7 @@ class NativeOrchestrator:
                 "negative_price" if self.state.get("auto_negative_price_enabled")
                 and not self.state.get("auto_mode_enabled") else "overnight"
             )
-        messages = {
-            "power_source_unavailable": "Automatic starts are paused until valid appliance power readings return.",
-            "blocked_window_source_unavailable": "Automatic starts are paused because a configured no-run source cannot be read. Restore the source or explicitly remove it from the configuration.",
-            "automatic_overnight_mode_off": "Automatic overnight mode is off.",
-            "door_not_opened_since_last_cycle": "Waiting for the dishwasher to be loaded: the door has not opened since the last wash.",
-            "overnight_recommendation_not_ready": "Waiting for a fully priced, eligible overnight programme.",
-            "overnight_tariff_coverage_incomplete": "Waiting for prices covering the whole overnight search and possible cycle finishes before reserving a wash.",
-            "overnight_search_horizon_incomplete": "The configured search horizon does not cover the overnight window. Increase the search hours to compare the whole night.",
-            "confidence_below_threshold": "The overnight programme's learning confidence is below the allowed threshold.",
-            "negative_price_confidence_below_threshold": "The free/negative-price programme's learning confidence is below the allowed threshold.",
-            "negative_price_recommendation_not_ready": "Waiting for a fully priced programme explicitly allowed for free/negative-price runs.",
-            "no_positive_net_benefit": "No extra run has a positive estimated return after electricity and configured operating costs. Normal requested washing is unaffected.",
-            "negative_window_not_started": "A free/negative-price opportunity is available later, but it is not ready to start now.",
-            "negative_price_retry_cooldown": "Waiting for the 30-minute automatic request interval before another free/negative-price run.",
-            "maximum_runs_per_window_reached": "The allowed programme runs for this free/negative-price window have been used. Waiting for another eligible programme or window.",
-            "negative_run_history_incomplete": "A finite run limit cannot be verified from the retained learning history. Automatic free/negative-price runs are paused for this opportunity.",
-            "automatic_window_already_used": "No wash is queued. A previous automatic request has already reserved this overnight window.",
-            "appliance_not_idle": "A cycle capture is active; no new automatic request will be created.",
-            "automatic_request_available": "An automatic recommendation is available; a saved request has not yet been created.",
-        }
+        messages = REASON_MESSAGES
         state = "waiting"
         summary = messages.get(reason, "Waiting for the next scheduling evaluation.")
         action_required = None
@@ -1437,6 +1493,11 @@ class NativeOrchestrator:
             action_required = "Use the dishwasher controls to change its timer. Load Optimizer will not replace it with a new start command."
             if request:
                 action_required += " A separate optimizer request is still queued and remains subject to start-time safety checks."
+        elif self._state(self.config.get("bosch_operation_state_sensor")) == RUNNING_OPERATION:
+            state, reason = "running", "appliance_already_running"
+            summary = "The dishwasher has confirmed it is washing. Cancelling a pending schedule will not stop this wash."
+            if request:
+                summary += " A separate wash request is still waiting."
         elif request and request.get("normal_wash") and self.state.get("execution_status") == "awaiting_plan":
             state, reason = "waiting", request.get("waiting_reason", "awaiting_plan")
             summary = messages.get(reason, "One wash is authorised; waiting for an eligible plan inside its start window.")
@@ -1444,11 +1505,20 @@ class NativeOrchestrator:
         elif request:
             state, reason = "scheduled", "request_queued"
             summary = f"{request.get('program', 'Programme')} is queued for a start-time safety check."
-            if request.get("mode") == "automatic" and request.get("automatic") is not False:
+            if request.get("normal_wash") or request.get("mode") == "automatic" and request.get("automatic") is not False:
                 summary += " The plan can follow revised recommendations until two minutes before its saved start."
+            if request.get("late_finish"):
+                summary += " No eligible cycle fits completely; this plan starts inside the window and finishes afterwards."
             if self._request_due(request, now):
                 state = "starting"
                 summary = "The queued start is due; check the execution result for confirmation."
+        elif self.state.get("last_result") in {"cancelled", "expired", "blocked", "failed"}:
+            result = self.state["last_result"]
+            state = result if result in {"cancelled", "expired"} else "attention_required"
+            reason = self.state.get("last_reason") or result
+            summary = self.state.get("last_message") or explain_reason(reason)
+            if result in {"expired", "blocked", "failed"}:
+                action_required = "Review the last request and readiness checks. Schedule one wash again if it is still needed."
         elif reason == "automatic_window_already_used":
             state = "attention_required"
             action_required = "Review the last request and result. Request a new overnight run explicitly if a wash is still needed."
@@ -1472,6 +1542,14 @@ class NativeOrchestrator:
         return {
             "state": state, "mode": mode, "reason_code": reason, "summary": summary,
             "action_required": action_required,
+            "permission_active": bool(request.get("normal_wash")),
+            "request_state": self.state.get("execution_status") if request else None,
+            "window_timezone": request.get("timezone") or self.schedule_config["tariff_timezone"],
+            "settings_timezone": self.schedule_config["tariff_timezone"],
+            "default_window_start": self.overnight_time("start"),
+            "default_window_end": self.overnight_time("end"),
+            "door_authorisation_enabled": bool(self.state.get("auto_mode_enabled")),
+            "running_confirmed": self._state(self.config.get("bosch_operation_state_sensor")) == RUNNING_OPERATION,
             "queued_program": request.get("program"), "queued_start": request.get("start"),
             "queued_finish": request.get("finish"),
             "authorised_window_start": request.get("window_start"),
@@ -1488,6 +1566,8 @@ class NativeOrchestrator:
             "confidence": attributes.get("confidence"),
             "confidence_threshold": self._confidence_threshold(),
             "blockers": readiness["blockers"], "warnings": readiness["warnings"],
+            "blocker_messages": readiness["blocker_messages"],
+            "warning_messages": readiness["warning_messages"],
             "automatic_eligible_after": eligible_after,
             "last_automatic_request": self.state.get(last_request_key),
             "last_start_attempt": self.state.get("last_attempt"),

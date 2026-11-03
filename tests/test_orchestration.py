@@ -165,6 +165,9 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         await restored.async_evaluate()
         self.assertIsNone(restored.state["request"])
         self.assertEqual(restored.state["last_reason"], "authorised_window_closed")
+        self.assertEqual(restored.automation_explanation["state"], "expired")
+        self.assertIsNone(restored.automation_explanation["queued_start"])
+        self.assertFalse(restored.automation_explanation["permission_active"])
         await restored.async_evaluate()
         self.assertIsNone(restored.state["request"])
 
@@ -482,6 +485,8 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_explanation_keeps_inactive_and_running_states_distinct(self):
         self.put("sensor.load_optimizer_1_cycle_state", "running")
         self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+        self.assertEqual(self.scheduler.automation_explanation["state"], "running")
+        self.put("sensor.operation", "BSH.Common.EnumType.OperationState.Ready")
         self.assertEqual(self.scheduler.automation_explanation["state"], "capturing")
         self.scheduler.state["active"] = False
         self.put("sensor.operation", "BSH.Common.EnumType.OperationState.DelayedStart")
@@ -505,6 +510,73 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(explanation["reason_code"], expected)
                 self.assertEqual(explanation["mode"], "negative_price")
                 self.assertNotIn("overnight", explanation["summary"].lower())
+
+    async def test_explicit_wash_readiness_uses_permission_instead_of_door_rule(self):
+        self.scheduler.state.update(auto_mode_enabled=False, door_opened_since_last_cycle=False)
+        await self.scheduler.async_request("overnight")
+        readiness = self.scheduler.readiness("overnight")
+        self.assertNotIn("door_not_opened_since_last_cycle", readiness["blockers"])
+        self.assertNotIn("automatic_mode_off", readiness["warnings"])
+        explanation = self.scheduler.automation_explanation
+        self.assertTrue(explanation["permission_active"])
+        self.assertEqual(explanation["request_state"], "queued")
+        self.assertEqual(explanation["default_window_start"], "21:00")
+        self.assertEqual(explanation["default_window_end"], "07:00")
+        self.assertFalse(explanation["door_authorisation_enabled"])
+        self.put("binary_sensor.door", "on")
+        readiness = self.scheduler.readiness("overnight")
+        self.assertEqual(readiness["state"], "red")
+        self.assertIn("Close the dishwasher door", " ".join(readiness["blocker_messages"]))
+        self.put("binary_sensor.door", "unavailable")
+        self.assertIn("door_state_unavailable", self.scheduler.readiness("overnight")["blockers"])
+
+    async def test_waiting_permission_explains_missing_prices_without_claiming_a_start(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "not_ready", status="not_ready",
+                 overnight_planning_coverage={"complete": False})
+        await self.scheduler.async_request("overnight")
+        explanation = self.scheduler.automation_explanation
+        self.assertEqual(explanation["request_state"], "awaiting_plan")
+        self.assertEqual(explanation["state"], "waiting")
+        self.assertTrue(explanation["permission_active"])
+        self.assertIsNone(explanation["queued_start"])
+        self.assertTrue(explanation["blocker_messages"])
+        self.assertFalse(explanation["running_confirmed"])
+        self.assertNotIn("door_not_opened_since_last_cycle", explanation["blockers"])
+
+    async def test_late_finish_and_cancellation_have_separate_explanations(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready", confidence=88,
+                 start="2026-10-09T05:30:00+00:00", finish="2026-10-09T09:30:00+00:00")
+        await self.scheduler.async_request("overnight")
+        self.assertIn("finishes afterwards", self.scheduler.automation_explanation["summary"])
+        await self.scheduler.async_cancel()
+        explanation = self.scheduler.automation_explanation
+        self.assertEqual(explanation["state"], "cancelled")
+        self.assertFalse(explanation["permission_active"])
+        self.assertIsNone(explanation["queued_start"])
+        self.assertIn("cancelled", explanation["summary"].lower())
+        self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+        self.assertEqual(self.scheduler.automation_explanation["state"], "running")
+        self.assertTrue(self.scheduler.automation_explanation["running_confirmed"])
+        self.assertIn("will not stop", self.scheduler.automation_explanation["summary"])
+
+    async def test_price_failure_detail_and_event_descriptions_are_human_readable(self):
+        self.scheduler.state.update(auto_mode_enabled=False)
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime(2026, 10, 8, 22, tzinfo=timezone.utc)
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value="normal_wash_tariff_unavailable"))
+        self.assertFalse(await self.scheduler._async_start_allowed(request))
+        explanation = self.scheduler.automation_explanation
+        self.assertIn("prices are unavailable", explanation["summary"])
+        self.assertTrue(all(isinstance(event.get("description"), str) for event in explanation["recent_events"]))
+        self.assertTrue(any("authorised" in event["description"] for event in explanation["recent_events"]))
+        self.assertTrue(all("normal_wash_tariff_unavailable" not in message for message in explanation["blocker_messages"]))
+        count = self.hass.services.async_call.await_count
+        self.scheduler.automation_explanation
+        self.scheduler.automation_explanation
+        self.assertEqual(self.hass.services.async_call.await_count, count)
 
     async def test_extra_run_without_verified_profit_cannot_queue_or_claim_readiness(self):
         self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=True,

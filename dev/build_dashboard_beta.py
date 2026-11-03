@@ -56,30 +56,7 @@ def build():
             card["apex_config"]["tooltip"]["y"]["formatter"] = (
                 "EVAL:function(value) { return Number(value).toFixed(2) + ' p/kWh'; }")
 
-    next_wash = markdown("Next wash", """
-        {% set sensor = 'sensor.load_optimizer_1_automation_explanation' %}
-        {% set queue = state_attr('sensor.load_optimizer_1_orchestration_status', 'request') or {} %}
-        {% macro home_time(value) -%}
-        {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'Not recorded' }}
-        {%- endmacro %}
-        {% if not has_value(sensor) %}
-        **Scheduling status unavailable**
-        {% elif queue %}
-        **{{ queue.get('program', 'Programme') }} queued**
-
-        {{ home_time(queue.get('start')) }} to {{ home_time(queue.get('finish')) }}
-        {% set cost = queue.get('cost_pence') | float(none) %}
-        {% if is_number(cost) %}Estimated cost: **GBP {{ '%.2f' | format(cost / 100) }}**{% endif %}
-        {% else %}
-        **No wash queued**
-        {% endif %}
-
-        {{ state_attr(sensor, 'summary') or 'No scheduling explanation available.' }}
-        {% if state_attr(sensor, 'action_required') %}
-
-        {{ state_attr(sensor, 'action_required') }}
-        {% endif %}
-    """)
+    next_wash = deepcopy(next(card for card in walk(full) if card.get("title") == "Next wash"))
     last_wash = markdown("Last wash", """
         {% set finish = states('sensor.load_optimizer_1_last_finish') %}
         {% set native = 'sensor.load_optimizer_1_orchestration_status' %}
@@ -106,18 +83,21 @@ def build():
 
     schedule = markdown("Scheduling", """
         {% set entity = 'sensor.load_optimizer_1_automation_explanation' %}
-        {% set blocks = state_attr(entity, 'blockers') or [] %}
-        {% set warnings = state_attr(entity, 'warnings') or [] %}
+        {% set blocks = state_attr(entity, 'blocker_messages') or [] %}
+        {% set warnings = state_attr(entity, 'warning_messages') or [] %}
+        {% set checks = (state_attr(entity, 'blockers') or []) + (state_attr(entity, 'warnings') or []) %}
         {% if not has_value(entity) %}
         Scheduling information unavailable.
+        {% elif not blocks and not warnings and checks %}
+        Readiness checks are pending. Review the integration details.
         {% elif not blocks and not warnings %}
         No outstanding checks reported.
         {% endif %}
-        {% for reason in blocks %}
-        - {{ reason | replace('_', ' ') | capitalize }}
+        {% for message in blocks %}
+        - {{ message }}
         {% endfor %}
-        {% for reason in warnings %}
-        - {{ reason | replace('_', ' ') | capitalize }}
+        {% for message in warnings %}
+        - {{ message }}
         {% endfor %}
     """)
     recommendation = markdown("Recommendation", """
@@ -140,8 +120,8 @@ def build():
     """)
     controls = {"type": "entities", "title": "Automatic modes", "show_header_toggle": False,
         "entities": [
-            {"entity": "switch.load_optimizer_1_auto_mode_enabled", "name": "Overnight"},
-            {"entity": "switch.load_optimizer_1_auto_negative_price_enabled", "name": "Free / negative price"},
+            {"entity": "switch.load_optimizer_1_auto_mode_enabled", "name": "Schedule after loading (door rule)"},
+            {"entity": "switch.load_optimizer_1_auto_negative_price_enabled", "name": "Profitable extra runs"},
         ]}
     manual = {"type": "entities", "title": "Manual programme", "show_header_toggle": False,
         "entities": [{"entity": "select.load_optimizer_1_override_program", "name": "Programme"}]}
@@ -149,16 +129,27 @@ def build():
         return {"type": "button", "name": name, "icon": f"mdi:{icon}", "show_state": False,
                 "tap_action": {"action": "perform-action", "perform_action": "button.press",
                     "target": {"entity_id": entity}, "confirmation": {"text": message}}}
+    window = {"type": "entities", "title": "Overnight window", "show_header_toggle": False,
+        "entities": [
+            {"entity": "time.load_optimizer_1_overnight_start", "name": "Overnight start"},
+            {"entity": "time.load_optimizer_1_overnight_end", "name": "Dishes ready by"},
+            {"entity": "number.load_optimizer_1_door_open_minimum_minutes", "name": "Loading door-open minimum"},
+        ]}
+    window_help = deepcopy(next(card for card in walk(full) if card.get("title") == "Window settings"))
     dishwasher = view("Dishwasher", "dishwasher", "dishwasher",
-        section(deepcopy(next_wash), schedule, controls),
+        section(deepcopy(next_wash), schedule,
+            command("Schedule one wash", "button.load_optimizer_1_request_overnight",
+                "Authorise one wash inside the overnight window? The optimiser chooses the programme and start time.", "calendar-plus"),
+            command("Start now", "button.load_optimizer_1_request_now",
+                "Start a wash now using the optimiser's selected programme?", "play-circle"),
+            command("Cancel pending schedule", "button.load_optimizer_1_cancel_schedule",
+                "Cancel the pending request and permission? An active wash will continue.", "calendar-remove")),
+        section(window, window_help, controls, recommendation,
+            deepcopy(next(card for card in walk(full) if card.get("title") == "Cycle costs"))),
         section(entities("Appliance", 1, [("cycle_state", "Cycle"), ("power", "Power"),
             ("data_freshness", "Source freshness"), ("remote_activation_check", "Remote start")]),
-            recommendation, deepcopy(next(card for card in walk(full) if card.get("title") == "Cycle costs"))),
-        section(manual,
-            command("Start selected programme", "button.load_optimizer_1_request_now_override",
-                "Start the selected dishwasher programme now?", "play-circle-outline"),
-            command("Cancel queued wash", "button.load_optimizer_1_cancel_schedule",
-                "Cancel the queued dishwasher request? This does not stop a running wash.", "calendar-remove")),
+            manual, command("Start selected programme", "button.load_optimizer_1_request_now_override",
+                "Start the selected dishwasher programme now?", "play-circle-outline")),
         section(forecast, span=3))
 
     learned = deepcopy(next(card for card in walk(learning) if card.get("title") == "Learned Programs"))
@@ -178,10 +169,10 @@ def build():
     events = markdown("Recent decisions", """
         {% set records = state_attr('sensor.load_optimizer_1_automation_explanation', 'recent_events') or [] %}
         {% if records %}
-        | Home time | Event | Programme / reason |
+        | Home time | What happened | Programme |
         |---|---|---|
         {% for event in records[:12] -%}
-        | {{ (as_datetime(event.timestamp) | as_local).strftime('%d %b %H:%M %Z') if as_datetime(event.timestamp, none) else 'Not recorded' }} | {{ event.event | default('decision') }} | {{ event.program | default(event.reason | default('')) | replace('_', ' ') }} |
+        | {{ (as_datetime(event.timestamp) | as_local).strftime('%d %b %H:%M %Z') if as_datetime(event.timestamp, none) else 'Not recorded' }} | {{ (event.description | default('A scheduling record was saved.', true)) | replace('|', '/') | replace('\\n', ' ') }} | {{ (event.program | default('Not selected', true)) | replace('|', '/') | replace('\\n', ' ') }} |
         {% endfor -%}
         {% else %}
         No scheduling events recorded.

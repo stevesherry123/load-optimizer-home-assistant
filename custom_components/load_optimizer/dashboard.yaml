@@ -115,7 +115,7 @@ views:
           {% set action = state_attr(explanation, 'action_required') if available else none %}
           {% if action %}{{ action }}{% endif %}
 
-          **Automatic modes:** overnight {{ states('switch.load_optimizer_1_auto_mode_enabled') }}, free / negative price {{ states('switch.load_optimizer_1_auto_negative_price_enabled') }}.
+          **Optional door rule:** {{ states('switch.load_optimizer_1_auto_mode_enabled') }}; profitable extra runs {{ states('switch.load_optimizer_1_auto_negative_price_enabled') }}.
           {% set rejected_at = as_timestamp(state_attr('sensor.load_optimizer_1_last_discarded_cycle', 'finish'), none) %}
           {% set completed_at = as_timestamp(state_attr(orchestration, 'last_cycle_completed_at'), none) %}
           {% set learned_at = as_timestamp(states('sensor.load_optimizer_1_last_finish'), none) %}
@@ -124,7 +124,9 @@ views:
           {% endif %}
 
           {% set start = request.get('start') %}
-          {% if start %}
+          {% if request and (state_attr(explanation, 'request_state') == 'awaiting_plan' or states(orchestration) == 'awaiting_plan') %}
+          **One wash authorised; waiting for a plan. No start is queued yet.**
+          {% elif start %}
           **Queued start:** {{ local_time(start) }}
           {% else %}
           **Recommendation (not queued):** {{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'program') or 'None' }},
@@ -163,9 +165,16 @@ views:
             'remote_control': 'Remote control is disabled',
             'remote_start': 'Remote start is disabled'
           } %}
-          {% for code in (((state_attr(explanation, 'blockers') or []) + (state_attr(explanation, 'warnings') or [])) if available else []) %}
-          - {{ labels.get(code, code | replace('_', ' ')) }}
+          {% set details = ((state_attr(explanation, 'blocker_messages') or []) + (state_attr(explanation, 'warning_messages') or [])) if available else [] %}
+          {% if details %}
+          {% for message in details %}
+          - {{ message }}
           {% endfor %}
+          {% else %}
+          {% for code in (((state_attr(explanation, 'blockers') or []) + (state_attr(explanation, 'warnings') or [])) if available else []) %}
+          - {{ labels.get(code, 'A readiness check needs review') }}
+          {% endfor %}
+          {% endif %}
           {% set confidence = state_attr(explanation, 'confidence') if available else none %}
           {% if confidence is not none %}**Learning confidence:** {{ confidence }}% (normal threshold {{ state_attr(explanation, 'confidence_threshold') }}%).{% endif %}
 
@@ -201,7 +210,7 @@ views:
           {% if events %}
           **Recent scheduling events**
           {% for item in events[:5] %}
-          - {{ local_time(item.timestamp) }}: {{ item.event | replace('_', ' ') }}; {{ labels.get(item.reason, item.reason | replace('_', ' ')) }}.
+          - {{ local_time(item.timestamp) }}: {{ item.event | replace('_', ' ') }}; {{ item.description | default(labels.get(item.reason, 'A scheduling record was saved.'), true) }}.
           {% endfor %}
           {% endif %}
       - type: entities

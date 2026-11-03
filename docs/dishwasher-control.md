@@ -113,10 +113,12 @@ not configure Alexa, install these scripts, or send voice announcements itself.
 
 ### Automatic Modes
 
-- **Automatic mode:** normal overnight scheduling. Requires a suitable policy,
+- **Schedule After Loading** (existing `auto_mode_enabled` switch): optional
+  door-based normal overnight scheduling. Requires a suitable policy,
   confidence, window and physical readiness. Recommendation permission alone
   does not enable automatic starts.
-- **Automatic free / negative-price mode:** separate opt-in, also requiring
+- **Profitable Extra Runs** (existing `auto_negative_price_enabled` switch):
+  separate opt-in, also requiring
   `allow_negative_price_run: true` for each permitted programme. Review your
   release's behaviour, run limits and non-energy costs first. Leave it off
   during initial onboarding.

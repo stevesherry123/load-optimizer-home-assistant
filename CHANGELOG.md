@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Make the full and beta dashboards distinguish wash permission awaiting a plan,
+  queued timing, unconfirmed starting and appliance-confirmed washing. Show the
+  original window, expected late finish, cancellation and expiry clearly.
+- Expose native overnight window settings and schedule/start-now/cancel controls
+  in the dashboards. Label door-based scheduling and profitable extra runs as
+  separate options; preserve their entity IDs and existing opt-ins.
+- Publish household-facing readiness messages and persist readable scheduling
+  event descriptions. Explicit wash permission no longer shows door-rule or
+  automatic-mode prerequisites that do not apply to that request.
 - Require strictly positive whole-cycle net benefit for opportunistic extra runs,
   using unrounded electricity and operating costs. Keep normal requested washing
   eligible when it costs money; zero-return free cycles no longer authorise extras.

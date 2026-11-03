@@ -153,9 +153,15 @@ views:
     cards:
     - type: markdown
       title: Next wash
-      content: '{% set sensor = ''sensor.load_optimizer_1_automation_explanation'' %}
+      content: '{% set explanation = ''sensor.load_optimizer_1_automation_explanation'' %}
 
-        {% set queue = state_attr(''sensor.load_optimizer_1_orchestration_status'', ''request'') or {} %}
+        {% set native = ''sensor.load_optimizer_1_orchestration_status'' %}
+
+        {% set request = state_attr(native, ''request'') or {} %}
+
+        {% set phase = state_attr(explanation, ''request_state'') or states(native) %}
+
+        {% set summary = state_attr(explanation, ''summary'') %}
 
         {% macro home_time(value) -%}
 
@@ -163,20 +169,47 @@ views:
 
         {%- endmacro %}
 
-        {% if not has_value(sensor) %}
+        {% if not has_value(explanation) %}
 
         **Scheduling status unavailable**
 
-        {% elif queue %}
+        {% elif state_attr(explanation, ''running_confirmed'') %}
 
-        **{{ queue.get(''program'', ''Programme'') }} queued**
+        **Dishwasher is washing**
+
+        {% if request %}A separate request is still pending.{% endif %}
+
+        {% elif request and phase == ''awaiting_plan'' %}
+
+        **One wash authorised; waiting for a plan**
+
+        No start is queued while the required checks are unresolved.
+
+        {% elif request and phase == ''commanding'' %}
+
+        **Starting {{ request.get(''program'') or ''the wash'' }}**
+
+        Running has not been confirmed yet.
+
+        {% elif request and request.get(''start'') %}
+
+        **{{ request.get(''program'') or ''Programme'' }} queued**
 
 
-        {{ home_time(queue.get(''start'')) }} to {{ home_time(queue.get(''finish'')) }}
+        Expected start: {{ home_time(request.get(''start'')) }}
 
-        {% set cost = queue.get(''cost_pence'') | float(none) %}
 
-        {% if is_number(cost) %}Estimated cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**{% endif %}
+        Expected finish: {{ home_time(request.get(''finish'')) }}
+
+        {% set cost = request.get(''cost_pence'') | float(none) %}
+
+        {% if is_number(cost) %}Estimated total cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**{% endif %}
+
+        {% if request.get(''late_finish'') %}
+
+        **Later finish:** no eligible cycle fits completely. This wash starts inside the authorised window and finishes afterwards.
+
+        {% endif %}
 
         {% else %}
 
@@ -184,15 +217,36 @@ views:
 
         {% endif %}
 
-
-        {{ state_attr(sensor, ''summary'') or ''No scheduling explanation available.'' }}
-
-        {% if state_attr(sensor, ''action_required'') %}
+        {% if request.get(''window_start'') and request.get(''window_end'') %}
 
 
-        {{ state_attr(sensor, ''action_required'') }}
+        Authorised start window (home time): **{{ home_time(request.get(''window_start'')) }} to {{ home_time(request.get(''window_end'')) }}**.
 
-        {% endif %}'
+        {% endif %}
+
+        {% if request.get(''normal_wash'') %}
+
+        One normal wash is authorised. Extra runs require their separate opt-in.
+
+        {% endif %}
+
+        {% if summary %}
+
+
+        {{ summary }}
+
+        {% endif %}
+
+        {% set action = state_attr(explanation, ''action_required'') %}
+
+        {% if action and action != summary %}
+
+
+        **Action needed:** {{ action }}
+
+        {% endif %}
+
+        '
     - type: markdown
       title: Last wash
       content: '{% set finish = states(''sensor.load_optimizer_1_last_finish'') %}
@@ -267,9 +321,15 @@ views:
     cards:
     - type: markdown
       title: Next wash
-      content: '{% set sensor = ''sensor.load_optimizer_1_automation_explanation'' %}
+      content: '{% set explanation = ''sensor.load_optimizer_1_automation_explanation'' %}
 
-        {% set queue = state_attr(''sensor.load_optimizer_1_orchestration_status'', ''request'') or {} %}
+        {% set native = ''sensor.load_optimizer_1_orchestration_status'' %}
+
+        {% set request = state_attr(native, ''request'') or {} %}
+
+        {% set phase = state_attr(explanation, ''request_state'') or states(native) %}
+
+        {% set summary = state_attr(explanation, ''summary'') %}
 
         {% macro home_time(value) -%}
 
@@ -277,20 +337,47 @@ views:
 
         {%- endmacro %}
 
-        {% if not has_value(sensor) %}
+        {% if not has_value(explanation) %}
 
         **Scheduling status unavailable**
 
-        {% elif queue %}
+        {% elif state_attr(explanation, ''running_confirmed'') %}
 
-        **{{ queue.get(''program'', ''Programme'') }} queued**
+        **Dishwasher is washing**
+
+        {% if request %}A separate request is still pending.{% endif %}
+
+        {% elif request and phase == ''awaiting_plan'' %}
+
+        **One wash authorised; waiting for a plan**
+
+        No start is queued while the required checks are unresolved.
+
+        {% elif request and phase == ''commanding'' %}
+
+        **Starting {{ request.get(''program'') or ''the wash'' }}**
+
+        Running has not been confirmed yet.
+
+        {% elif request and request.get(''start'') %}
+
+        **{{ request.get(''program'') or ''Programme'' }} queued**
 
 
-        {{ home_time(queue.get(''start'')) }} to {{ home_time(queue.get(''finish'')) }}
+        Expected start: {{ home_time(request.get(''start'')) }}
 
-        {% set cost = queue.get(''cost_pence'') | float(none) %}
 
-        {% if is_number(cost) %}Estimated cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**{% endif %}
+        Expected finish: {{ home_time(request.get(''finish'')) }}
+
+        {% set cost = request.get(''cost_pence'') | float(none) %}
+
+        {% if is_number(cost) %}Estimated total cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**{% endif %}
+
+        {% if request.get(''late_finish'') %}
+
+        **Later finish:** no eligible cycle fits completely. This wash starts inside the authorised window and finishes afterwards.
+
+        {% endif %}
 
         {% else %}
 
@@ -298,26 +385,53 @@ views:
 
         {% endif %}
 
-
-        {{ state_attr(sensor, ''summary'') or ''No scheduling explanation available.'' }}
-
-        {% if state_attr(sensor, ''action_required'') %}
+        {% if request.get(''window_start'') and request.get(''window_end'') %}
 
 
-        {{ state_attr(sensor, ''action_required'') }}
+        Authorised start window (home time): **{{ home_time(request.get(''window_start'')) }} to {{ home_time(request.get(''window_end'')) }}**.
 
-        {% endif %}'
+        {% endif %}
+
+        {% if request.get(''normal_wash'') %}
+
+        One normal wash is authorised. Extra runs require their separate opt-in.
+
+        {% endif %}
+
+        {% if summary %}
+
+
+        {{ summary }}
+
+        {% endif %}
+
+        {% set action = state_attr(explanation, ''action_required'') %}
+
+        {% if action and action != summary %}
+
+
+        **Action needed:** {{ action }}
+
+        {% endif %}
+
+        '
     - type: markdown
       title: Scheduling
       content: '{% set entity = ''sensor.load_optimizer_1_automation_explanation'' %}
 
-        {% set blocks = state_attr(entity, ''blockers'') or [] %}
+        {% set blocks = state_attr(entity, ''blocker_messages'') or [] %}
 
-        {% set warnings = state_attr(entity, ''warnings'') or [] %}
+        {% set warnings = state_attr(entity, ''warning_messages'') or [] %}
+
+        {% set checks = (state_attr(entity, ''blockers'') or []) + (state_attr(entity, ''warnings'') or []) %}
 
         {% if not has_value(entity) %}
 
         Scheduling information unavailable.
+
+        {% elif not blocks and not warnings and checks %}
+
+        Readiness checks are pending. Review the integration details.
 
         {% elif not blocks and not warnings %}
 
@@ -325,40 +439,85 @@ views:
 
         {% endif %}
 
-        {% for reason in blocks %}
+        {% for message in blocks %}
 
-        - {{ reason | replace(''_'', '' '') | capitalize }}
+        - {{ message }}
 
         {% endfor %}
 
-        {% for reason in warnings %}
+        {% for message in warnings %}
 
-        - {{ reason | replace(''_'', '' '') | capitalize }}
+        - {{ message }}
 
         {% endfor %}'
+    - type: button
+      name: Schedule one wash
+      icon: mdi:calendar-plus
+      show_state: false
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.load_optimizer_1_request_overnight
+        confirmation:
+          text: Authorise one wash inside the overnight window? The optimiser chooses the programme and start time.
+    - type: button
+      name: Start now
+      icon: mdi:play-circle
+      show_state: false
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.load_optimizer_1_request_now
+        confirmation:
+          text: Start a wash now using the optimiser's selected programme?
+    - type: button
+      name: Cancel pending schedule
+      icon: mdi:calendar-remove
+      show_state: false
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.load_optimizer_1_cancel_schedule
+        confirmation:
+          text: Cancel the pending request and permission? An active wash will continue.
+  - type: grid
+    column_span: 1
+    cards:
+    - type: entities
+      title: Overnight window
+      show_header_toggle: false
+      entities:
+      - entity: time.load_optimizer_1_overnight_start
+        name: Overnight start
+      - entity: time.load_optimizer_1_overnight_end
+        name: Dishes ready by
+      - entity: number.load_optimizer_1_door_open_minimum_minutes
+        name: Loading door-open minimum
+    - type: markdown
+      title: Window settings
+      content: '{% set entity = ''sensor.load_optimizer_1_automation_explanation'' %}
+
+        Window settings use **{{ state_attr(entity, ''settings_timezone'') or ''the configured tariff timezone'' }}**.
+
+        Changes apply to the next request. An already authorised wash keeps its original window.
+
+
+        Scheduling one wash does not require the door rule to be enabled.
+
+        A later finish is allowed only when no eligible cycle fits completely; the start stays inside the window.
+
+        '
     - type: entities
       title: Automatic modes
       show_header_toggle: false
       entities:
       - entity: switch.load_optimizer_1_auto_mode_enabled
-        name: Overnight
+        name: Schedule after loading (door rule)
       - entity: switch.load_optimizer_1_auto_negative_price_enabled
-        name: Free / negative price
-  - type: grid
-    column_span: 1
-    cards:
-    - type: entities
-      title: Appliance
-      show_header_toggle: false
-      entities:
-      - entity: sensor.load_optimizer_1_cycle_state
-        name: Cycle
-      - entity: sensor.load_optimizer_1_power
-        name: Power
-      - entity: sensor.load_optimizer_1_data_freshness
-        name: Source freshness
-      - entity: sensor.load_optimizer_1_remote_activation_check
-        name: Remote start
+        name: Profitable extra runs
     - type: markdown
       title: Recommendation
       content: '{% set entity = ''sensor.load_optimizer_1_overnight_recommendation'' %}
@@ -450,6 +609,18 @@ views:
     column_span: 1
     cards:
     - type: entities
+      title: Appliance
+      show_header_toggle: false
+      entities:
+      - entity: sensor.load_optimizer_1_cycle_state
+        name: Cycle
+      - entity: sensor.load_optimizer_1_power
+        name: Power
+      - entity: sensor.load_optimizer_1_data_freshness
+        name: Source freshness
+      - entity: sensor.load_optimizer_1_remote_activation_check
+        name: Remote start
+    - type: entities
       title: Manual programme
       show_header_toggle: false
       entities:
@@ -466,17 +637,6 @@ views:
           entity_id: button.load_optimizer_1_request_now_override
         confirmation:
           text: Start the selected dishwasher programme now?
-    - type: button
-      name: Cancel queued wash
-      icon: mdi:calendar-remove
-      show_state: false
-      tap_action:
-        action: perform-action
-        perform_action: button.press
-        target:
-          entity_id: button.load_optimizer_1_cancel_schedule
-        confirmation:
-          text: Cancel the queued dishwasher request? This does not stop a running wash.
   - type: grid
     column_span: 3
     cards:
@@ -697,13 +857,13 @@ views:
 
         {% if records %}
 
-        | Home time | Event | Programme / reason |
+        | Home time | What happened | Programme |
 
         |---|---|---|
 
         {% for event in records[:12] -%}
 
-        | {{ (as_datetime(event.timestamp) | as_local).strftime(''%d %b %H:%M %Z'') if as_datetime(event.timestamp, none) else ''Not recorded'' }} | {{ event.event | default(''decision'') }} | {{ event.program | default(event.reason | default('''')) | replace(''_'', '' '') }} |
+        | {{ (as_datetime(event.timestamp) | as_local).strftime(''%d %b %H:%M %Z'') if as_datetime(event.timestamp, none) else ''Not recorded'' }} | {{ (event.description | default(''A scheduling record was saved.'', true)) | replace(''|'', ''/'') | replace(''\n'', '' '') }} | {{ (event.program | default(''Not selected'', true)) | replace(''|'', ''/'') | replace(''\n'', '' '') }} |
 
         {% endfor -%}
 

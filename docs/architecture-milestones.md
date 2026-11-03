@@ -127,13 +127,17 @@ At the initial review, the dishwasher script guide required a ready recommendati
 
 Development has started in the isolated `load-optimizer` checkout in this workspace, on `feat/overnight-scheduling-milestones`, based on shared-beta commit `3184482`. The first batch implements durable normal-wash requests, native window controls, late-finish fallback, price-recovery notifications, normal-run priority and command-time revalidation. Existing door-based automatic mode remains an opt-in that is off by default.
 
-No deployment or release has been performed. Installed-version verification and supervised physical-appliance acceptance remain outstanding. The second batch implements and validates total-cost precision, explicit consumables costs, unconfigured-cost disclosure, strictly positive extra-run eligibility and ranking by net benefit per run. Financial breakdown cards are included in both dashboard templates. Broader user experience work and both EV milestones remain separate delivery work.
+No deployment or release has been performed. Installed-version verification and supervised physical-appliance acceptance remain outstanding. The second batch implements and validates total-cost precision, explicit consumables costs, unconfigured-cost disclosure, strictly positive extra-run eligibility and ranking by net benefit per run. Financial breakdown cards are included in both dashboard templates. The third batch delivers the initial scheduling controls and explanations: shared Next wash cards, explicit schedule/start/cancel controls, window settings, optional-mode labels, readable blockers and event descriptions, and distinct waiting, starting, washing and terminal states. Both EV milestones remain separate delivery work. Physical-appliance and desktop/mobile visual acceptance remain outstanding.
 
 Local validation for this batch passed 513 unit tests, Bandit and all 20 isolated Home Assistant acceptance checks against Python 3.14.2 and Home Assistant 2026.10.2. The checks include price recovery, native time controls, one confirmed synthetic start, cancellation, restart persistence and a command sequence blocked when the start window closes. This is synthetic acceptance, not proof from a physical dishwasher.
 
 ## Total-benefit implementation acceptance
 
 The second batch passed 529 unit tests, Bandit and all 20 isolated Home Assistant acceptance checks. Financial cases cover exact break-even, tiny positive returns, decimal cancellation across tariff periods, operating-cost changes before a command, free electricity without profit, positive-price normal washing and missing-cost disclosures. The full and beta dashboard cost templates render successfully with missing data and sub-penny benefits. No physical appliance was operated. See `docs/operating-costs.md` in the development checkout for configuration.
+
+## Scheduling-interface implementation acceptance
+
+The third batch passed 533 unit tests, Bandit and all 20 isolated Home Assistant acceptance checks. Template fixtures cover a missing-price permission with a retained old estimate, a queued late-finishing cycle, unconfirmed start commands, appliance-confirmed washing, cancellation and legacy missing-message data. Four dashboard actions and three optional scripts dispatch to their intended native buttons. The final window-guidance and legacy-message fallback refinements also passed the targeted Home Assistant dashboard check. No live installation or release was changed.
 
 ## Confirmed window and price recovery
 
