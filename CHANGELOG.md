@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Recalculate EV control plans when source readings, settings or the authorised
+  deadline change during asynchronous planning. Bound recalculation to three
+  attempts and refuse inconsistent final preflight plans before dispatch.
+
 - Add executable EV setup examples and installation/release acceptance guides.
   Distinguish published scope, local implementation and remaining physical tests.
 - Record source revision, dirty state, selected suites and source fingerprints in

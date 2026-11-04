@@ -124,9 +124,24 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return await self.legacy_runtime.async_automatic_start_block(options, request)
 
     async def _async_ev_snapshot(self) -> dict:
-        data = {**self.config_entry.data, **self.config_entry.options}
-        now = datetime.now(timezone.utc)
-        result = await self._async_ev_plan(data, now, deadline_override=self._ev_authorised_deadline)
+        # Parsing prices and resolving local deadlines yield to HA. Capture the
+        # source State objects around the entire calculation, not just around
+        # dispatch: a newly reported battery can already be at its target when
+        # a previously calculated plan still recommends charging.
+        for _attempt in range(3):
+            data = {**self.config_entry.data, **self.config_entry.options}
+            now = datetime.now(timezone.utc)
+            versions = self._ev_plan_input_versions(data)
+            deadline = self._ev_authorised_deadline
+            result = await self._async_ev_plan(data, now, deadline_override=deadline)
+            current_data = {**self.config_entry.data, **self.config_entry.options}
+            current_versions = self._ev_plan_input_versions(current_data)
+            if data == current_data and deadline == self._ev_authorised_deadline and versions.keys() == current_versions.keys() and all(
+                state is current_versions[entity_id] for entity_id, state in versions.items()
+            ):
+                break
+        else:
+            result = {"plan": {"status": "not_ready", "reason": "control_inputs_changing"}}
         # Control cannot fall back to an old or missing configured target/battery
         # even though advisory planning may still display its configured fallback.
         for key in (CONF_BATTERY_ENTITY, CONF_TARGET_PERCENT_ENTITY):
@@ -141,6 +156,18 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._ev_latest_plan = result["plan"]
         return {"enabled": self.ev_control_enabled and not self._ev_closed,
                 "validated_at": now, "plan": result["plan"]}
+
+    def _ev_plan_input_versions(self, data: dict) -> dict:
+        """Read plan sources, excluding rapidly updating delivery-only feedback."""
+        entity_ids = [data.get(key) for key in (
+            CONF_TARIFF_ENTITY, CONF_BATTERY_ENTITY, CONF_BATTERY_CAPACITY_ENTITY,
+            CONF_TARGET_PERCENT_ENTITY, CONF_CONNECTION_STATUS_ENTITY,
+        )]
+        additional = data.get(CONF_TARIFF_ENTITIES) or []
+        if isinstance(additional, str):
+            additional = [entity_id.strip() for entity_id in additional.split(",") if entity_id.strip()]
+        entity_ids.extend(additional)
+        return {entity_id: self.hass.states.get(entity_id) for entity_id in entity_ids if entity_id}
 
     async def async_set_ev_control(self, enabled: bool) -> None:
         async with self._ev_permission_lock:
@@ -279,6 +306,8 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             result["plan"]["advisory_only"] = not self.ev_control_enabled
             if self.ev_control_enabled and self._ev_snapshot_reason == "control_source_unavailable" and result["control"]["phase"] != "blocked":
                 result["control"]["summary"] = "Battery or target feedback is missing, invalid or stale. New charging is blocked. Review existing power and restore fresh readings."
+            elif self.ev_control_enabled and self._ev_snapshot_reason == "control_inputs_changing" and result["control"]["phase"] != "blocked":
+                result["control"]["summary"] = "Charging inputs changed repeatedly while calculating. Waiting for a consistent plan before new charging."
             self._release_ev_owner_if_stopped()
             self._schedule_ev_boundary(result["plan"], now)
             await self._async_ev_notify(result)

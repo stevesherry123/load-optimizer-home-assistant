@@ -66,7 +66,12 @@ The adapter serialises concurrent updates, reserves a command identity and saves
 its checkpoint before dispatch. A successful service call is not delivery
 confirmation. Immediately before sending, it rechecks the freshly recalculated
 plan and physical inputs after the save has yielded control. It never relies on
-a remembered charge_now flag. Selected-interval boundaries and confirmation
+a remembered charge_now flag. It also compares the planning source readings,
+settings and authorised deadline before and after each calculation. Changed
+inputs trigger recalculation; three continuously changing attempts produce a
+waiting explanation rather than an inconsistent plan. A changed final preflight
+still blocks dispatch and requires the existing stopped-state recovery step.
+Selected-interval boundaries and confirmation
 expiry have explicit timers; a 30-second periodic scan and source listeners
 provide additional updates.
 

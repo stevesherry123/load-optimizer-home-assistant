@@ -159,6 +159,12 @@ The installation checklist now connects appliance learning, scheduling acceptanc
 
 Validation reports record the source commit, branch, working-tree state, selected suites and a source fingerprint, comparing source identity before and after the run. A mismatch fails an otherwise green run. Revision-unverified runs are labelled, and dirty runs are distinguished from evidence for a clean release commit. The development checks passed 569 unit tests, Bandit and all 23 isolated Home Assistant checks. A clean-commit rerun is the final local confirmation. This implements the documentation and repeatability portion of milestone 7; unfamiliar-user onboarding, physical acceptance, GitHub release checks, deployment and publication remain outstanding. No release version was assigned and no live installation was changed. See docs/installation-checklist.md and docs/release-readiness.md.
 
+## EV preflight source-consistency follow-up
+
+The final control snapshot now compares the planning source State objects, effective settings and pinned deadline across each asynchronous calculation. Source changes trigger bounded recalculation rather than allowing an earlier plan to pass only because the replacement reading is numeric and fresh. Repeated changes after three attempts report control_inputs_changing and cannot supply an active control plan.
+
+The new real Home Assistant acceptance injects battery-target completion, target-sensor changes, primary and additional tariff ceiling changes at the final pre-dispatch calculation, capacity changes and continuous source churn. No start command is dispatched from those invalidated final plans. A negative-control run using the earlier snapshot method fails this regression as expected. Local development validation passed 569 unit tests, Bandit and all 24 Home Assistant checks. The fix remains on the separate development branch and does not constitute live hardware acceptance or a release.
+
 ## Confirmed window and price recovery
 
 The household's default overnight window begins at 21:00 and ends at 07:00. Missing prices trigger a notification. Complete prices returning in time allow automatic resumption inside the original window under the existing permission; they do not revive cancelled or expired requests.

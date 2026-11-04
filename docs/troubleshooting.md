@@ -104,6 +104,7 @@ Inspect the EV Status entity's `reason` attribute:
 | `target_shortfall` (development) | Useful partial charging is recommended; review projected battery level, remaining kWh and deadline. |
 | `no_slots_below_price_ceiling` (development) | Normal opportunistic waiting; check the ceiling and published prices. |
 | `deadline_passed` (development control) | The session's fixed deadline expired. It cannot roll to tomorrow without a new permission session. |
+| `control_inputs_changing` (development control) | Sources changed during three calculation attempts. Wait for consistent readings; no new command is allowed from that plan. |
 | `invalid_charging_inputs` / other `invalid_*` | Check finite numbers, efficiency as a fraction, percent bounds and units. |
 | `target_already_met` | Normal result: no slots are required and charge-now stays off. |
 
