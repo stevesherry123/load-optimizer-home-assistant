@@ -28,6 +28,11 @@ from .const import (
     CONF_BOSCH_SELECTED_PROGRAM_SENSOR,
     CONF_BOSCH_START_BUTTON,
     CONF_CHARGE_POWER_KW,
+    CONF_CHARGING_MODE,
+    CONF_MAXIMUM_PRICE,
+    DEFAULT_CHARGING_MODE,
+    DEFAULT_MAXIMUM_PRICE,
+    EV_CHARGING_MODES,
     CONF_CHARGER_EFFICIENCY,
     CONF_BLOCKED_WINDOW_ENTITY,
     CONF_FREE_WINDOW_ENTITY,
@@ -201,7 +206,7 @@ def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
         (CONF_BATTERY_ENTITY, True, "sensor"),
         (CONF_BATTERY_CAPACITY_ENTITY, True, "sensor"),
         (CONF_TARGET_PERCENT_ENTITY, False, "sensor"),
-        (CONF_CONNECTION_STATUS_ENTITY, False, "sensor"),
+        (CONF_CONNECTION_STATUS_ENTITY, False, ["sensor", "binary_sensor"]),
     ):
         value = existing.get(key)
         kwargs = {}
@@ -232,6 +237,15 @@ def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
             ): selector.SelectSelector(selector.SelectSelectorConfig(
                 options=PRICE_UNITS, mode=selector.SelectSelectorMode.DROPDOWN,
             )),
+            vol.Optional(CONF_CHARGING_MODE, default=existing.get(CONF_CHARGING_MODE, DEFAULT_CHARGING_MODE)):
+                selector.SelectSelector(selector.SelectSelectorConfig(options=[
+                    {"value": "required", "label": "Required charging"},
+                    {"value": "opportunistic", "label": "Opportunistic charging"},
+                ], mode=selector.SelectSelectorMode.DROPDOWN)),
+            vol.Optional(CONF_MAXIMUM_PRICE, default=existing.get(CONF_MAXIMUM_PRICE, DEFAULT_MAXIMUM_PRICE)):
+                selector.NumberSelector(selector.NumberSelectorConfig(
+                    min=-1000, max=1000, step=0.01, unit_of_measurement="p/kWh", mode=selector.NumberSelectorMode.BOX,
+                )),
             vol.Required(CONF_CHARGE_POWER_KW, **power_default):
                 vol.All(vol.Coerce(float), vol.Range(min=0.1, max=50)),
             vol.Optional(
@@ -259,6 +273,9 @@ def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
 def _ev_input_errors(values: dict[str, Any]) -> dict[str, str]:
     """Validate values that cannot be expressed in HA's serializable form schema."""
     errors = {}
+    mode = values.get(CONF_CHARGING_MODE, DEFAULT_CHARGING_MODE)
+    if not isinstance(mode, str) or mode not in EV_CHARGING_MODES:
+        errors[CONF_CHARGING_MODE] = "invalid_charging_mode"
     ready_by = values.get(CONF_READY_BY)
     if ready_by and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", str(ready_by)) is None:
         errors[CONF_READY_BY] = "invalid_ready_by"
@@ -267,7 +284,7 @@ def _ev_input_errors(values: dict[str, Any]) -> dict[str, str]:
     except (ZoneInfoNotFoundError, ValueError, TypeError):
         errors[CONF_TARIFF_TIMEZONE] = "invalid_timezone"
     for key in (CONF_CHARGE_POWER_KW, CONF_TARGET_PERCENT, CONF_CHARGER_EFFICIENCY,
-                CONF_SLOT_MINUTES):
+                CONF_SLOT_MINUTES, CONF_MAXIMUM_PRICE):
         if key not in values:
             continue
         try:
@@ -275,6 +292,8 @@ def _ev_input_errors(values: dict[str, Any]) -> dict[str, str]:
             if not math.isfinite(number) or isinstance(values[key], bool):
                 raise ValueError
             if key == CONF_SLOT_MINUTES and not number.is_integer():
+                raise ValueError
+            if key == CONF_MAXIMUM_PRICE and not -1000 <= number <= 1000:
                 raise ValueError
         except (ValueError, TypeError, OverflowError):
             errors[key] = "invalid_number"

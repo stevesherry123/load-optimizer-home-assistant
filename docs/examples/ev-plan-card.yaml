@@ -1,0 +1,50 @@
+type: markdown
+title: EV charging plan
+content: |-
+  {% set plan = state_attr('sensor.your_ev_status', 'plan') or {} %}
+  {% macro number(value, unit) -%}
+  {{ ('%.2f' | format(value | float)) ~ ' ' ~ unit if is_number(value) else 'Not available' }}
+  {%- endmacro %}
+  {% macro home_time(value) -%}
+  {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'Not set' }}
+  {%- endmacro %}
+  {% if not plan %}
+  Select your EV device's Status entity in this card's configuration.
+  {% else %}
+  **{{ {'required': 'Required charging', 'opportunistic': 'Opportunistic charging'}.get(plan.get('charging_mode'), 'Charging plan') }}**
+
+  {{ plan.get('summary') or 'Charging information is unavailable.' }}
+
+  | Battery estimate | Value |
+  |---|---:|
+  | Reported level | {{ number(plan.get('battery_percent'), '%') }} |
+  | Target | {{ number(plan.get('target_percent'), '%') }} |
+  | After planned charging | {{ number(plan.get('projected_battery_percent'), '%') }} |
+  | Remaining shortfall | {{ number(plan.get('shortfall_battery_kwh'), 'kWh') }} |
+
+  {% if plan.get('charging_mode') == 'required' and plan.get('status') == 'partial' %}
+  **Target shortfall:** the selected slots provide useful charging, but are not expected to reach the target.
+  {% endif %}
+  {% if plan.get('charging_mode') == 'opportunistic' %}
+  Price ceiling: **{{ number(plan.get('maximum_price_p_per_kwh'), 'p/kWh') }}**.
+  {% endif %}
+  {% if plan.get('deadline') %}
+  Ready by (home time): **{{ home_time(plan.get('deadline')) }}**.
+  {% endif %}
+
+  Estimated electricity cost: **{{ number(plan.get('estimated_cost_pence'), 'p') }}**.
+
+  {% set slots = plan.get('selected_slots') or [] %}
+  {% if slots %}
+  | Start (home time) | Finish | Price | Wall energy |
+  |---|---|---:|---:|
+  {% for slot in slots[:12] -%}
+  | {{ home_time(slot.start) }} | {{ home_time(slot.end) }} | {{ number(slot.price_p_per_kwh, 'p/kWh') }} | {{ number(slot.energy_kwh, 'kWh') }} |
+  {% endfor %}
+  {% if slots | count > 12 %}{{ slots | count - 12 }} additional slots are listed on the Status entity.{% endif %}
+  {% else %}
+  No charging slots are selected.
+  {% endif %}
+
+  This is an advisory plan and does not operate a charger. Costs cover electricity and charging losses; vehicle wear and other operating costs are not included.
+  {% endif %}

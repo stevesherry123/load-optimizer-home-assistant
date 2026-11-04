@@ -15,6 +15,10 @@ from .const import (
     CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_ENTITY,
     CONF_CHARGE_POWER_KW,
+    CONF_CHARGING_MODE,
+    CONF_MAXIMUM_PRICE,
+    DEFAULT_CHARGING_MODE,
+    DEFAULT_MAXIMUM_PRICE,
     CONF_CHARGER_EFFICIENCY,
     CONF_CONNECTION_STATUS_ENTITY,
     CONF_LOAD_TYPE,
@@ -127,6 +131,8 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         tariff_entity = self._state_payload(data.get(CONF_TARIFF_ENTITY))
         try:
+            if not tariff_entity or str(tariff_entity.get("state", "")).lower() in {"", "unknown", "unavailable", "none"}:
+                raise ValueError("Tariff source unavailable")
             periods = await self.hass.async_add_executor_job(partial(tariff_periods_from_entity,
                 tariff_entity or {},
                 reference_utc=now,
@@ -147,23 +153,33 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if target_percent is None:
             target_percent = float(data.get(CONF_TARGET_PERCENT, DEFAULT_TARGET_PERCENT))
 
-        deadline = await self.hass.async_add_executor_job(partial(deadline_from_ready_by,
-            data.get(CONF_READY_BY),
-            reference_utc=now,
-            timezone_name=data.get(CONF_TARIFF_TIMEZONE),
-        ))
-        plan = plan_ev_charge(
-            periods=periods,
-            battery_percent=state_float(battery_entity),
-            battery_capacity_kwh=state_float(capacity_entity),
-            charge_power_kw=float(data.get(CONF_CHARGE_POWER_KW)),
-            target_percent=target_percent,
-            charger_efficiency=float(data.get(CONF_CHARGER_EFFICIENCY)),
-            slot_minutes=int(data.get(CONF_SLOT_MINUTES)),
-            reference_utc=now,
-            deadline_utc=deadline,
-            connected=connection_is_available(connection_entity),
-        )
+        try:
+            deadline = await self.hass.async_add_executor_job(partial(deadline_from_ready_by,
+                data.get(CONF_READY_BY), reference_utc=now,
+                timezone_name=data.get(CONF_TARIFF_TIMEZONE),
+            ))
+        except (TypeError, ValueError):
+            plan = {"status": "not_ready", "reason": "invalid_ready_by",
+                    "summary": "The local charging deadline could not be resolved. Review Ready by and tariff timezone.",
+                    "charging_mode": data.get(CONF_CHARGING_MODE, DEFAULT_CHARGING_MODE),
+                    "target_reachable": False, "advisory_only": True, "cost_basis": "electricity_only",
+                    "ready_to_charge": False, "charge_now": False, "selected_slots": []}
+        else:
+            plan = plan_ev_charge(
+                periods=periods,
+                battery_percent=state_float(battery_entity),
+                battery_capacity_kwh=state_float(capacity_entity),
+                charge_power_kw=float(data.get(CONF_CHARGE_POWER_KW)),
+                target_percent=target_percent,
+                charger_efficiency=float(data.get(CONF_CHARGER_EFFICIENCY)),
+                slot_minutes=int(data.get(CONF_SLOT_MINUTES)),
+                reference_utc=now,
+                deadline_utc=deadline,
+                connected=connection_is_available(connection_entity) and (
+                    not data.get(CONF_CONNECTION_STATUS_ENTITY) or connection_entity is not None),
+                charging_mode=data.get(CONF_CHARGING_MODE, DEFAULT_CHARGING_MODE),
+                maximum_price_p_per_kwh=data.get(CONF_MAXIMUM_PRICE, DEFAULT_MAXIMUM_PRICE),
+            )
         if tariff_error and plan.get("reason") == "no_tariff_periods":
             plan["reason"] = "tariff_error"
             plan["tariff_error"] = tariff_error

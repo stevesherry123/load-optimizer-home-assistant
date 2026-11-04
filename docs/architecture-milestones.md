@@ -37,7 +37,7 @@ Use observed device consumption and tariff analysis to automate useful appliance
 
 ### EVs and scope
 
-- Required mode aims to reach a configured target by a deadline and may use paid electricity.
+- Required mode aims to reach a configured target by a deadline and may use paid electricity. If the target cannot be reached, recommend the available charging and show the projected battery level and shortfall.
 - Opportunistic mode charges within a configured price ceiling without promising a target by a deadline.
 - EV planning and EV control are separate delivery milestones. Current repository documentation describes advisory EV planning.
 - Keep device plans independent in the present scope.
@@ -127,7 +127,7 @@ At the initial review, the dishwasher script guide required a ready recommendati
 
 Development has started in the isolated `load-optimizer` checkout in this workspace, on `feat/overnight-scheduling-milestones`, based on shared-beta commit `3184482`. The first batch implements durable normal-wash requests, native window controls, late-finish fallback, price-recovery notifications, normal-run priority and command-time revalidation. Existing door-based automatic mode remains an opt-in that is off by default.
 
-No deployment or release has been performed. Installed-version verification and supervised physical-appliance acceptance remain outstanding. The second batch implements and validates total-cost precision, explicit consumables costs, unconfigured-cost disclosure, strictly positive extra-run eligibility and ranking by net benefit per run. Financial breakdown cards are included in both dashboard templates. The third batch delivers the initial scheduling controls and explanations: shared Next wash cards, explicit schedule/start/cancel controls, window settings, optional-mode labels, readable blockers and event descriptions, and distinct waiting, starting, washing and terminal states. Both EV milestones remain separate delivery work. Physical-appliance and desktop/mobile visual acceptance remain outstanding.
+No deployment or release has been performed. Installed-version verification and supervised physical-appliance acceptance remain outstanding. The second batch implements and validates total-cost precision, explicit consumables costs, unconfigured-cost disclosure, strictly positive extra-run eligibility and ranking by net benefit per run. Financial breakdown cards are included in both dashboard templates. The third batch delivers the initial scheduling controls and explanations: shared Next wash cards, explicit schedule/start/cancel controls, window settings, optional-mode labels, readable blockers and event descriptions, and distinct waiting, starting, washing and terminal states. The EV planning milestone is now implemented in development; optional charger control remains separate delivery work. Physical-appliance and desktop/mobile visual acceptance remain outstanding.
 
 Local validation for this batch passed 513 unit tests, Bandit and all 20 isolated Home Assistant acceptance checks against Python 3.14.2 and Home Assistant 2026.10.2. The checks include price recovery, native time controls, one confirmed synthetic start, cancellation, restart persistence and a command sequence blocked when the start window closes. This is synthetic acceptance, not proof from a physical dishwasher.
 
@@ -138,6 +138,10 @@ The second batch passed 529 unit tests, Bandit and all 20 isolated Home Assistan
 ## Scheduling-interface implementation acceptance
 
 The third batch passed 533 unit tests, Bandit and all 20 isolated Home Assistant acceptance checks. Template fixtures cover a missing-price permission with a retained old estimate, a queued late-finishing cycle, unconfirmed start commands, appliance-confirmed washing, cancellation and legacy missing-message data. Four dashboard actions and three optional scripts dispatch to their intended native buttons. The final window-guidance and legacy-message fallback refinements also passed the targeted Home Assistant dashboard check. No live installation or release was changed.
+
+## EV planning implementation acceptance
+
+The EV planning batch passed 550 unit tests, Bandit and all 21 isolated Home Assistant acceptance checks. Required mode recommends useful partial charging and reports the shortfall; opportunistic mode applies an inclusive price ceiling, defaulting to free or negative electricity. Checks cover mode changes, active partial intervals, deadlines and daylight-saving transitions, target changes, missing prices and connection inputs, reloads, stable entity identities and the optional EV plan card. The existing ready-to-charge indication now includes useful partial plans; consumers that require a complete target must also check target_reachable. Recommendations remain advisory and electricity-cost based. No vehicle or charger was operated, and no installation or release was changed. See docs/ev-charging.md in the development checkout.
 
 ## Confirmed window and price recovery
 

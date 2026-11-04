@@ -55,13 +55,16 @@ class LoadOptimizerBinarySensor(LoadOptimizerEntity, BinarySensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Expose selected slots on charge-now for automation debugging."""
-        if self.entity_description.key != "charge_now":
-            return None
+        """Explain usable charging recommendations, including target shortfalls."""
         plan = self.coordinator.data.get("plan", {})
         return {
             "next_slot_start": plan.get("next_slot_start"),
             "next_slot_end": plan.get("next_slot_end"),
             "selected_slots": plan.get("selected_slots", []),
             "reason": plan.get("reason"),
+            "summary": plan.get("summary"),
+            "charging_mode": plan.get("charging_mode", "required"),
+            "target_reachable": plan.get("target_reachable", False),
+            "shortfall_battery_kwh": plan.get("shortfall_battery_kwh"),
+            "advisory_only": True,
         }
