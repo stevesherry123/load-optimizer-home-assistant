@@ -10,7 +10,8 @@
       "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
       "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
       "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes.",
-      "invalid_appliance_configuration": "Correct the configuration using the details above."
+      "invalid_appliance_configuration": "Correct the configuration using the details above.",
+      "invalid_charging_mode": "Choose required or opportunistic charging."
     },
     "step": {
       "user": {
@@ -23,7 +24,7 @@
       },
       "ev": {
         "title": "Set up EV charging",
-        "description": "This mode recommends charging windows only. Use the charge-now binary sensor in a Home Assistant automation if you want to control a charger switch.",
+        "description": "Required charging uses the cheapest available slots, including paid electricity, and reports any target shortfall. Opportunistic charging stays at or below the price ceiling. These are advisory plans; saving does not enable charger control.",
         "data": {
           "tariff_entity": "Tariff entity",
           "tariff_timezone": "Tariff timezone",
@@ -38,7 +39,9 @@
           "slot_minutes": "Slot length",
           "ready_by": "Ready by",
           "price_cap_region": "Ofgem electricity region",
-          "price_cap_payment_method": "Price-cap payment method"
+          "price_cap_payment_method": "Price-cap payment method",
+          "charging_mode": "Charging mode",
+          "maximum_price_p_per_kwh": "Opportunistic price ceiling (p/kWh)"
         }
       },
       "learned_appliance": {
@@ -83,7 +86,8 @@
       "invalid_ready_by": "Enter a local time in HH:MM format, or leave blank.",
       "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
       "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes.",
-      "invalid_appliance_configuration": "Correct the configuration using the details above."
+      "invalid_appliance_configuration": "Correct the configuration using the details above.",
+      "invalid_charging_mode": "Choose required or opportunistic charging."
     },
     "step": {
       "init": {
@@ -127,7 +131,7 @@
       },
       "ev": {
         "title": "EV charging settings",
-        "description": "Changes update the advisory plan and retain existing entities. This does not enable charger control.",
+        "description": "Required charging uses the cheapest available slots, including paid electricity, and reports any target shortfall. Opportunistic charging stays at or below the price ceiling. These are advisory plans; saving does not enable charger control.",
         "data": {
           "tariff_entity": "Tariff entity",
           "tariff_timezone": "Tariff timezone",
@@ -140,7 +144,9 @@
           "target_percent": "Fallback target percentage",
           "charger_efficiency": "Charger efficiency",
           "slot_minutes": "Slot length (minutes)",
-          "ready_by": "Ready by (local HH:MM, optional)"
+          "ready_by": "Ready by (local HH:MM, optional)",
+          "charging_mode": "Charging mode",
+          "maximum_price_p_per_kwh": "Opportunistic price ceiling (p/kWh)"
         }
       },
       "optimisation": {
@@ -196,17 +202,35 @@
   },
   "entity": {
     "sensor": {
-      "status": {"name": "Status"},
-      "estimated_cost": {"name": "Estimated cost"},
-      "estimated_profit": {"name": "Estimated profit"},
-      "needed_energy": {"name": "Needed battery energy"},
-      "wall_energy": {"name": "Wall energy"},
-      "next_slot_start": {"name": "Next slot start"},
-      "ofgem_price_cap": {"name": "Ofgem price cap benchmark"}
+      "status": {
+        "name": "Status"
+      },
+      "estimated_cost": {
+        "name": "Estimated cost"
+      },
+      "estimated_profit": {
+        "name": "Estimated profit"
+      },
+      "needed_energy": {
+        "name": "Needed battery energy"
+      },
+      "wall_energy": {
+        "name": "Wall energy"
+      },
+      "next_slot_start": {
+        "name": "Next slot start"
+      },
+      "ofgem_price_cap": {
+        "name": "Ofgem price cap benchmark"
+      }
     },
     "binary_sensor": {
-      "charge_now": {"name": "Charge now"},
-      "ready_to_charge": {"name": "Ready to charge"}
+      "charge_now": {
+        "name": "Charge now"
+      },
+      "ready_to_charge": {
+        "name": "Ready to charge"
+      }
     }
   }
 }

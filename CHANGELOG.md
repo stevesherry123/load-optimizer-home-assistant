@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add required and opportunistic advisory EV modes. Existing entries default to
+  required; opportunistic charging stays at or below a configurable p/kWh ceiling.
+- Recommend useful partial required charging with explicit projected SOC and
+  energy shortfall. `ready_to_charge` now includes partial plans; target reachability
+  is exposed separately. No charger-control entities or commands are added.
+- Retain active partial tariff intervals, cap the last interval to needed energy,
+  support binary connection sensors, reject unavailable cached tariffs and preserve
+  EV identities across mode edits and reloads. Add a read-only EV plan card.
 - Make the full and beta dashboards distinguish wash permission awaiting a plan,
   queued timing, unconfirmed starting and appliance-confirmed washing. Show the
   original window, expected late finish, cancellation and expiry clearly.

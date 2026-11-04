@@ -89,6 +89,15 @@ class EVOptionsTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(merged[key], "")
         self.assertEqual(merged["target_percent"], 85)
 
+    async def test_modes_and_price_ceiling_are_saved_and_preserved_across_sections(self):
+        result = await self.flow.async_step_ev({"charging_mode": "opportunistic", "maximum_price_p_per_kwh": -1})
+        self.assertEqual(result["data"]["charging_mode"], "opportunistic")
+        self.assertEqual(result["data"]["maximum_price_p_per_kwh"], -1)
+        self.options.update(result["data"])
+        result = await self.flow.async_step_price_cap({"price_cap_region": "London"})
+        self.assertEqual(result["data"]["charging_mode"], "opportunistic")
+        self.assertEqual(result["data"]["maximum_price_p_per_kwh"], -1)
+
     async def test_benchmark_edit_preserves_ev_options(self):
         result = await self.flow.async_step_price_cap({"price_cap_region": "North Western England"})
         self.assertEqual(result["data"]["target_percent"], 85)
