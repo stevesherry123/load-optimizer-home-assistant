@@ -101,11 +101,28 @@ Inspect the EV Status entity's `reason` attribute:
 | `vehicle_not_connected` | Check explicit text connection status, including unknown/unavailable. See the binary-status adapter in the EV guide. |
 | `no_tariff_periods` / `tariff_error` | Inspect future-rate attributes and price-unit settings. |
 | `insufficient_tariff_coverage` | Not enough whole charging slots before the deadline. Recheck the deadline, charging power and available rates. |
+| `target_shortfall` (development) | Useful partial charging is recommended; review projected battery level, remaining kWh and deadline. |
+| `no_slots_below_price_ceiling` (development) | Normal opportunistic waiting; check the ceiling and published prices. |
+| `deadline_passed` (development control) | The session's fixed deadline expired. It cannot roll to tomorrow without a new permission session. |
 | `invalid_charging_inputs` / other `invalid_*` | Check finite numbers, efficiency as a fraction, percent bounds and units. |
 | `target_already_met` | Normal result: no slots are required and charge-now stays off. |
 
-An EV plan does not prove a charger is receiving commands. Built-in planning is
-advisory; this integration does not install a charger controller.
+An EV plan does not prove a charger is receiving commands. Stable planning is
+advisory. In the development build, optional control has a separate Automatic
+Charging switch and control status. Do not infer physical charging from the plan.
+
+For `tariff_error`, use a future-rate event with published attributes, not an
+Octopus current-rate-only sensor. The development build can combine current-day
+and next-day events. Empty tomorrow data does not erase known today slots or
+make tomorrow free.
+
+For optional development control, read Status > control > summary. An unavailable
+switch prevents a guaranteed power cut. A stale/unknown meter cannot confirm
+delivery; a reported car fault must not be dismissed because its value stopped
+changing. After a timeout or reload, keep permission off, verify the physical
+charger is stopped and use Confirm Charging Stopped only with fresh off/low-power
+readings. See [the control recovery guide](ev-control.md). Never bypass freshness
+checks or replay an uncertain command merely to clear the displayed blocker.
 
 ## Dashboards And Support
 

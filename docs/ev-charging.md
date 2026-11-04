@@ -25,6 +25,11 @@ behaviour are development work, not a published or installed update.
 
 ## Setup Fields
 
+The [generic EV form example](examples/ev-planning.yaml) and separate
+[optional switch fields](examples/ev-switch-control.yaml) are exercised by the
+isolated Home Assistant acceptance checks. Replace their entity IDs and numeric
+assumptions; they are form values, not a configuration.yaml integration block.
+
 | Field | Example / meaning |
 | --- | --- |
 | Tariff entity | One entity with usable future rates. Use Additional future-rate entities to combine separate published forecasts in the development build. A current-price-only sensor is insufficient. |

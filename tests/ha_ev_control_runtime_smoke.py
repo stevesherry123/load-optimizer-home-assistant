@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
+import yaml
 from pathlib import Path
 import tempfile
 from unittest.mock import AsyncMock, patch
@@ -40,13 +41,25 @@ async def main():
             reading("sensor.synthetic_ev_cable", cable)
             reading("sensor.synthetic_ev_battery", battery)
 
-        settings = {"tariff_entity": "event.synthetic_today", "tariff_entities": ["event.synthetic_tomorrow"],
-                    "tariff_price_unit": "gbp_per_kwh", "tariff_timezone": "Europe/London",
-                    "battery_entity": "sensor.synthetic_ev_battery", "battery_capacity_entity": "sensor.synthetic_capacity",
-                    "connection_status_entity": "sensor.synthetic_ev_cable", "charge_power_kw": 2.3,
-                    "target_percent": 80, "charger_efficiency": 0.9, "slot_minutes": 30,
-                    "ev_charger_switch": "switch.synthetic_ev", "ev_charge_power_entity": "sensor.synthetic_ev_power",
-                    "ev_confirmation_seconds": 180, "ready_by": (Clock.current + timedelta(hours=1)).strftime("%H:%M")}
+        examples = ROOT / "docs/examples"
+        planning = yaml.safe_load((examples / "ev-planning.yaml").read_text())
+        controls = yaml.safe_load((examples / "ev-switch-control.yaml").read_text())
+        replacements = {
+            "event.example_current_day_rates": "event.synthetic_today",
+            "event.example_next_day_rates": "event.synthetic_tomorrow",
+            "sensor.example_ev_battery": "sensor.synthetic_ev_battery",
+            "sensor.example_ev_usable_capacity": "sensor.synthetic_capacity",
+            "sensor.example_ev_cable": "sensor.synthetic_ev_cable",
+            "switch.example_ev_power": "switch.synthetic_ev",
+            "sensor.example_ev_wall_power": "sensor.synthetic_ev_power",
+            "sensor.example_ev_charging_status": "sensor.synthetic_ev_status",
+        }
+        def replace(value):
+            return [replace(item) for item in value] if isinstance(value, list) else replacements.get(value, value)
+        planning = {key: replace(value) for key, value in planning.items()}
+        controls = {key: replace(value) for key, value in controls.items()}
+        settings = {**planning, **controls,
+                    "ready_by": (Clock.current + timedelta(hours=1)).strftime("%H:%M")}
         rates = [{"start": start.isoformat(), "end": (start + timedelta(hours=2)).isoformat(), "value_inc_vat": 0.2}]
         with patch("custom_components.load_optimizer.price_cap.PriceCapManager.async_status", new=AsyncMock(return_value={"status": "not_configured"})), \
              patch("custom_components.load_optimizer.coordinator.datetime", Clock), \
@@ -60,9 +73,18 @@ async def main():
                 hass.services.async_register("switch", "turn_on", fake_switch)
                 hass.services.async_register("switch", "turn_off", fake_switch)
                 refresh_inputs()
+                reading("sensor.synthetic_ev_status", "idle")
                 reading("sensor.synthetic_capacity", 18)
                 reading("event.synthetic_today", Clock.current.isoformat(), {"rates": rates})
                 reading("event.synthetic_tomorrow", Clock.current.isoformat(), {"rates": []})
+                advisory = await configure(hass, "ev_charging", "Guide advisory EV", {
+                    **planning, "ready_by": settings["ready_by"],
+                })
+                advisory_coordinator = hass.data["load_optimizer"][advisory.entry_id]
+                assert advisory_coordinator.data["plan"]["charging_mode"] == "required"
+                assert not any(entity.startswith(("switch.", "button."))
+                               for entity, device in identities(hass, advisory.entry_id).values())
+                assert not commands
                 entry = await configure(hass, "ev_charging", "Synthetic EV control", settings)
                 coordinator = hass.data["load_optimizer"][entry.entry_id]
                 ids = identities(hass, entry.entry_id)

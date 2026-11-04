@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add executable EV setup examples and installation/release acceptance guides.
+  Distinguish published scope, local implementation and remaining physical tests.
+- Record source revision, dirty state, selected suites and source fingerprints in
+  validation reports. Source changes between validation snapshots invalidate an
+  otherwise passing run; unverified revisions are identified explicitly.
+
 - Add optional EV switch control with explicit Automatic Charging permission,
   metered confirmation, persisted command reservations, fresh preflight checks,
   interval timers and attention notifications. Permission resets off on reload;

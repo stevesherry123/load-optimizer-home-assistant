@@ -31,6 +31,19 @@ in separate processes. Independent checks keep running after a failure; any
 failure or timeout makes the final exit status nonzero. No check is ignored.
 Each check has a five-minute timeout, configurable with `--timeout`.
 
+Reports record the Git commit/branch, dirty working-tree flag, selected suites and
+a SHA-256 fingerprint of tracked and unignored source files, including symlinks
+and file modes. The runner compares identity before and after checks; a mismatch
+returns failure even if individual checks passed. The report directory itself
+and ignored files are excluded from that fingerprint. No source contents or
+credential values are included in the identity record.
+
+Dirty working-tree runs remain useful for development, but their commit alone
+does not identify the changed code. Commit the candidate and rerun from a clean
+tree for release evidence. If Git/source identity cannot be verified, checks can
+still execute but the report explicitly lacks verified revision evidence; do not
+use that report as a release gate. See [release readiness](release-readiness.md).
+
 Results go to a unique ignored `.local/validation/` directory with per-check logs,
 `results.json` and `summary.md`. `--suite ha` runs just HA checks; `--list` lists
 checks without importing HA. Do not commit generated logs or private local files.

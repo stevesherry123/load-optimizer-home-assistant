@@ -17,6 +17,51 @@ spec.loader.exec_module(runner)
 
 
 class ValidationRunnerTests(unittest.TestCase):
+    def test_source_identity_tracks_edits_without_disclosing_source_contents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            def git(*args):
+                subprocess.run(["git", *args], cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            git("init")
+            (root / "example.py").write_text("PRIVATE_FIXTURE_VALUE = 1\n")
+            (root / ".gitignore").write_text(".env\n")
+            git("add", ".")
+            git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "Fixture")
+            clean = runner.source_identity(root=root)
+            self.assertTrue(clean["available"])
+            self.assertFalse(clean["worktree_dirty"])
+            self.assertNotIn("PRIVATE_FIXTURE_VALUE", json.dumps(clean))
+            (root / ".env").write_text("PRIVATE_IGNORED_FIXTURE\n")
+            self.assertEqual(runner.source_identity(root=root), clean)
+            # Custom report outputs are not source changes, even outside .local.
+            output = root / "reports"
+            output.mkdir()
+            (output / "unit.log").write_text("Synthetic log\n")
+            self.assertEqual(runner.source_identity(root=root, exclude=output), clean)
+            (root / "example.py").write_text("PRIVATE_FIXTURE_VALUE = 2\n")
+            changed = runner.source_identity(root=root, exclude=output)
+            self.assertTrue(changed["worktree_dirty"])
+            self.assertNotEqual(changed["fingerprint_sha256"], clean["fingerprint_sha256"])
+            self.assertEqual(changed["commit"], clean["commit"])
+
+    def test_changed_source_invalidates_an_otherwise_green_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "run"
+            output.mkdir()
+            def checks(*args):
+                return [{"name": "fixture", "passed": True, "returncode": 0, "seconds": 0, "log": "fixture.log"}]
+            with patch.object(sys, "argv", ["validate.py", "--output", str(output)]), \
+                 patch.object(runner, "preflight", return_value={"python": "3.14"}), \
+                 patch.object(runner, "run_checks", side_effect=checks), \
+                 patch.object(runner, "source_identity", side_effect=[
+                     {"available": True, "commit": "abc", "worktree_dirty": False, "fingerprint_sha256": "one"},
+                     {"available": True, "commit": "abc", "worktree_dirty": True, "fingerprint_sha256": "two"},
+                 ]):
+                self.assertEqual(runner.main(), 1)
+            report = json.loads((output / "results.json").read_text())
+            self.assertFalse(report["source"]["unchanged"])
+            self.assertIn("NO — rerun validation", (output / "summary.md").read_text())
+
     def test_every_acceptance_script_is_discovered_once(self):
         items = runner.checks(["ha"])
         expected = {p.stem for p in (ROOT / "tests").glob("ha_*_smoke.py")

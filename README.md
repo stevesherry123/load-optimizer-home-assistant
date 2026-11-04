@@ -20,9 +20,22 @@ cycle, compare running costs, and find suitable low-cost or negative-price windo
 - **Optional dashboards:** a standard-card template, plus a richer chart example
   with tariff-local time, 24/48-hour coverage, benchmark and current-time markers.
 
-EV charging is **advisory**: Load Optimizer does not switch a charger or power
-plug. Installing the integration does not enable automatic appliance starting.
+In the stable scope described above, EV charging is **advisory** and does not
+switch a charger or power plug. Installing the integration does not enable
+automatic appliance starting.
 Your existing tariff, appliance and vehicle integrations remain required.
+
+## Unreleased Development In This Branch
+
+The development checkout adds bounded overnight wash requests, total-cost extra-run
+decisions, required/opportunistic EV modes and optional metered EV switch control.
+These are not claims about an installed or published release. Optional EV control
+requires configured switch, meter and cable feedback plus a separate Automatic
+Charging opt-in; saving settings leaves it off, and reload resets permission off.
+
+Follow the [installation acceptance checklist](docs/installation-checklist.md),
+[EV control guide](docs/ev-control.md) and [release readiness](docs/release-readiness.md)
+for the development scope, remaining physical tests and publication boundary.
 
 ## HACS Installation
 
@@ -109,7 +122,8 @@ workflow, notification process and limitations of download/installation counts.
 
 ## Known Limitations
 
-- EV charging is advisory, not a built-in charger switch controller.
+- Stable EV charging is advisory. This development branch's optional switch
+  adapter still requires supervised hardware acceptance; see its separate guide.
 - Appliance setup uses YAML definitions; a fully guided appliance editor is
   planned. Only one learned-appliance hub is supported.
 - Native dishwasher control currently targets appliance ID `1` and requires
@@ -146,13 +160,16 @@ README content; release notes describe each update, and the linked guides
 provide setup and troubleshooting detail.
 
 - [Installation and configuration](docs/getting-started.md)
+- [Installation acceptance checklist](docs/installation-checklist.md)
 - [Compatibility and supported control targets](docs/compatibility.md)
 - [Optional Home Connect dishwasher control](docs/dishwasher-control.md)
 - [Advisory EV planning and input examples](docs/ev-charging.md)
+- [Optional EV switch control (unreleased)](docs/ev-control.md)
 - [Dashboards, manual starts and scheduling explanations](docs/dashboard.md)
 - [Troubleshooting and support checklist](docs/troubleshooting.md)
 - [Migration from the retired add-on](docs/migration-addon-to-integration.md)
 - [Release channels, HACS acceptance and statistics](docs/release-channels.md)
+- [Development release readiness](docs/release-readiness.md)
 - [Changelog](CHANGELOG.md) and [GitHub releases](https://github.com/stevesherry123/load-optimizer-home-assistant/releases)
 - [Privacy](docs/privacy.md) and [private vulnerability reporting](SECURITY.md)
 - [Contributing](CONTRIBUTING.md), [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md)

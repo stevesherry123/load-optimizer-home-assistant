@@ -7,8 +7,10 @@ separately from the public product documentation.
 
 The current review and staged delivery plan is in
 [architecture milestones](architecture-milestones.md). Its initial implementation
-focuses on durable one-wash requests and bounded overnight scheduling; EV control
-remains a later, separately validated milestone.
+covers durable one-wash requests, bounded overnight scheduling and optional EV
+control in development. Physical acceptance and release promotion remain separate
+gates. The [installation checklist](installation-checklist.md) and
+[readiness record](release-readiness.md) track the remaining delivery steps.
 
 ## Priorities
 

@@ -1,0 +1,8 @@
+# Additional EV form values for the unreleased optional switch adapter.
+# These require an appropriate charger, a measured power sensor and the
+# dedicated cable-connection entity in ev-planning.yaml.
+# Saving does not grant permission: Automatic Charging starts off.
+ev_charger_switch: switch.example_ev_power
+ev_charge_power_entity: sensor.example_ev_wall_power
+ev_charging_status_entity: sensor.example_ev_charging_status
+ev_confirmation_seconds: 180
