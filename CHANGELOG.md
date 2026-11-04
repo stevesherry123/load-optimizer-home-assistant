@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an isolated EV command-lifecycle foundation with command reservations,
+  physical-confirmation gates, timeout/restart quarantine and external-stop
+  handling. This is not wired to services and does not enable charger control.
 - Add required and opportunistic advisory EV modes. Existing entries default to
   required; opportunistic charging stays at or below a configurable p/kWh ceiling.
 - Recommend useful partial required charging with explicit projected SOC and

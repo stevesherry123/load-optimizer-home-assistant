@@ -4,6 +4,9 @@ Add a separate entry and choose `ev_charging`. This calculates charging slots;
 it does **not** operate a charger, car or plug. Any separate charger automation
 needs its own safety checks and explicit opt-in.
 
+The next control milestone has a [development flow and remaining steps](ev-control.md).
+Its command lifecycle is not yet connected to charger services.
+
 ## Charging Modes (Unreleased Development Build)
 
 - **Required charging:** use the cheapest available slots, including paid
