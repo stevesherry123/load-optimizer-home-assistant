@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Add optional EV switch control with explicit Automatic Charging permission,
+  metered confirmation, persisted command reservations, fresh preflight checks,
+  interval timers and attention notifications. Permission resets off on reload;
+  saved sessions require explicit stopped-state reconciliation. No live hardware
+  acceptance or deployment is implied.
+- Combine additional EV future-rate entities, including separate Octopus today
+  and tomorrow events. Keep available published slots when tomorrow is empty;
+  reject conflicting forecasts and never fill missing prices with zero.
+
 - Add an isolated EV command-lifecycle foundation with command reservations,
   physical-confirmation gates, timeout/restart quarantine and external-stop
   handling. This is not wired to services and does not enable charger control.

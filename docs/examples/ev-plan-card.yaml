@@ -2,6 +2,7 @@ type: markdown
 title: EV charging plan
 content: |-
   {% set plan = state_attr('sensor.your_ev_status', 'plan') or {} %}
+  {% set control = state_attr('sensor.your_ev_status', 'control') or {} %}
   {% macro number(value, unit) -%}
   {{ ('%.2f' | format(value | float)) ~ ' ' ~ unit if is_number(value) else 'Not available' }}
   {%- endmacro %}
@@ -46,5 +47,11 @@ content: |-
   No charging slots are selected.
   {% endif %}
 
-  This is an advisory plan and does not operate a charger. Costs cover electricity and charging losses; vehicle wear and other operating costs are not included.
+  {% if control.get('runtime_connected') %}
+  **Automatic charging: {{ 'enabled' if control.get('enabled') else 'off' }}.**
+  {{ control.get('summary') or 'Review the charging controls before enabling.' }}
+  {% else %}
+  This is an advisory plan and does not operate a charger.
+  {% endif %}
+  Costs cover electricity and charging losses; vehicle wear and other operating costs are not included.
   {% endif %}

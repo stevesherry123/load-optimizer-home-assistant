@@ -22,8 +22,9 @@ remains a later, separately validated milestone.
 - Refine EV planning and assess optional charging control through separately
   tested development work; advisory planning does not itself operate a charger.
   Required/opportunistic planning, useful partial plans and source-loss handling
-  are implemented in the current unreleased development branch. Charger control
-  remains the next separate milestone.
+  are implemented in the current unreleased development branch. Optional switch control is now wired behind a separate opt-in with metered
+  confirmation, durable command reservations and restart reconciliation. Live
+  charger acceptance and public installation/release remain separate gates.
 - Explore provider-neutral solar, storage and lower-carbon scheduling inputs.
 
 ## Acceptance boundaries

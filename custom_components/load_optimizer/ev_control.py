@@ -19,12 +19,14 @@ class EVControlSession:
         self.phase = "idle"
         self.owned = False
         self.pending = None
+        self.requires_review = False
         self.reason = "control_disabled"
 
     def checkpoint(self) -> dict:
         """Return JSON-safe evidence for persistence before command dispatch."""
         return {
             "phase": self.phase, "owned": self.owned, "reason": self.reason,
+            "requires_review": self.requires_review,
             "pending": {**self.pending, "issued": self.pending["issued"].isoformat(),
                         "deadline": self.pending["deadline"].isoformat()}
             if self.pending else None,
@@ -46,6 +48,7 @@ class EVControlSession:
         if not telemetry_fresh or charging is not False:
             return False
         self.phase, self.owned, self.pending = "idle", False, None
+        self.requires_review = False
         self.reason = "reconciled_stopped"
         return True
 
@@ -54,6 +57,20 @@ class EVControlSession:
         if self.pending and self.pending["id"] == command_id:
             self.phase = "blocked"
             self.reason = "command_result_uncertain"
+
+    def stop_enabled_power(self, now: datetime, *, require_review: bool = False) -> dict | None:
+        """Stop owned, observed enabled power without waiting for car delivery.
+
+        The switch adapter must verify its own switch is freshly on and demand
+        has ended. This can supersede an unconfirmed start once dispatch has
+        returned. It never supersedes a stop or an ambiguous failed command.
+        """
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("Control time must be timezone-aware")
+        if not self.owned or self.phase == "blocked" or self.pending and self.pending["action"] == "stop":
+            return None
+        self.requires_review = self.requires_review or require_review
+        return self._reserve("stop", now.astimezone(timezone.utc))
 
     def evaluate(
         self, *, now: datetime, enabled: bool, desired: bool,
@@ -88,6 +105,9 @@ class EVControlSession:
             self.pending = None
             self.phase = "charging" if expected else "idle"
             self.owned = expected
+            if not expected and self.requires_review:
+                self.phase, self.reason = "blocked", "delivery_requires_review"
+                return None
         if not telemetry_fresh or type(charging) is not bool:
             self.reason = "charging_state_unavailable"
             return None

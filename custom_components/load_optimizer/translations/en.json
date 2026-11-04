@@ -11,7 +11,8 @@
       "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
       "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes.",
       "invalid_appliance_configuration": "Correct the configuration using the details above.",
-      "invalid_charging_mode": "Choose required or opportunistic charging."
+      "invalid_charging_mode": "Choose required or opportunistic charging.",
+      "required_for_charger_control": "Select a charger switch, measured power entity and cable connection entity together, or leave the charger controls blank."
     },
     "step": {
       "user": {
@@ -24,7 +25,7 @@
       },
       "ev": {
         "title": "Set up EV charging",
-        "description": "Required charging uses the cheapest available slots, including paid electricity, and reports any target shortfall. Opportunistic charging stays at or below the price ceiling. These are advisory plans; saving does not enable charger control.",
+        "description": "Required charging uses the cheapest published slots and reports any target shortfall. Opportunistic charging respects the price ceiling. Optional switch controls require a separate power meter and cable connection sensor. Saving leaves Automatic Charging off; enable that switch separately after verifying the hardware.",
         "data": {
           "tariff_entity": "Tariff entity",
           "tariff_timezone": "Tariff timezone",
@@ -41,7 +42,12 @@
           "price_cap_region": "Ofgem electricity region",
           "price_cap_payment_method": "Price-cap payment method",
           "charging_mode": "Charging mode",
-          "maximum_price_p_per_kwh": "Opportunistic price ceiling (p/kWh)"
+          "maximum_price_p_per_kwh": "Opportunistic price ceiling (p/kWh)",
+          "tariff_entities": "Additional future-rate entities",
+          "ev_charger_switch": "Optional charger power switch",
+          "ev_charge_power_entity": "Optional charger measured power (W or kW)",
+          "ev_charging_status_entity": "Optional car charging status",
+          "ev_confirmation_seconds": "Command confirmation timeout (seconds)"
         }
       },
       "learned_appliance": {
@@ -87,7 +93,8 @@
       "invalid_timezone": "Enter a valid timezone, for example Europe/London.",
       "invalid_number": "Enter a finite number. Slot length must be a whole number of minutes.",
       "invalid_appliance_configuration": "Correct the configuration using the details above.",
-      "invalid_charging_mode": "Choose required or opportunistic charging."
+      "invalid_charging_mode": "Choose required or opportunistic charging.",
+      "required_for_charger_control": "Select a charger switch, measured power entity and cable connection entity together, or leave the charger controls blank."
     },
     "step": {
       "init": {
@@ -131,7 +138,7 @@
       },
       "ev": {
         "title": "EV charging settings",
-        "description": "Required charging uses the cheapest available slots, including paid electricity, and reports any target shortfall. Opportunistic charging stays at or below the price ceiling. These are advisory plans; saving does not enable charger control.",
+        "description": "Required charging uses the cheapest published slots and reports any target shortfall. Opportunistic charging respects the price ceiling. Optional switch controls require a separate power meter and cable connection sensor. Saving leaves Automatic Charging off; enable that switch separately after verifying the hardware.",
         "data": {
           "tariff_entity": "Tariff entity",
           "tariff_timezone": "Tariff timezone",
@@ -146,7 +153,12 @@
           "slot_minutes": "Slot length (minutes)",
           "ready_by": "Ready by (local HH:MM, optional)",
           "charging_mode": "Charging mode",
-          "maximum_price_p_per_kwh": "Opportunistic price ceiling (p/kWh)"
+          "maximum_price_p_per_kwh": "Opportunistic price ceiling (p/kWh)",
+          "tariff_entities": "Additional future-rate entities",
+          "ev_charger_switch": "Optional charger power switch",
+          "ev_charge_power_entity": "Optional charger measured power (W or kW)",
+          "ev_charging_status_entity": "Optional car charging status",
+          "ev_confirmation_seconds": "Command confirmation timeout (seconds)"
         }
       },
       "optimisation": {

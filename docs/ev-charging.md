@@ -1,11 +1,12 @@
 # Advisory EV Planning
 
 Add a separate entry and choose `ev_charging`. This calculates charging slots;
-it does **not** operate a charger, car or plug. Any separate charger automation
-needs its own safety checks and explicit opt-in.
+it remains advisory by default. The unreleased development build also provides
+[optional switch control](ev-control.md), requiring configured feedback and a
+separate Automatic Charging opt-in.
 
-The next control milestone has a [development flow and remaining steps](ev-control.md).
-Its command lifecycle is not yet connected to charger services.
+The [control guide](ev-control.md) describes activation, confirmation and recovery.
+No control is enabled by saving the EV form.
 
 ## Charging Modes (Unreleased Development Build)
 
@@ -19,20 +20,25 @@ Its command lifecycle is not yet connected to charger services.
 
 Existing entries without a mode setting retain **required** mode. Edit the mode
 through the existing EV Configure form; entries, devices and entity IDs are
-retained. Saving does not enable charger control. The new modes and partial-plan
+retained. Saving leaves Automatic Charging off; optional control requires its separate switch. The new modes and partial-plan
 behaviour are development work, not a published or installed update.
 
 ## Setup Fields
 
 | Field | Example / meaning |
 | --- | --- |
-| Tariff entity | One entity with usable future rates. EV setup currently has no additional-entities list. A current-price-only sensor is insufficient. |
+| Tariff entity | One entity with usable future rates. Use Additional future-rate entities to combine separate published forecasts in the development build. A current-price-only sensor is insufficient. |
 | Tariff price unit | `gbp_per_kwh` for Octopus `value_inc_vat` values such as `0.25`; `p_per_kwh` for values such as `25`. |
 | Tariff timezone | `Europe/London` for UK tariff days and the ready-by deadline. |
 | Battery percentage entity | Numeric `sensor`, for example 40, not `0.4`, range or remaining kWh. |
 | Battery capacity entity | Numeric `sensor` with usable capacity in kWh, for example 60. Select an entity, not the number itself. |
 | Target percentage entity | Optional numeric sensor. If absent or nonnumeric, the fallback target is used. |
 | Connection status entity | Optional text sensor or, in the development build, a binary sensor. Recognised available states are `connected`, `charging`, `plugged_in` and `on`. Disconnected, unknown, unavailable or unrecognised states block planning. An omitted reference is assumed available for advisory planning; a configured reference that disappears blocks planning. |
+| Additional future-rate entities (unreleased) | Optional list, for example the Octopus next-day rates event alongside the current-day event as primary. Empty or unavailable sources are disclosed; only published intervals are used. |
+| Optional charger power switch (unreleased) | Power switch controlled only after explicit Automatic Charging activation. |
+| Optional charger measured power (unreleased) | Sensor in W or kW, required with charger controls. |
+| Optional car charging status (unreleased) | Slower corroborating feedback; does not replace a power meter or cable-connection sensor. |
+| Command confirmation timeout (unreleased) | 30–600 seconds, default 180. |
 | Charging mode (unreleased) | `required` or `opportunistic`; existing entries default to required. |
 | Opportunistic price ceiling (unreleased) | Pence per kWh, independent of the tariff source's input unit. Inclusive: a ceiling of 0 allows exactly zero and negative prices. Required mode ignores this ceiling. |
 | Charge power | Expected wall charging power in **kW**, for example `7.2`, not 7200 W. |
@@ -116,7 +122,8 @@ exists, including required partial plans. It no longer proves the complete targe
 is reachable. Use `target_reachable` separately for that assessment. `charge_now`
 is true during a selected interval even when the target has a shortfall. These
 signals describe the latest scan; they are not charger commands or precision
-start/stop timers. Review external automations that relied on the old complete-plan
+start/stop timers. Optional native control supplies its own interval timers and
+revalidation; avoid running conflicting external charger automations. Review external automations that relied on the old complete-plan
 meaning before adopting this development build.
 
 The plan exposes `planned_wall_energy_kwh`, `planned_battery_kwh`,
