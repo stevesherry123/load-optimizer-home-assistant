@@ -90,6 +90,32 @@ Missing tariff coverage is a data failure, not a reason to invoke the window fal
 
 Milestones 1–4 form the first complete delivery: dependable dishwasher optimisation. Documentation and onboarding should improve throughout; milestone 7 verifies the complete installation journey. These are outcome gates, not estimated dates or new release commitments.
 
+## Current delivery position — 6 November 2026
+
+| Milestone | Implementation and evidence | Remaining acceptance |
+| --- | --- | --- |
+| 1. Behaviour and baseline | Agreed policy and architecture mapped to development. | Reconcile the separate EV prototype before promotion. |
+| 2. Dishwasher scheduling | Implemented; synthetic window, restart, cancellation and price-recovery checks pass. | Supervised physical scheduling and restart acceptance. |
+| 3. Total-benefit decisions | Implemented; cost precision, break-even and priority checks pass. | Verify installation-specific cost assumptions. |
+| 4. Controls and explanations | Implemented; dashboard templates and action wiring pass. | Unfamiliar-user walkthrough and desktop/mobile inspection. |
+| 5. EV planning | Implemented; required/optional modes and shortfall checks pass. | Verify live forecasts, connection, capacity and power assumptions. |
+| 6. Optional EV control | Implemented; command, persistence and feedback checks pass. | Prototype journal migration, reporting cadence and supervised physical start/stop/recovery. |
+| 7. Installation and release | Executable examples, guides and full two-version validation implemented. | Fresh-install walkthrough, rollback acceptance, final scope/version and promotion. |
+
+Development commit `3e75912` passed 570 unit tests, Bandit and all 24 standard HA
+acceptance checks locally in each pinned environment (2026.10.2 and 2026.10.4).
+All six GitHub jobs passed in
+[run 42194714493](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/42194714493).
+These results establish implementation confidence, not physical acceptance.
+
+The first four milestones are the proposed first feature scope: reliable
+scheduled dishwasher washing with explicit costs and understandable controls.
+Advisory EV planning can be considered separately. Automatic EV control has
+additional migration and hardware gates. This is a recommendation, not a final
+scope decision; the current draft PR includes all implementation work. A smaller
+release requires a deliberately prepared and tested candidate, not merely leaving
+EV permission off. See [release readiness](release-readiness.md).
+
 ## Implementation sequence
 
 1. Map current scheduling, costing, persistence and control code to the agreed behaviour; inspect installed and branch versions separately.
