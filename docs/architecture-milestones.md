@@ -168,3 +168,16 @@ The new real Home Assistant acceptance injects battery-target completion, target
 ## Confirmed window and price recovery
 
 The household's default overnight window begins at 21:00 and ends at 07:00. Missing prices trigger a notification. Complete prices returning in time allow automatic resumption inside the original window under the existing permission; they do not revive cancelled or expired requests.
+
+## Complete pinned compatibility coverage
+
+The next validation milestone extends the pinned HA 2026.10.4 job from imports
+and appliance interlocks to every standard HA acceptance check. Its independent
+requirements match HA frontend and authentication bootstrap pins, verified before
+tests. Both HA jobs retain full summaries and failure logs. This closes the remote
+EV coverage gap without claiming physical acceptance or automatic latest-version
+tracking. Development commit 8e6e00e passed all six GitHub jobs before this change.
+
+Local validation passed 570 unit tests, Bandit and all 24 HA acceptance checks
+in each pinned environment (2026.10.2 and 2026.10.4). These are synthetic checks;
+no live installation or hardware was changed.

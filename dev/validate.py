@@ -32,13 +32,13 @@ def ha_runtime_requirements() -> list[str]:
     raise ValueError("Could not verify HA authentication dependency requirements")
 
 
-def preflight() -> dict:
+def preflight(requirements: Path = REQUIREMENTS) -> dict:
     """Fail before tests when the local runtime does not match declared CI inputs."""
     problems = []
     versions = {"python": sys.version.split()[0]}
     if sys.version_info[:2] != PYTHON_MINOR:
         problems.append("Python 3.14 is required, not " + versions["python"])
-    for line in REQUIREMENTS.read_text().splitlines():
+    for line in requirements.read_text().splitlines():
         if not line or line.startswith("#"):
             continue
         package, expected = line.split("==")
@@ -164,6 +164,8 @@ def main() -> int:
     parser.add_argument("--suite", action="append", choices=("unit", "security", "ha", "browser"))
     parser.add_argument("--list", action="store_true", help="List checks without requiring HA")
     parser.add_argument("--preflight", action="store_true", help="Check versions without running tests")
+    parser.add_argument("--requirements", type=Path, default=REQUIREMENTS,
+                        help="Pinned environment requirements to verify before checks")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--timeout", type=int, default=300)
     args = parser.parse_args()
@@ -174,7 +176,7 @@ def main() -> int:
         print("\n".join(name for name, _ in items))
         return 0
     try:
-        versions = preflight()
+        versions = preflight(args.requirements)
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 2

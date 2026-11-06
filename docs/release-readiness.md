@@ -4,7 +4,7 @@ This is the acceptance record to complete before publishing the development
 milestones. It is not permission to deploy, restart HA, operate hardware or
 publish a release. No new release version has been assigned in this checkout.
 
-## Evidence boundary (4 November 2026)
+## Evidence boundary (6 November 2026)
 
 | Gate | Current evidence |
 | --- | --- |
@@ -14,7 +14,8 @@ publish a release. No new release version has been assigned in this checkout.
 | Freshness and energy assumptions | Pending live verification of reporting cadence, usable capacity, wall power and efficiency assumptions. |
 | Supervised physical acceptance | Pending for this development implementation; mocked service dispatch is insufficient. |
 | Unfamiliar-user onboarding and desktop/mobile layout | Pending. Executable examples cover syntax and synthetic behaviour only. |
-| GitHub checks, promotion, versioning and publication | Pending; no push, merge, tag or release is implied. |
+| GitHub checks | All six jobs passed for development commit `8e6e00e` in [run 41866813346](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/41866813346). New changes require their own run. |
+| Promotion, versioning and publication | Pending; development is published to draft PR #26, with no merge, tag or release. |
 
 ## Evidence for the candidate
 

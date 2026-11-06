@@ -136,6 +136,22 @@ class ValidationRunnerTests(unittest.TestCase):
         self.assertEqual(summary["if"], "always()")
         self.assertFalse(any("continue-on-error" in s for s in steps))
 
+    def test_compatibility_runs_full_suite_with_matching_preflight(self):
+        workflow = yaml.load((ROOT / ".github/workflows/validate.yaml").read_text(), Loader=yaml.BaseLoader)
+        steps = workflow["jobs"]["current_ha"]["steps"]
+        self.assertTrue(any("--suite ha" in s.get("run", "") and
+                            "--requirements dev/requirements-validation-compatibility.txt" in s["run"]
+                            for s in steps))
+        self.assertEqual(next(s for s in steps if s.get("name") == "Publish acceptance summary")["if"], "always()")
+        requirements = ROOT / "dev/requirements-validation-compatibility.txt"
+        versions = dict(line.split("==") for line in requirements.read_text().splitlines())
+        with patch.object(runner.metadata, "version", side_effect=versions.__getitem__), \
+             patch.object(runner.sys, "version_info", (3, 14)), \
+             patch.object(runner, "ha_runtime_requirements", return_value=["pyotp==2.10.0"]):
+            self.assertEqual(runner.preflight(requirements)["homeassistant"], "2026.10.4")
+            with self.assertRaisesRegex(ValueError, "homeassistant: expected 2026.10.2"):
+                runner.preflight()
+
     def test_minimum_ha_matches_shared_requirements(self):
         requirements = dict(line.split("==") for line in runner.REQUIREMENTS.read_text().splitlines())
         minimum = json.loads((ROOT / "hacs.json").read_text())["homeassistant"]

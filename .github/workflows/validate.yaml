@@ -78,19 +78,28 @@ jobs:
           fi
 
   current_ha:
-    name: Current Home Assistant compatibility
+    name: Pinned Home Assistant compatibility
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
-      - name: Install current stable Home Assistant
-        run: pip install "homeassistant==2026.10.4" "pyotp==2.8.0" "PyQRCode==1.2.1"
-      - name: Import integration platforms and config flow
-        run: python tests/ha_import_smoke.py
-      - name: Verify appliance cancellation, unload and physical interlocks
-        run: python tests/ha_command_safety_smoke.py
+      - name: Install pinned compatibility environment
+        run: pip install -r dev/requirements-validation-compatibility.txt
+      - name: Run every isolated Home Assistant acceptance check
+        run: python dev/validate.py --requirements dev/requirements-validation-compatibility.txt --suite ha --output .local/ci-validation
+      - name: Publish acceptance summary
+        if: always()
+        run: |
+          if [ -f .local/ci-validation/summary.md ]; then
+            cat .local/ci-validation/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' 'Acceptance checks did not complete. Inspect the preceding environment/setup step.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f .local/ci-validation/results.json ]; then
+            python -c "import json,pathlib; p=pathlib.Path('.local/ci-validation'); r=json.loads((p/'results.json').read_text()); [(print('FAILED: '+c['name']),print((p/c['log']).read_text()[-16000:])) for c in r['checks'] if not c['passed']]"
+          fi
 
   hacs:
     name: HACS validation

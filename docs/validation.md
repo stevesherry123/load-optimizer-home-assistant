@@ -56,6 +56,17 @@ Requesting that suite without its prerequisites fails; it is never reported as
 a pass merely because it was not selected. Standard HA checks still execute the
 shipped chart JavaScript across browser timezones and profile preferences.
 
+## Pinned compatibility environment
+
+The second GitHub HA job tests **2026.10.4**, using
+`dev/requirements-validation-compatibility.txt`. This is a pinned compatibility
+check, not a claim to track the latest release automatically. It runs every
+standard HA acceptance check, including EV control and source-consistency cases,
+with the same environment preflight, source identity and failure reporting.
+Use `--requirements dev/requirements-validation-compatibility.txt --suite ha`
+with the runner in a separate environment installed from that requirements file.
+The default minimum-version environment and its pins remain separate.
+
 ## GitHub Triggers
 
 - Pull requests run the full validation workflow, including the prospective merge.
