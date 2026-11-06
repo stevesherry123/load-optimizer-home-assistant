@@ -6,6 +6,8 @@ import ast
 from datetime import datetime, timezone
 from importlib import metadata
 import json
+import hashlib
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -30,13 +32,13 @@ def ha_runtime_requirements() -> list[str]:
     raise ValueError("Could not verify HA authentication dependency requirements")
 
 
-def preflight() -> dict:
+def preflight(requirements: Path = REQUIREMENTS) -> dict:
     """Fail before tests when the local runtime does not match declared CI inputs."""
     problems = []
     versions = {"python": sys.version.split()[0]}
     if sys.version_info[:2] != PYTHON_MINOR:
         problems.append("Python 3.14 is required, not " + versions["python"])
-    for line in REQUIREMENTS.read_text().splitlines():
+    for line in requirements.read_text().splitlines():
         if not line or line.startswith("#"):
             continue
         package, expected = line.split("==")
@@ -103,9 +105,55 @@ def run_checks(items, output: Path, timeout: int) -> list[dict]:
     return results
 
 
-def markdown(results: list[dict]) -> str:
-    lines = ["# Validation Results", "", "| Check | Result | Seconds |",
-             "| --- | --- | --- |"]
+def source_identity(*, root: Path | None = None, exclude: Path | None = None) -> dict:
+    """Identify checked-out source without recording file contents or credentials."""
+    root = (root or ROOT).resolve()
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=root, stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, check=True, timeout=10).stdout
+    try:
+        commit = git("rev-parse", "HEAD").decode().strip()
+        branch = git("rev-parse", "--abbrev-ref", "HEAD").decode().strip()
+        names = git("ls-files", "--cached", "--others", "--exclude-standard", "-z").split(b"\0")
+        output = exclude.resolve() if exclude else None
+        digest = hashlib.sha256()
+        for name in sorted(set(names) - {b""}):
+            path = root / os.fsdecode(name)
+            if output and path.absolute().is_relative_to(output):
+                continue
+            if path.is_symlink():
+                content = b"symlink\0" + os.fsencode(os.readlink(path))
+            elif path.is_file():
+                content = b"file\0" + path.read_bytes()
+            elif not path.exists():
+                content = b"missing\0"
+            else:
+                raise ValueError("Unsupported source entry")
+            mode = str(path.lstat().st_mode & 0o777).encode() if path.exists() or path.is_symlink() else b"missing"
+            digest.update(name + b"\0" + mode + b"\0" + hashlib.sha256(content).digest())
+        status_args = ["status", "--porcelain", "--untracked-files=all"]
+        if output and output.is_relative_to(root.resolve()):
+            status_args += ["--", ".", ":(exclude,literal)" + output.relative_to(root.resolve()).as_posix()]
+        dirty = bool(git(*status_args))
+        return {"available": True, "commit": commit, "branch": branch,
+                "worktree_dirty": dirty, "fingerprint_sha256": digest.hexdigest()}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {"available": False, "reason": "Source revision could not be verified"}
+
+
+def markdown(results: list[dict], source: dict | None = None) -> str:
+    lines = ["# Validation Results", ""]
+    if source:
+        before = source["before"]
+        if before.get("available"):
+            lines.extend([f"Source commit: `{before['commit']}`.",
+                          f"Working tree: {'modified' if before['worktree_dirty'] else 'clean'}.",
+                          f"Source fingerprint: `{before['fingerprint_sha256']}`."])
+        else:
+            lines.append("Source identity unavailable; this is not exact-commit release evidence.")
+        match = ('yes' if source['unchanged'] else 'NO — rerun validation') if before.get("available") and source["after"].get("available") else 'unverified'
+        lines.extend([f"Source identity matched before and after checks: {match}.", ""])
+    lines.extend(["| Check | Result | Seconds |", "| --- | --- | --- |"])
     lines.extend(f"| {r['name']} | {'PASS' if r['passed'] else 'FAIL'} | {r['seconds']} |"
                  for r in results)
     return "\n".join(lines) + "\n"
@@ -116,6 +164,8 @@ def main() -> int:
     parser.add_argument("--suite", action="append", choices=("unit", "security", "ha", "browser"))
     parser.add_argument("--list", action="store_true", help="List checks without requiring HA")
     parser.add_argument("--preflight", action="store_true", help="Check versions without running tests")
+    parser.add_argument("--requirements", type=Path, default=REQUIREMENTS,
+                        help="Pinned environment requirements to verify before checks")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--timeout", type=int, default=300)
     args = parser.parse_args()
@@ -126,7 +176,7 @@ def main() -> int:
         print("\n".join(name for name, _ in items))
         return 0
     try:
-        versions = preflight()
+        versions = preflight(args.requirements)
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 2
@@ -135,11 +185,16 @@ def main() -> int:
         return 0
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     output = args.output or ROOT / ".local/validation" / stamp
+    before = source_identity(exclude=output)
     results = run_checks(items, output, args.timeout)
-    (output / "results.json").write_text(json.dumps({"environment": versions, "checks": results}, indent=2))
-    (output / "summary.md").write_text(markdown(results))
+    after = source_identity(exclude=output)
+    source = {"before": before, "after": after, "unchanged": before == after}
+    (output / "results.json").write_text(json.dumps({"environment": versions, "checks": results,
+                                                   "suites": args.suite or ["unit", "security", "ha"],
+                                                   "source": source}, indent=2))
+    (output / "summary.md").write_text(markdown(results, source))
     print(f"Results: {output}", flush=True)
-    return int(any(not result["passed"] for result in results))
+    return int(any(not result["passed"] for result in results) or not source["unchanged"])
 
 
 if __name__ == "__main__":

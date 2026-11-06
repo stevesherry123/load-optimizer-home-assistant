@@ -142,3 +142,16 @@ The third batch passed 533 unit tests, Bandit and all 20 isolated Home Assistant
 ## Confirmed window and price recovery
 
 The household's default overnight window begins at 21:00 and ends at 07:00. Missing prices trigger a notification. Complete prices returning in time allow automatic resumption inside the original window under the existing permission; they do not revive cancelled or expired requests.
+
+## Selected first release scope — 6 November 2026
+
+The user selected dishwasher scheduling and costs for the first release. This
+candidate is based on `4606832`, containing milestones 1–4 and excluding the
+later EV planning and automatic-control commits. Existing baseline advisory EV
+behaviour remains; no new EV mode or control adapter is included.
+
+The candidate adds complete two-version validation and source identity reports.
+Physical dishwasher acceptance, desktop/mobile and unfamiliar-user walkthrough,
+fresh installation and rollback remain required before publication. No version
+was assigned, installation changed or release published. The broader development
+branch and draft PR #26 retain the EV work independently.
