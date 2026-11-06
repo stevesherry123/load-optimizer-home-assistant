@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlparse
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "custom_components/load_optimizer"))
 from legacy import app_runtime
+from legacy.costing import estimate_cycle_cost
 from legacy.config_validation import ConfigurationError, appliance_document
 
 SOURCE = ROOT / "custom_components/load_optimizer/legacy_runtime.py"
@@ -29,7 +30,7 @@ namespace = {"asyncio": asyncio, "datetime": datetime, "timedelta": timedelta, "
              "logging": logging, "math": math, "re": re, "Any": object, "Callable": object, "HomeAssistant": object,
              "Store": Mock, "DOMAIN": "load_optimizer", "app_runtime": app_runtime,
              "unquote": unquote, "urlparse": urlparse, "ConfigurationError": ConfigurationError,
-             "appliance_document": appliance_document,
+             "appliance_document": appliance_document, "estimate_cycle_cost": estimate_cycle_cost,
              "CONF_INSTANCES_YAML": "instances_yaml", "CONF_GREEN_WINDOW_ENTITY": "green_window_entity",
              "CONF_BLOCKED_WINDOW_ENTITY": "blocked_window_entity"}
 exec(compile(tree, str(SOURCE), "exec", flags=__import__("__future__").annotations.compiler_flag), namespace)
@@ -97,6 +98,36 @@ class AdapterSourceSafetyTests(unittest.IsolatedAsyncioTestCase):
              patch.object(app_runtime, "publish_entity"):
             return await self.check()
 
+    def normal_fixture(self):
+        self.negative_fixture()
+        self.options["instances_yaml"] = self.options["instances_yaml"].replace(
+            "allow_negative_price_run: true", "allow_negative_price_run: false\n      allow_normal_recommendation: true")
+        self.request.update(mode="overnight", automatic=False, normal_wash=True)
+
+    async def test_normal_wash_preflight_requires_prices_for_the_actual_full_cycle(self):
+        self.normal_fixture()
+        before = deepcopy(self.runtime.state)
+        self.assertIsNone(await self.negative_check())
+        self.assertEqual(self.runtime.state, before)
+        self.put("sensor.rates", "ready", rates=[{
+            "start": self.now.isoformat(), "end": (self.now + timedelta(minutes=15)).isoformat(), "price": 10}])
+        self.assertEqual(await self.negative_check(), "normal_wash_cycle_not_fully_priced")
+
+    async def test_normal_wash_preflight_missing_tariff_and_revoked_policy_block(self):
+        self.normal_fixture()
+        self.put("sensor.rates", "unavailable")
+        self.assertEqual(await self.negative_check(), "normal_wash_tariff_unavailable")
+        self.options["instances_yaml"] = self.options["instances_yaml"].replace("allow_normal_recommendation: true", "allow_normal_recommendation: false")
+        self.assertEqual(await self.negative_check(), "normal_wash_program_not_permitted")
+
+    async def test_negative_preflight_rechecks_live_operating_costs_before_command(self):
+        self.negative_fixture()
+        self.assertIsNone(await self.negative_check())
+        before = deepcopy(self.runtime.state)
+        self.options["instances_yaml"] += "      consumables_cost_pence: 1\n"
+        self.assertEqual(await self.negative_check(), "no_positive_net_benefit")
+        self.assertEqual(self.runtime.state, before)
+
     async def test_negative_preflight_reprices_actual_programme_without_mutating_learning(self):
         self.negative_fixture()
         before = deepcopy(self.runtime.state)
@@ -119,7 +150,7 @@ class AdapterSourceSafetyTests(unittest.IsolatedAsyncioTestCase):
         events = [{"start": self.now.isoformat(), "end": (self.now + timedelta(hours=1)).isoformat()}]
         self.hass.services.async_call.return_value = {"calendar.no_run": {"events": []}, "calendar.free": {"events": events}}
         before = deepcopy(self.runtime.state)
-        self.assertIsNone(await self.negative_check())
+        self.assertEqual(await self.negative_check(), "no_positive_net_benefit")
         self.assertEqual(self.runtime.state, before)
         self.hass.services.async_call.return_value["calendar.free"]["events"] = []
         self.assertEqual(await self.negative_check(), "power_hungry_window_outside_negative_price")
@@ -218,6 +249,8 @@ class AdapterSourceSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.put(helpers["start"], self.now.isoformat())
         self.put(helpers["end"], (self.now + timedelta(hours=1)).isoformat())
         self.put(helpers["price"], "0")
+        self.assertEqual(await self.negative_check(), "no_positive_net_benefit")
+        self.put(helpers["price"], "-1")
         self.assertIsNone(await self.negative_check())
         self.put(helpers["enabled"], "off")
         self.assertEqual(await self.negative_check(), "power_hungry_window_outside_negative_price")

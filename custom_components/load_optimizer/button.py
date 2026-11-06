@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE
 from .coordinator import LoadOptimizerCoordinator
 from .orchestration_entity import OrchestrationEntity
+from .entity import LoadOptimizerEntity
 
 BUTTONS = (
     ("request_now", "Request Start Now", "mdi:play-circle", "now", False),
@@ -50,9 +51,11 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    if entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
-        return
     coordinator: LoadOptimizerCoordinator = hass.data[DOMAIN][entry.entry_id]
+    if entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
+        if coordinator.ev_adapter:
+            async_add_entities([EVReconcileButton(coordinator)])
+        return
     entities = [
         NativeRequestButton(coordinator, key, name, icon, mode, override)
         for key, name, icon, mode, override in BUTTONS
@@ -76,6 +79,18 @@ async def async_setup_entry(
         ]
     )
     async_add_entities(entities)
+
+
+class EVReconcileButton(LoadOptimizerEntity, ButtonEntity):
+    """Clear ambiguity only after the user verifies stopped hardware."""
+
+    _attr_icon = "mdi:check-decagram"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator, "ev_reconcile_stopped", "Confirm Charging Stopped")
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_reconcile_ev()
 
 
 class NativeRequestButton(OrchestrationEntity, ButtonEntity):

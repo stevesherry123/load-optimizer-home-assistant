@@ -3,6 +3,10 @@
 Start with one appliance, learn one complete cycle, then check its running-cost
 recommendation. Automatic starting is a separate, optional step.
 
+Use the [installation acceptance checklist](installation-checklist.md) to record
+the first result and any later control trial. This branch contains unreleased
+scheduling and EV control work; use the guide for your installed version.
+
 ## Before Installation
 
 - Use Home Assistant 2026.10.2 or later, HACS, and a stable GitHub release.
@@ -120,6 +124,11 @@ so their learning and dashboard references remain associated correctly.
   activation and a separately opted-in supervised manual test.
 - [Set up advisory EV planning](ev-charging.md). Battery capacity is currently
   supplied by an entity, not a numeric setup field.
+- For the development build, use the [generic EV form example](examples/ev-planning.yaml)
+  and optional [charger fields](examples/ev-switch-control.yaml). They are form
+  values, not blocks to paste into configuration.yaml. Optional EV control needs
+  its [separate activation and recovery steps](ev-control.md); saving never grants
+  automatic charging permission.
 
 ## Existing Add-on Installation
 

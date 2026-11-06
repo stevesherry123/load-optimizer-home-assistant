@@ -30,6 +30,15 @@ Power Up remains an explicit free-electricity source. No learning is rewritten.
 
 ## Sources
 
+The unreleased branch extends EV planning with required/opportunistic modes,
+useful partial plans, combined forecast sources and an optional power-switch
+adapter. The adapter needs separate metered delivery and cable feedback, verified
+switching suitability and explicit session permission. It is covered by mocked
+Home Assistant checks, not physical manufacturer acceptance. See
+[EV control](ev-control.md) and [installation acceptance](installation-checklist.md).
+The stable table above must not be used to infer that this development work is
+already installed or published.
+
 - BottlecapDave Octopus current-day and next-day rates events supply future
   prices. Their `value_inc_vat` values use `gbp_per_kwh`.
 - Other providers can supply compatible structured attributes (`rates`, `prices`,
@@ -40,6 +49,8 @@ Power Up remains an explicit free-electricity source. No learning is rewritten.
 - EV setup currently requires a `sensor` for capacity and optional connection
   status. See [EV planning](ev-charging.md) for constant-capacity and binary-status
   adapters; do not pass raw `on`/`off` as a connection status.
+  The development build accepts a binary connection sensor directly; its optional
+  switch controller also requires a separate measured-power sensor.
 
 Use [getting started](getting-started.md) for new installations and the separate
 [migration guide](migration-addon-to-integration.md) for legacy add-on data.

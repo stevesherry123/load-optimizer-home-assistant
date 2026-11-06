@@ -36,6 +36,7 @@ from .const import (
     DOMAIN,
 )
 from .legacy import app_runtime
+from .legacy.costing import estimate_cycle_cost
 from .legacy.config_validation import ConfigurationError, appliance_document
 from .optimizer.state_import import validate_import
 
@@ -74,6 +75,7 @@ class LegacyRuntime:
         self._timezones = {}
         self._loop_thread = get_ident()
         self._state_lock = asyncio.Lock()
+        self.schedule_config_provider: Callable[[dict], dict] | None = None
         self.external_state_provider: Callable[[str], dict[str, Any] | None] | None = None
 
     async def async_load(self) -> None:
@@ -122,7 +124,8 @@ class LegacyRuntime:
             raise RuntimeError("Appliance memory was not loaded")
         options = self._normalise_options(options)
         now = datetime.now(timezone.utc)
-        configs = app_runtime.instance_configs(options)
+        configs = [self.schedule_config_provider(config) if getattr(self, "schedule_config_provider", None) else config
+                   for config in app_runtime.instance_configs(options)]
         # Retain resolved zones so synchronous legacy helpers only hit ZoneInfo's
         # object cache, never a cold timezone-database read on the event loop.
         names = {"UTC", "Europe/London", *(str(config.get(CONF_TARIFF_TIMEZONE, "Europe/London")) for config in configs)}
@@ -364,15 +367,17 @@ class LegacyRuntime:
     async def async_automatic_start_block(self, options: dict[str, Any], request: dict[str, Any]) -> str | None:
         """Re-read mandatory sources for appliance 1 immediately before a command."""
         options = self._normalise_options(options)
-        configs = app_runtime.instance_configs(options)
+        configs = [self.schedule_config_provider(config) if getattr(self, "schedule_config_provider", None) else config
+                   for config in app_runtime.instance_configs(options)]
         config = next((item for item in configs if str(item.get("instance_id")) == "1"), None)
         if config is None:
             return "automatic_configuration_unavailable"
         entity_ids = app_runtime.entity_list(config.get("blocked_window_entity", ""))
         negative = request.get("mode") == "negative_price"
-        free_ids = app_runtime.entity_list(config.get("free_window_entity", "")) if negative else []
-        summary = self._negative_program_summary(request) if negative else None
-        if negative and summary is None:
+        normal = bool(request.get("normal_wash"))
+        free_ids = app_runtime.entity_list(config.get("free_window_entity", "")) if negative or normal else []
+        summary = self._negative_program_summary(request) if negative or normal else None
+        if (negative or normal) and summary is None:
             return "negative_price_program_unavailable"
         duration = None
         calendars = {}
@@ -410,8 +415,9 @@ class LegacyRuntime:
         power = app_runtime.numeric_state(self._source_state(ADAPTER_MARKER, config["power_sensor"]))
         if power is None or power < 0:
             return "power_source_unavailable"
-        if negative:
-            return self._negative_price_start_block(config, request, datetime.now(timezone.utc), duration, calendars)
+        if negative or normal:
+            reason = self._negative_price_start_block(config, request, datetime.now(timezone.utc), duration, calendars)
+            return reason.replace("negative_price_", "normal_wash_") if reason and normal else reason
         return None
 
     def _negative_program_summary(self, request: dict[str, Any]) -> dict | None:
@@ -443,7 +449,9 @@ class LegacyRuntime:
         blocked_programs = app_runtime.remote_start_blocked_programs(
             ADAPTER_MARKER, "1", state_reader=lambda entity: self._source_state(ADAPTER_MARKER, entity),
         )
-        if not policy["enabled"] or not policy["allow_negative_price_run"] or program in blocked_programs:
+        normal = bool(request.get("normal_wash"))
+        allowed = policy["allow_normal_recommendation"] if normal else policy["allow_negative_price_run"]
+        if not policy["enabled"] or not allowed or program in blocked_programs:
             return "negative_price_program_not_permitted"
 
         periods = []
@@ -501,6 +509,16 @@ class LegacyRuntime:
                 if value is None:
                     return "negative_price_outside_schedule_constraints"
                 constraints[argument] = value
+        if normal:
+            finish = now + timedelta(minutes=summary["expected_runtime_minutes"])
+            if (constraints.get("earliest_start_utc", now) > now
+                    or constraints.get("latest_finish_utc", finish) < finish):
+                return "negative_price_outside_schedule_constraints"
+            try:
+                estimate_cycle_cost(now, summary, periods)
+            except ValueError:
+                return "negative_price_cycle_not_fully_priced"
+            return None
         result = app_runtime.recommend_cycle(
             [summary], [policy], periods, reference_utc=now, search_hours=0,
             candidate_interval_minutes=1, forecast_hours=0,
@@ -510,7 +528,7 @@ class LegacyRuntime:
         if recommendation.get("ready_to_start") is True and recommendation.get("program") == program:
             return None
         reason = recommendation.get("reason")
-        if reason in {"maximum_runs_per_window_reached", "negative_run_history_incomplete"}:
+        if reason in {"maximum_runs_per_window_reached", "negative_run_history_incomplete", "no_positive_net_benefit"}:
             return reason
         diagnostic = next(iter(result.get("program_diagnostics", [])), {})
         if result.get("rejected_constraints") or constraints.get("earliest_start_utc", now) > now:

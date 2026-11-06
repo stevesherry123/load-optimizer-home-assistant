@@ -60,11 +60,11 @@ class NegativePriceSchedulingTests(unittest.TestCase):
         self.assertTrue(negative["ready_to_start"])
         self.assertEqual(negative["energy_cost_pence"], -0.6739)
 
-    def test_zero_price_window_can_start_between_candidate_boundaries(self):
+    def test_zero_price_window_cannot_authorise_an_extra_zero_return_run(self):
         self.periods[0]["price_p_per_kwh"] = 0
         negative = self.recommend()["negative_price_recommendation"]
-        self.assertTrue(negative["ready_to_start"])
-        self.assertEqual(negative["energy_cost_pence"], 0)
+        self.assertFalse(negative["ready_to_start"])
+        self.assertGreater(datetime.fromisoformat(negative["start"]), self.reference)
 
     def test_ready_programme_is_not_starved_by_a_future_higher_priority_programme(self):
         later = {**self.model, "program": "Later", "expected_runtime_minutes": 150,
@@ -88,7 +88,7 @@ class NegativePriceSchedulingTests(unittest.TestCase):
         self.periods = [
             {"start": self.start, "end": self.start + timedelta(hours=1), "price_p_per_kwh": -1},
             {"start": self.start + timedelta(hours=1), "end": self.start + timedelta(hours=2), "price_p_per_kwh": 20},
-            {"start": self.start + timedelta(hours=2), "end": self.start + timedelta(hours=3), "price_p_per_kwh": 0},
+            {"start": self.start + timedelta(hours=2), "end": self.start + timedelta(hours=3), "price_p_per_kwh": -1},
         ]
         self.policy["maximum_runs_per_window"] = 1
         self.model["recent_cycles"] = [{"finish": (self.start + timedelta(minutes=30)).isoformat(),
@@ -267,7 +267,7 @@ class NegativePriceSafetyTests(unittest.TestCase):
 
         self.assertTrue(_negative_power_window_fit(start, model, periods)["fits"])
 
-    def test_free_hour_can_trigger_a_longer_cycle_when_high_power_fits(self):
+    def test_free_high_power_section_does_not_pay_for_a_positive_price_tail(self):
         start = datetime(2026, 7, 28, tzinfo=timezone.utc)
         model = {
             "program": "Heavy",
@@ -299,12 +299,11 @@ class NegativePriceSafetyTests(unittest.TestCase):
             candidate_interval_minutes=30,
         )
 
+        self.assertTrue(_negative_power_window_fit(start, model, periods)["fits"])
+        self.assertGreater(estimate_cycle_cost(start, model, periods)["energy_cost_pence"], 0)
         recommendation = result["negative_price_recommendation"]
-        self.assertEqual(recommendation["status"], "ready")
-        self.assertEqual(recommendation["program"], "Heavy")
-        self.assertGreater(recommendation["energy_cost_pence"], 0)
-        self.assertEqual(recommendation["negative_window_end"], (start + timedelta(hours=1)).isoformat())
-        self.assertEqual(recommendation["finish"], (start + timedelta(hours=2)).isoformat())
+        self.assertEqual(recommendation["status"], "not_ready")
+        self.assertEqual(recommendation["reason"], "no_positive_net_benefit")
 
     def test_negative_price_bypasses_normal_program_cooldown_only_for_negative_intent(self):
         start = datetime(2026, 7, 28, tzinfo=timezone.utc)
@@ -547,7 +546,7 @@ class CostEstimationTests(unittest.TestCase):
         )
 
         self.assertEqual(result["energy_kwh"], 1.0)
-        self.assertEqual(result["energy_cost_pence"], 16.6667)
+        self.assertAlmostEqual(result["energy_cost_pence"], 50 / 3)
         self.assertEqual(result["cost_breakdown"], [
             {
                 "start": "2026-07-06T00:00:00+00:00",
@@ -667,7 +666,7 @@ class CostEstimationTests(unittest.TestCase):
         self.assertTrue(result["negative_price_run"])
         self.assertEqual(result["negative_price_recommendation"]["program"], "Eco")
 
-    def test_negative_price_recommendation_prefers_energy_intensity(self):
+    def test_negative_price_recommendation_prefers_total_net_return(self):
         short_hot = {
             **self.model,
             "program": "ShortHot",
@@ -710,19 +709,19 @@ class CostEstimationTests(unittest.TestCase):
         )
 
         self.assertEqual(result["negative_price_candidate_count"], 6)
-        self.assertEqual(result["negative_price_recommendation"]["program"], "ShortHot")
+        self.assertEqual(result["negative_price_recommendation"]["program"], "LongEco")
         self.assertEqual(result["negative_price_recommendation"]["intent"], "negative_price")
         self.assertGreater(
             result["negative_price_recommendation"]["energy_kwh_per_minute"],
             0,
         )
 
-    def test_negative_price_priority_beats_energy_intensity(self):
+    def test_negative_price_priority_breaks_equal_net_benefit_ties(self):
         short_hot = {
             **self.model,
             "program": "ShortHot",
             "expected_runtime_minutes": 30,
-            "expected_energy_kwh": 1.0,
+            "expected_energy_kwh": 2.0,
         }
         maintenance = {
             **self.model,

@@ -46,6 +46,15 @@ for key, value in (("ready_by", "25:00"), ("ready_by", "2026-10-09T08:00:00"),
     assert key in _ev_input_errors({**values, key: value}), (key, value)
 assert not _ev_input_errors({**values, "ready_by": "08:00"})
 assert not _ev_input_errors({**values, "ready_by": ""})
+assert result["charging_mode"] == "required"
+assert result["maximum_price_p_per_kwh"] == 0
+for mode in ("required", "opportunistic"):
+    assert not _ev_input_errors({**values, "charging_mode": mode, "maximum_price_p_per_kwh": -1})
+for key, value in (("charging_mode", "unsupported"), ("maximum_price_p_per_kwh", float("nan")),
+                   ("maximum_price_p_per_kwh", True), ("maximum_price_p_per_kwh", 1001)):
+    assert key in _ev_input_errors({**values, key: value})
+connection = next(field for field in serialized if field["name"] == "connection_status_entity")
+assert connection["selector"]["entity"]["domain"] == ["sensor", "binary_sensor"], connection
 print("Real Home Assistant EV schema defaults, clearing, numeric and deadline validation passed")
 
 import asyncio

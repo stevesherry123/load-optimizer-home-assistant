@@ -6,6 +6,13 @@ do not establish physical manufacturer acceptance or unfamiliar-user usability.
 
 ## Automated checks
 
+The EV runtime acceptance reads the shipped
+[planning form values](examples/ev-planning.yaml) and
+[optional switch fields](examples/ev-switch-control.yaml), substitutes synthetic
+entity IDs and exercises them through the real configuration flow. Planning-only
+setup creates no charger controls; mapped setup leaves permission off. This keeps
+the examples executable without making any physical charging claim.
+
 Run the unit suite and the isolated onboarding test with the declared-minimum
 Home Assistant and the repository's test dependencies installed:
 
@@ -40,9 +47,16 @@ Before relying on a supported release, an unfamiliar tester should:
    separately enabling automatic modes. Retain every device safety interlock.
 6. For EV planning, verify units, connection state and price coverage without
    assuming advisory signals operate a physical charger.
+   For the unreleased optional controller, separately verify source freshness,
+   measured delivery, physical stopping, restart quarantine and explicit recovery
+   using the [control guide](ev-control.md).
 7. Find troubleshooting guidance and prepare a useful redacted issue report.
 
 Human/physical acceptance, live deployment, publication and isolated tests are
 separate evidence. Main documentation changes do not rewrite installed releases
 or existing tags. See the [roadmap](roadmap.md) for planned improvements and
 [release channels](release-channels.md) for distribution behaviour.
+
+Use the [installation checklist](installation-checklist.md) to record the user
+journey and [release readiness](release-readiness.md) to retain evidence for the
+candidate. A local test result does not complete a human or physical gate.

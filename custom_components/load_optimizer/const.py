@@ -23,6 +23,15 @@ CONF_CHARGER_EFFICIENCY = "charger_efficiency"
 CONF_TARGET_PERCENT = "target_percent"
 CONF_SLOT_MINUTES = "slot_minutes"
 CONF_READY_BY = "ready_by"
+CONF_CHARGING_MODE = "charging_mode"
+CONF_MAXIMUM_PRICE = "maximum_price_p_per_kwh"
+CONF_EV_CHARGER_SWITCH = "ev_charger_switch"
+CONF_EV_POWER_ENTITY = "ev_charge_power_entity"
+CONF_EV_STATUS_ENTITY = "ev_charging_status_entity"
+CONF_EV_CONFIRMATION_SECONDS = "ev_confirmation_seconds"
+EV_CHARGING_MODES = ["required", "opportunistic"]
+DEFAULT_CHARGING_MODE = "required"
+DEFAULT_MAXIMUM_PRICE = 0.0
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_INSTANCES_YAML = "instances_yaml"
 CONF_TARIFF_ENTITIES = "tariff_entities"
@@ -101,6 +110,7 @@ PLATFORMS = [
     "switch",
     "select",
     "datetime",
+    "time",
     "number",
     "text",
 ]

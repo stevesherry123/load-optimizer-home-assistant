@@ -2,6 +2,60 @@
 
 ## Unreleased
 
+- Recalculate EV control plans when source readings, settings or the authorised
+  deadline change during asynchronous planning. Bound recalculation to three
+  attempts and refuse inconsistent final preflight plans before dispatch.
+
+- Add executable EV setup examples and installation/release acceptance guides.
+  Distinguish published scope, local implementation and remaining physical tests.
+- Record source revision, dirty state, selected suites and source fingerprints in
+  validation reports. Source changes between validation snapshots invalidate an
+  otherwise passing run; unverified revisions are identified explicitly.
+
+- Add optional EV switch control with explicit Automatic Charging permission,
+  metered confirmation, persisted command reservations, fresh preflight checks,
+  interval timers and attention notifications. Permission resets off on reload;
+  saved sessions require explicit stopped-state reconciliation. No live hardware
+  acceptance or deployment is implied.
+- Combine additional EV future-rate entities, including separate Octopus today
+  and tomorrow events. Keep available published slots when tomorrow is empty;
+  reject conflicting forecasts and never fill missing prices with zero.
+
+- Add an isolated EV command-lifecycle foundation with command reservations,
+  physical-confirmation gates, timeout/restart quarantine and external-stop
+  handling. This is not wired to services and does not enable charger control.
+- Add required and opportunistic advisory EV modes. Existing entries default to
+  required; opportunistic charging stays at or below a configurable p/kWh ceiling.
+- Recommend useful partial required charging with explicit projected SOC and
+  energy shortfall. `ready_to_charge` now includes partial plans; target reachability
+  is exposed separately. No charger-control entities or commands are added.
+- Retain active partial tariff intervals, cap the last interval to needed energy,
+  support binary connection sensors, reject unavailable cached tariffs and preserve
+  EV identities across mode edits and reloads. Add a read-only EV plan card.
+- Make the full and beta dashboards distinguish wash permission awaiting a plan,
+  queued timing, unconfirmed starting and appliance-confirmed washing. Show the
+  original window, expected late finish, cancellation and expiry clearly.
+- Expose native overnight window settings and schedule/start-now/cancel controls
+  in the dashboards. Label door-based scheduling and profitable extra runs as
+  separate options; preserve their entity IDs and existing opt-ins.
+- Publish household-facing readiness messages and persist readable scheduling
+  event descriptions. Explicit wash permission no longer shows door-rule or
+  automatic-mode prerequisites that do not apply to that request.
+- Require strictly positive whole-cycle net benefit for opportunistic extra runs,
+  using unrounded electricity and operating costs. Keep normal requested washing
+  eligible when it costs money; zero-return free cycles no longer authorise extras.
+- Rank profitable extra runs by net benefit per run, with programme priority as
+  a tie-breaker. Revalidate live costs before automatic commands.
+- Add separate consumables costs, preserve the legacy overhead alias, disclose
+  unconfigured costs and show a full cycle-cost breakdown in both dashboards.
+- Persist one-wash overnight permission independently of tariff recommendations;
+  notify for missing prices and resume inside the original window when they return.
+- Add native Overnight Start and Dishes Ready By time controls, with new defaults
+  of 21:00–07:00 while retaining explicit YAML windows. Prefer complete cycle fits;
+  otherwise allow a later finish while keeping the start inside the window.
+- Keep normal washing ahead of opportunistic runs, permit explicit scheduling
+  without door-based authorisation, and recheck full-cycle prices and window bounds
+  before sending start commands. Cancellation and expiry prevent request revival.
 - Use one version-checked local/CI acceptance runner, report all independent
   failures in one run, and remove duplicate beta push/PR validation runs.
 - Carry multiline appliance editing, visible optimisation values and migrated

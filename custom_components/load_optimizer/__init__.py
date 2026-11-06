@@ -418,6 +418,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.async_on_unload(async_track_state_change_event(
             hass, coordinator.tariff_intelligence.entity_ids, async_tariff_changed
         ))
+    if coordinator.ev_adapter:
+        ev_sources = {value for key, value in data.items()
+                      if key in {"tariff_entity", "battery_entity", "battery_capacity_entity",
+                                 "target_percent_entity", "connection_status_entity", "ev_charger_switch",
+                                 "ev_charge_power_entity", "ev_charging_status_entity"} and isinstance(value, str) and value}
+        additional = data.get("tariff_entities") or []
+        ev_sources.update(additional if isinstance(additional, list) else additional.split(","))
+        async def async_ev_source_changed(event):
+            await coordinator.async_request_refresh()
+        entry.async_on_unload(async_track_state_change_event(hass, list(ev_sources), async_ev_source_changed))
     _async_claim_native_status_entity_ids(hass, entry)
     if coordinator.orchestrator:
         await coordinator.orchestrator.async_start()
@@ -434,6 +444,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = hass.data[DOMAIN].get(entry.entry_id)
     if coordinator and coordinator.orchestrator:
         await coordinator.orchestrator.async_stop()
+    if coordinator:
+        await coordinator.async_stop_ev()
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id)

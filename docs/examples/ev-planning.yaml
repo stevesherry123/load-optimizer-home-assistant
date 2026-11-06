@@ -1,0 +1,18 @@
+# EV form values, not a configuration.yaml integration block.
+# Replace every example entity ID with one from your own installation.
+# Numeric capacity is supplied by the selected entity, in usable kWh.
+tariff_entity: event.example_current_day_rates
+tariff_entities:
+  - event.example_next_day_rates
+tariff_price_unit: gbp_per_kwh
+tariff_timezone: Europe/London
+battery_entity: sensor.example_ev_battery
+battery_capacity_entity: sensor.example_ev_usable_capacity
+connection_status_entity: sensor.example_ev_cable
+charge_power_kw: 2.3
+target_percent: 80
+charger_efficiency: 0.9
+slot_minutes: 30
+charging_mode: required
+maximum_price_p_per_kwh: 0
+ready_by: "07:00"
