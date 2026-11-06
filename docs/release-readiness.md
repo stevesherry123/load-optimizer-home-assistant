@@ -13,10 +13,12 @@ candidate and must not be merged wholesale to deliver this scope.
 
 - [x] First feature scope selected by the user: dishwasher scheduling and costs.
 - [x] Separate source branch prepared without later EV implementation commits.
-- [ ] Full unit, security and isolated HA checks from the clean candidate.
-      Development-tree checks passed in both pinned environments; clean-commit
-      confirmation is recorded separately in generated validation reports.
-- [ ] GitHub credential, HACS, hassfest and both full pinned HA suites.
+- [x] Clean implementation commit `473830b`: 536 unit tests, Bandit and all 20
+      isolated HA checks passed in each pinned environment (2026.10.2/2026.10.4),
+      with clean, unchanged source identities in generated validation reports.
+- [x] All six GitHub jobs passed for `473830b`, including credential, HACS,
+      hassfest and both full HA suites: [run 42195678559](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/42195678559).
+      Later commits need their own checks before promotion.
 - [ ] Supervised dishwasher run: starts within the window, confirms once and
       records completion; cancellation and restart do not duplicate a request.
 - [ ] Verify installed tariffs, programme eligibility and household cost inputs.
@@ -30,6 +32,8 @@ A late-finishing fallback must still start within it. Extra runs must have
 positive total benefit and cannot displace a requested normal wash.
 
 See [validation](validation.md) and [dishwasher setup](dishwasher-control.md).
+Use the [acceptance walkthrough](dishwasher-acceptance.md) to collect the remaining
+installation, household-interface, physical and recovery evidence.
 Automated fixtures use synthetic sources and mocked commands; passing them does
 not establish physical acceptance. No live deployment or release is authorised
 by this record.
