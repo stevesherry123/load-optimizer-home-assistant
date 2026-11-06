@@ -70,6 +70,13 @@ On the separate test installation, follow setup from a blank configuration and
 confirm learning, a priced recommendation and registered controls without copying
 the maintainer's private data. Record any undocumented step.
 
+The isolated `tests/ha_dishwasher_restore_smoke.py` writes the real HA Store file
+and copies it into fresh temporary configurations. It verifies the original
+authorised window, next-request time setting and programme options survive;
+cancelled and expired requests stay cleared after another restore. No device
+service is permitted. This covers scheduling storage for this candidate, not a
+full HA backup, learned-profile recovery or compatibility with an older release.
+
 Test a queued-request restart with mocked device commands before a physical
 restart trial. A real restart needs an agreed maintenance window, no active wash
 or capture, and someone able to supervise a retained request when its window opens.

@@ -24,6 +24,8 @@ candidate and must not be merged wholesale to deliver this scope.
 - [ ] Verify installed tariffs, programme eligibility and household cost inputs.
 - [ ] Desktop/mobile inspection and unfamiliar-user scheduling walkthrough.
 - [ ] Fresh-install, backup and rollback acceptance.
+      Isolated real-file scheduling restoration now has a dedicated acceptance
+      fixture; full HA backup, learned-profile and older-release rollback remain pending.
 - [ ] Final version, matching manifest/runtime metadata and release notes.
 - [ ] Review exact green candidate, then separately promote and publish.
 
