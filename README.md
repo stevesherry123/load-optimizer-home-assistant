@@ -4,6 +4,13 @@ Plan appliance cycles and EV charging around your electricity tariff using
 existing Home Assistant entities. Learn when an appliance uses energy during a
 cycle, compare running costs, and find suitable low-cost or negative-price windows.
 
+This branch is the **dishwasher feature release candidate**, not a published
+update. It adds bounded overnight requests, total operating costs and clearer
+controls. New EV planning modes and automatic charger control are outside this
+candidate. See the [acceptance walkthrough](docs/dishwasher-acceptance.md) and
+[release record](docs/release-readiness.md) for its remaining gates. Use the
+documentation for your installed release when configuring a household system.
+
 ## Stable Features
 
 - **Appliance learning:** capture completed cycles from power and energy sensors,
