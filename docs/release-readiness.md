@@ -22,7 +22,9 @@ candidate and must not be merged wholesale to deliver this scope.
 - [ ] Supervised dishwasher run: starts within the window, confirms once and
       records completion; cancellation and restart do not duplicate a request.
 - [ ] Verify installed tariffs, programme eligibility and household cost inputs.
-- [ ] Desktop/mobile inspection and unfamiliar-user scheduling walkthrough.
+- [x] Inspect the dishwasher cards in isolated HA at desktop and phone widths.
+      See the [browser review](dishwasher-acceptance.md#browser-review-evidence).
+- [ ] Unfamiliar-user scheduling walkthrough on the trial installation.
 - [ ] Fresh-install, backup and rollback acceptance.
       Isolated real-file scheduling restoration now has a dedicated acceptance
       fixture; full HA backup, learned-profile and older-release rollback remain pending.

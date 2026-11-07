@@ -505,6 +505,9 @@ views:
         Changes apply to the next request. An already authorised wash keeps its original window.
 
 
+        Start now uses the optimiser''s selected programme.
+
+
         Scheduling one wash does not require the door rule to be enabled.
 
         A later finish is allowed only when no eligible cycle fits completely; the start stays inside the window.

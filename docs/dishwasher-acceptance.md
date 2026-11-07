@@ -43,6 +43,22 @@ actions are easy to distinguish. Record help the tester needed, not only whether
 they eventually completed a task. Keep customised dashboard copies separate from
 the shipped template.
 
+### Browser review evidence
+
+On 7 November 2026, Home Assistant 2026.10.2 rendered the dishwasher controls
+and cost cards with synthetic states in Chrome 156 at 1440 × 960 and 390 × 844.
+The beta view showed the queued and waiting states, original window, late finish
+and cost breakdown. Each confirmed Schedule or Cancel action dispatched one
+mock call and updated the displayed state. The full dashboard review covered
+the Next wash, Cycle costs, Scheduler Controls and Window settings cards.
+The original full dashboard Start now label was clipped at phone width. The
+shortened label and separate explanation fit at both tested widths.
+
+The review covers the selected native cards and simulated phone dimensions.
+Optional chart resources, Recorder history and an unfamiliar tester's walkthrough
+remain separate acceptance cases. Screenshots use synthetic data and are kept
+with the local acceptance evidence.
+
 ## Supervised physical run
 
 Use a normally loaded dishwasher with its manufacturer controls available. Agree
