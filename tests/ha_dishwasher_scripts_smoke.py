@@ -1,6 +1,7 @@
 """Execute public dishwasher scripts with synthetic button services only."""
 
 import asyncio
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -12,6 +13,8 @@ from homeassistant.setup import async_setup_component
 from homeassistant.helpers import entity_registry as er, device_registry as dr
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from dev.build_dashboard_beta import build, walk
 
 
 async def main():
@@ -21,6 +24,7 @@ async def main():
         hass.config.skip_pip = True
         loader.async_setup(hass)
         hass.config_entries = ConfigEntries(hass, {})
+        await hass.config_entries.async_initialize()
         dr.async_setup(hass)
         await dr.async_load(hass)
         await er.async_load(hass)
@@ -40,8 +44,17 @@ async def main():
                 ["button.load_optimizer_1_request_now"],
                 ["button.load_optimizer_1_cancel_schedule"],
             ], calls
+            calls.clear()
+            commands = [node for node in walk(build()) if node.get("action") == "perform-action"]
+            for command in commands:
+                domain, service = command["perform_action"].split(".")
+                await hass.services.async_call(domain, service, command["target"], blocking=True)
+            assert calls == [
+                "button.load_optimizer_1_request_overnight", "button.load_optimizer_1_request_now",
+                "button.load_optimizer_1_cancel_schedule", "button.load_optimizer_1_request_now_override",
+            ], calls
             assert not hass.services.has_service("switch", "turn_on")
-            print("All three documented scripts dispatch only their intended native button")
+            print("Three scripts and four dashboard actions dispatch only their intended native buttons")
         finally:
             await hass.async_stop()
 

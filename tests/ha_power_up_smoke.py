@@ -17,6 +17,7 @@ from custom_components.load_optimizer.legacy import app_runtime as app
 async def main():
     with tempfile.TemporaryDirectory() as config_dir:
         hass = HomeAssistant(config_dir)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         try:
             hass.config.time_zone = "Europe/London"
@@ -36,7 +37,7 @@ async def main():
                 "start": (now - timedelta(minutes=5)).isoformat(),
                 "end": (now + timedelta(hours=4)).isoformat(), "price": 30}]})
             options = {"instances_yaml": json.dumps([{"id": "1", "power_sensor": "sensor.power",
-                "program_policies": [{"program": "Quick45", "enabled": True, "allow_negative_price_run": True}]}]),
+                "program_policies": [{"program": "Quick45", "enabled": True, "allow_negative_price_run": True, "allow_normal_recommendation": True}]}]),
                 "tariff_entity": "sensor.rates", "tariff_price_unit": "p_per_kwh",
                 "free_window_entity": "calendar.free", "blocked_window_entity": "calendar.blocked"}
             runtime = LegacyRuntime(hass)
@@ -57,7 +58,8 @@ async def main():
             request = {"mode": "negative_price", "program": "Quick45", "automatic": True,
                        "start": now.isoformat(), "finish": (now + timedelta(minutes=30)).isoformat()}
             before = deepcopy(runtime.state)
-            assert await runtime.async_automatic_start_block(options, request) is None
+            assert await runtime.async_automatic_start_block(options, request) == "no_positive_net_benefit"
+            assert await runtime.async_automatic_start_block(options, {**request, "normal_wash": True, "mode": "overnight"}) is None
             assert runtime.state == before
             events["calendar.free"] = []
             assert await runtime.async_automatic_start_block(options, request) == "power_hungry_window_outside_negative_price"
@@ -67,7 +69,7 @@ async def main():
             events["calendar.blocked"] = []
             hass.states.async_set("calendar.free", "unavailable")
             assert await runtime.async_automatic_start_block(options, request) == "free_window_source_unavailable"
-            print("Real HA: Power Up calendar covers both chart days; zero-price eligibility; cancellation/unavailability veto; Power Down wins; learning unchanged")
+            print("Real HA: Power Up calendar covers both chart days; zero-return extra run rejected; normal free wash allowed; cancellation/unavailability veto; Power Down wins; learning unchanged")
         finally:
             await hass.async_stop(force=True)
 

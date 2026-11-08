@@ -13,10 +13,10 @@ from .orchestration_entity import OrchestrationEntity
 from .entity import LoadOptimizerEntity
 
 SWITCHES = (
-    ("auto_mode_enabled", "Automatic Overnight Mode", "mdi:robot"),
+    ("auto_mode_enabled", "Schedule After Loading", "mdi:robot"),
     (
         "auto_negative_price_enabled",
-        "Automatic Free or Negative Price Mode",
+        "Profitable Extra Runs",
         "mdi:transmission-tower-export",
     ),
     (

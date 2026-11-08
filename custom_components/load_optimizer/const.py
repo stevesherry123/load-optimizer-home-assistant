@@ -107,6 +107,7 @@ PLATFORMS = [
     "switch",
     "select",
     "datetime",
+    "time",
     "number",
     "text",
 ]

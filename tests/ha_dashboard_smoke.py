@@ -48,6 +48,7 @@ async def main():
     dt_util.set_default_time_zone(ZoneInfo("Europe/London"))
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         for path in (
             "custom_components/load_optimizer/dashboard.yaml",
             "homeassistant/dashboards/full/load_optimizer_dashboard.yaml",
