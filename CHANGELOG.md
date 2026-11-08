@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Preserve the selected dishwasher programme's available cost estimate and
+  original price window for manual requests. Show both in the beta dashboard's
+  execution record without treating the estimate as a measured cost.
+
 - Use one version-checked local/CI acceptance runner, report all independent
   failures in one run, and remove duplicate beta push/PR validation runs.
 - Carry multiline appliance editing, visible optimisation values and migrated

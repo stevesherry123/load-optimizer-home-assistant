@@ -43,9 +43,24 @@ async def main():
                     assert isinstance(rendered, str), card["title"]
                     if card["title"] == "Next wash":
                         assert ("No wash queued" if populated else "Scheduling status unavailable") in rendered
-                    if card["title"] == "Execution record" and populated:
-                        assert "Quick45" in rendered and "completed" in rendered and "04:00 GMT" in rendered
-                        assert rendered.startswith("| Record | Value |\n|---|---|"), rendered
+                    if card["title"] == "Execution record":
+                        assert "| Manual recommendation estimate | Not recorded |" in rendered
+                        assert "Estimate window" not in rendered
+                        if populated:
+                            assert "Quick45" in rendered and "completed" in rendered and "04:00 GMT" in rendered
+                            assert rendered.startswith("| Record | Value |\n|---|---|"), rendered
+            execution = next(card for card in templates if card["title"] == "Execution record")
+            for price in (-0.5, 0, 12.25):
+                hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "confirmed", {
+                    "last_attempt": "2026-10-27T04:03:00Z",
+                    "last_start_decision_snapshot": {"request": {"recommendation_quote": {
+                        "program": "Quick45", "estimated_cost_pence": price,
+                        "start": "2026-10-27T04:00:00Z", "finish": "2026-10-27T04:30:00Z",
+                    }}}})
+                rendered = Template(execution["content"], hass).async_render(parse_result=False)
+                assert f"| Manual recommendation estimate | {price:.2f} p |" in rendered
+                assert "| Estimate window | Tue 27 Oct 04:00 GMT to Tue 27 Oct 04:30 GMT |\n| Result" in rendered, rendered
+                assert "| Last start | Tue 27 Oct 04:03 GMT |" in rendered
             hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "queued", {"request": {
                 "program": "MixedLoad", "start": "2026-10-28T22:00:00Z", "finish": "2026-10-29T00:00:00Z", "cost_pence": 40}})
             card = next(card for card in templates if card["title"] == "Next wash")

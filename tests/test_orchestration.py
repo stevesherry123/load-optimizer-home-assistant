@@ -387,6 +387,52 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"], "request_already_pending")
         self.hass.services.async_call.assert_not_awaited()
 
+    async def test_manual_request_keeps_the_original_quote_separate_from_start_time(self):
+        quote = {"program": "Quick45", "start": "2026-10-08T15:00:00+00:00",
+                 "finish": "2026-10-08T15:30:00+00:00", "cost_pence": -0.5}
+        self.put("sensor.load_optimizer_1_now_recommendation", "Quick45",
+                 status="ready", **quote)
+        self.scheduler.async_evaluate = AsyncMock()
+        await self.scheduler.async_request("now")
+        request = self.scheduler.state["request"]
+        self.assertEqual(request["start"], Clock.current.isoformat())
+        self.assertEqual(request["recommendation_quote"], {
+            "program": "Quick45", "start": quote["start"], "finish": quote["finish"],
+            "estimated_cost_pence": -0.5,
+        })
+        self.assertNotIn("cost_pence", request)
+
+    async def test_manual_override_does_not_inherit_another_programmes_quote(self):
+        self.put("sensor.load_optimizer_1_now_recommendation", "Quick45", status="ready",
+                 program="Quick45", start="2026-10-08T15:00:00+00:00",
+                 finish="2026-10-08T15:30:00+00:00", cost_pence=5)
+        self.scheduler.state["override_program"] = "MixedLoad"
+        self.scheduler.async_evaluate = AsyncMock()
+        await self.scheduler.async_request("now", override=True)
+        self.assertEqual(self.scheduler.state["request"]["program"], "MixedLoad")
+        self.assertNotIn("recommendation_quote", self.scheduler.state["request"])
+
+    async def test_restoring_automatic_modes_preserves_a_pending_manual_request(self):
+        pending = {"mode": "soon", "program": "MixedLoad", "automatic": False,
+                   "start": (Clock.current + timedelta(hours=1)).isoformat()}
+        self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=False,
+                                    request=deepcopy(pending))
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "Quick45", status="ready",
+                 ready_to_start=True, confidence=90, program="Quick45",
+                 power_hungry_window_fits_negative_price=True)
+
+        for key in ("auto_mode_enabled", "auto_negative_price_enabled"):
+            self.scheduler.store.async_save.reset_mock()
+            await self.scheduler.async_set(key, True)
+            self.assertEqual(self.scheduler.state["request"], pending)
+            self.scheduler.store.async_save.assert_awaited()
+            saved = self.scheduler.store.async_save.await_args.args[0]["state"]
+            self.assertIs(saved[key], True)
+            self.assertEqual(saved["request"], pending)
+            self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"],
+                             "request_already_pending")
+        self.hass.services.async_call.assert_not_awaited()
+
     async def test_real_planner_repeats_only_allowed_programmes_across_separate_windows(self):
         start = datetime(2026, 10, 13, 8, 30, tzinfo=timezone.utc)
         Clock.current = start + timedelta(seconds=54, microseconds=183546)

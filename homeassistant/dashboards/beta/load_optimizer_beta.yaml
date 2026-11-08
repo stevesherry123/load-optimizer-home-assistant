@@ -594,6 +594,12 @@ views:
       title: Execution record
       content: '{% set native = ''sensor.load_optimizer_1_orchestration_status'' %}
 
+        {% set snapshot = state_attr(native, ''last_start_decision_snapshot'') %}
+
+        {% set request = snapshot.get(''request'') if snapshot is mapping else none %}
+
+        {% set quote = request.get(''recommendation_quote'') if request is mapping else none %}
+
         {% macro home_time(value) -%}
 
         {{ (as_datetime(value) | as_local).strftime(''%a %d %b %H:%M %Z'') if as_datetime(value, none) else ''Not recorded'' }}
@@ -609,6 +615,14 @@ views:
         | Last start | {{ home_time(state_attr(native, ''last_attempt'')) }} |
 
         | Programme | {{ state_attr(native, ''last_program'') or ''Not recorded'' }} |
+
+        | Manual recommendation estimate | {{ (''%.2f p'' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else ''Not recorded'' }} |
+
+        {% if quote is mapping and quote.estimated_cost_pence is number -%}
+
+        | Estimate window | {{ home_time(quote.start) }} to {{ home_time(quote.finish) }} |
+
+        {% endif -%}
 
         | Result | {{ state_attr(native, ''last_result'') or ''Not recorded'' }} |
 
