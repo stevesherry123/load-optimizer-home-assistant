@@ -38,6 +38,7 @@ async def main():
     with tempfile.TemporaryDirectory(prefix="load-optimizer-overnight-") as directory:
         (Path(directory) / "custom_components").symlink_to(ROOT / "custom_components", target_is_directory=True)
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         commands = []
         original_call = type(hass.services).async_call
@@ -84,6 +85,13 @@ async def main():
                 for remove in controller._remove_listeners:
                     remove()
                 controller._remove_listeners.clear()
+                assert hass.states.get("time.load_optimizer_1_overnight_start").state == "20:00:00"
+                assert hass.states.get("time.load_optimizer_1_overnight_end").state == "07:00:00"
+                await hass.services.async_call("time", "set_value", {
+                    "entity_id": "time.load_optimizer_1_overnight_start", "time": "21:00:00",
+                }, blocking=True)
+                await hass.async_block_till_done()
+                assert controller.state["overnight_start"] == "21:00"
                 before_ids = identities(hass, entry.entry_id)
                 instance = coordinator.legacy_runtime.state["instances"]["1"]
                 for programme, duration, energy in (("Quick65", 51, 1), ("Eco50", 244, 0.8)):
@@ -93,9 +101,10 @@ async def main():
                 await coordinator.async_refresh()
                 controller.state.update(active=True, auto_mode_enabled=True, door_opened_since_last_cycle=True)
                 await controller.async_evaluate()
-                assert controller.state["request"] is None
+                assert controller.state["request"]["normal_wash"]
+                assert controller.state["execution_status"] == "awaiting_plan"
                 assert controller.automation_explanation["reason_code"] == "overnight_tariff_coverage_incomplete"
-                print("Real HA: partial evening feed cannot reserve an overnight wash")
+                print("Real HA: partial prices retain wash permission, notify, and cannot start a wash")
 
                 Clock.current += timedelta(minutes=2)
                 hass.states.async_set("sensor.synthetic_rates", "ready", {"rates": rates(32)})
@@ -116,6 +125,7 @@ async def main():
 
                 # A manual programme and time must survive future planner changes and reload.
                 manual = {**controller.state["request"], "automatic": False, "mode": "overnight"}
+                manual.pop("normal_wash", None)
                 controller.state["request"] = manual
                 await controller._async_save()
                 memory = deepcopy(coordinator.legacy_runtime.state)

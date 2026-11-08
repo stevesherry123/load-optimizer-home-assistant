@@ -356,6 +356,58 @@ views:
               - entity: sensor.load_optimizer_1_total_runs
                 name: Total Runs
           - type: markdown
+            title: Next wash
+            content: |
+              {% set explanation = 'sensor.load_optimizer_1_automation_explanation' %}
+              {% set native = 'sensor.load_optimizer_1_orchestration_status' %}
+              {% set request = state_attr(native, 'request') or {} %}
+              {% set phase = state_attr(explanation, 'request_state') or states(native) %}
+              {% set summary = state_attr(explanation, 'summary') %}
+              {% macro home_time(value) -%}
+              {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'Not recorded' }}
+              {%- endmacro %}
+              {% if not has_value(explanation) %}
+              **Scheduling status unavailable**
+              {% elif state_attr(explanation, 'running_confirmed') %}
+              **Dishwasher is washing**
+              {% if request %}A separate request is still pending.{% endif %}
+              {% elif request and phase == 'awaiting_plan' %}
+              **One wash authorised; waiting for a plan**
+              No start is queued while the required checks are unresolved.
+              {% elif request and phase == 'commanding' %}
+              **Starting {{ request.get('program') or 'the wash' }}**
+              Running has not been confirmed yet.
+              {% elif request and request.get('start') %}
+              **{{ request.get('program') or 'Programme' }} queued**
+
+              Expected start: {{ home_time(request.get('start')) }}
+
+              Expected finish: {{ home_time(request.get('finish')) }}
+              {% set cost = request.get('cost_pence') | float(none) %}
+              {% if is_number(cost) %}Estimated total cost: **GBP {{ '%.2f' | format(cost / 100) }}**{% endif %}
+              {% if request.get('late_finish') %}
+              **Later finish:** no eligible cycle fits completely. This wash starts inside the authorised window and finishes afterwards.
+              {% endif %}
+              {% else %}
+              **No wash queued**
+              {% endif %}
+              {% if request.get('window_start') and request.get('window_end') %}
+
+              Authorised start window (home time): **{{ home_time(request.get('window_start')) }} to {{ home_time(request.get('window_end')) }}**.
+              {% endif %}
+              {% if request.get('normal_wash') %}
+              One normal wash is authorised. Extra runs require their separate opt-in.
+              {% endif %}
+              {% if summary %}
+
+              {{ summary }}
+              {% endif %}
+              {% set action = state_attr(explanation, 'action_required') %}
+              {% if action and action != summary %}
+
+              **Action needed:** {{ action }}
+              {% endif %}
+          - type: markdown
             title: Automatic Scheduling
             content: |-
               {% set explanation = 'sensor.load_optimizer_1_automation_explanation' %}
@@ -379,7 +431,7 @@ views:
               {% set action = state_attr(explanation, 'action_required') if available else none %}
               {% if action %}{{ action }}{% endif %}
 
-              **Automatic modes:** overnight {{ states('switch.load_optimizer_1_auto_mode_enabled') }}, free / negative price {{ states('switch.load_optimizer_1_auto_negative_price_enabled') }}.
+              **Optional door rule:** {{ states('switch.load_optimizer_1_auto_mode_enabled') }}; profitable extra runs {{ states('switch.load_optimizer_1_auto_negative_price_enabled') }}.
               {% set rejected_at = as_timestamp(state_attr('sensor.load_optimizer_1_last_discarded_cycle', 'finish'), none) %}
               {% set completed_at = as_timestamp(state_attr(orchestration, 'last_cycle_completed_at'), none) %}
               {% set learned_at = as_timestamp(states('sensor.load_optimizer_1_last_finish'), none) %}
@@ -388,7 +440,9 @@ views:
               {% endif %}
 
               {% set start = request.get('start') %}
-              {% if start %}
+              {% if request and (state_attr(explanation, 'request_state') == 'awaiting_plan' or states(orchestration) == 'awaiting_plan') %}
+              **One wash authorised; waiting for a plan. No start is queued yet.**
+              {% elif start %}
               **Queued start:** {{ local_time(start) }}
               {% else %}
               **Recommendation (not queued):** {{ state_attr('sensor.load_optimizer_1_overnight_recommendation', 'program') or 'None' }},
@@ -427,9 +481,16 @@ views:
                 'remote_control': 'Remote control is disabled',
                 'remote_start': 'Remote start is disabled'
               } %}
-              {% for code in (((state_attr(explanation, 'blockers') or []) + (state_attr(explanation, 'warnings') or [])) if available else []) %}
-              - {{ labels.get(code, code | replace('_', ' ')) }}
+              {% set details = ((state_attr(explanation, 'blocker_messages') or []) + (state_attr(explanation, 'warning_messages') or [])) if available else [] %}
+              {% if details %}
+              {% for message in details %}
+              - {{ message }}
               {% endfor %}
+              {% else %}
+              {% for code in (((state_attr(explanation, 'blockers') or []) + (state_attr(explanation, 'warnings') or [])) if available else []) %}
+              - {{ labels.get(code, 'A readiness check needs review') }}
+              {% endfor %}
+              {% endif %}
               {% set confidence = state_attr(explanation, 'confidence') if available else none %}
               {% if confidence is not none %}**Learning confidence:** {{ confidence }}% (normal threshold {{ state_attr(explanation, 'confidence_threshold') }}%).{% endif %}
 
@@ -465,7 +526,7 @@ views:
               {% if events %}
               **Recent scheduling events**
               {% for item in events[:5] %}
-              - {{ local_time(item.timestamp) }}: {{ item.event | replace('_', ' ') }}; {{ labels.get(item.reason, item.reason | replace('_', ' ')) }}.
+              - {{ local_time(item.timestamp) }}: {{ item.event | replace('_', ' ') }}; {{ item.description | default(labels.get(item.reason, 'A scheduling record was saved.'), true) }}.
               {% endfor %}
               {% endif %}
           - type: entities
@@ -487,10 +548,10 @@ views:
               {% set overnight = 'sensor.load_optimizer_1_overnight_readiness' %}
               {% set negative = 'sensor.load_optimizer_1_negative_price_readiness' %}
               {% set icons = {'green': '🟢', 'amber': '🟠', 'red': '🔴'} %}
-              {% set overnight_blockers = state_attr(overnight, 'blockers') or [] %}
-              {% set overnight_warnings = state_attr(overnight, 'warnings') or [] %}
-              {% set negative_blockers = state_attr(negative, 'blockers') or [] %}
-              {% set negative_warnings = state_attr(negative, 'warnings') or [] %}
+              {% set overnight_blockers = state_attr(overnight, 'blocker_messages') or [] %}
+              {% set overnight_warnings = state_attr(overnight, 'warning_messages') or [] %}
+              {% set negative_blockers = state_attr(negative, 'blocker_messages') or [] %}
+              {% set negative_warnings = state_attr(negative, 'warning_messages') or [] %}
 
               ### {{ icons.get(states(overnight), '⚪') }} Overnight
               **{{ states(overnight) | upper }}** · {{ state_attr(overnight, 'program') or 'no program' }}
@@ -503,6 +564,37 @@ views:
 
               {% if negative_blockers %}**Blockers:** {{ negative_blockers | join(', ') }}{% endif %}
               {% if negative_warnings %}**Waiting:** {{ negative_warnings | join(', ') }}{% endif %}
+          - type: markdown
+            title: Cycle costs
+            content: |
+              {% set labels = {'fixed_cost_pence': 'other per-run costs', 'consumables_cost_pence': 'consumables', 'water_litres': 'water use', 'water_cost_pence_per_litre': 'water price', 'wear_cost_pence': 'wear'} %}
+              {% for title, recommendation in [('Normal overnight wash', 'sensor.load_optimizer_1_overnight_recommendation'), ('Profitable extra run', 'sensor.load_optimizer_1_negative_price_recommendation')] %}
+              ### {{ title }}
+              {% set costs = state_attr(recommendation, 'operating_cost_breakdown') or {} %}
+              {% if state_attr(recommendation, 'status') == 'ready' and costs %}
+              **{{ state_attr(recommendation, 'program') }}**
+
+              | Estimate | Pence per cycle |
+              |---|---:|
+              | Electricity | {{ '%.4f' | format(costs.get('energy_cost_pence', 0)) }} |
+              | Consumables | {{ '%.4f' | format(costs.get('consumables_cost_pence', 0)) }} |
+              | Water | {{ '%.4f' | format(costs.get('water_cost_pence', 0)) }} |
+              | Wear | {{ '%.4f' | format(costs.get('wear_cost_pence', 0)) }} |
+              | Other per-run costs | {{ '%.4f' | format(costs.get('fixed_cost_pence', 0)) }} |
+              | **Total cost** | **{{ '%.4f' | format(costs.get('total_cost_pence', 0)) }}** |
+
+              {% if title == 'Profitable extra run' %}
+              {% set benefit = state_attr(recommendation, 'net_benefit_pence') | float(0) %}
+              Estimated net benefit: **{{ 'less than 0.01' if 0 < benefit < 0.01 else ('%.2f' | format(benefit)) }} p**.
+              {% endif %}
+              {% set missing = state_attr(recommendation, 'unconfigured_costs') or [] %}
+              {% if missing %}
+              Unconfigured costs treated as zero: {% for field in missing %}{{ labels.get(field, field) }}{{ ', ' if not loop.last else '.' }}{% endfor %}
+              {% endif %}
+              {% else %}
+              {{ 'No profitable extra run is currently available. This does not prevent a requested normal wash.' if title == 'Profitable extra run' else 'No complete normal-wash cost estimate is currently available.' }}
+              {% endif %}
+              {% endfor %}
       - type: grid
         cards:
           - type: entities
@@ -742,14 +834,51 @@ views:
           - type: entities
             title: Scheduler Controls
             entities:
+              - entity: switch.load_optimizer_1_auto_mode_enabled
+                name: Schedule after loading (door rule)
+              - entity: button.load_optimizer_1_request_overnight
+                name: Schedule one wash
+              - entity: button.load_optimizer_1_request_now
+                name: Start now
               - entity: button.load_optimizer_1_cancel_schedule
-                name: Cancel Schedule
+                name: Cancel pending schedule
               - entity: sensor.load_optimizer_1_orchestration_status
                 name: Native Schedule
+              - entity: time.load_optimizer_1_overnight_start
+                name: Overnight start
+              - entity: time.load_optimizer_1_overnight_end
+                name: Dishes ready by
+              - entity: number.load_optimizer_1_door_open_minimum_minutes
+                name: Loading door-open minimum
+          - type: markdown
+            title: Window settings
+            content: |
+              {% set entity = 'sensor.load_optimizer_1_automation_explanation' %}
+              Window settings use **{{ state_attr(entity, 'settings_timezone') or 'the configured tariff timezone' }}**.
+              Changes apply to the next request. An already authorised wash keeps its original window.
+
+              Start now uses the optimiser's selected programme.
+
+              Scheduling one wash does not require the door rule to be enabled.
+              A later finish is allowed only when no eligible cycle fits completely; the start stays inside the window.
+          - type: conditional
+            conditions:
               - entity: input_datetime.load_optimizer_1_must_finish_by
-                name: Must Finish By
+                state_not: unavailable
+              - entity: input_datetime.load_optimizer_1_must_finish_by
+                state_not: unknown
               - entity: input_button.load_optimizer_1_clear_deadline
-                name: Clear Travel Deadline
+                state_not: unavailable
+              - entity: input_button.load_optimizer_1_clear_deadline
+                state_not: unknown
+            card:
+              type: entities
+              title: Optional travel deadline
+              entities:
+                - entity: input_datetime.load_optimizer_1_must_finish_by
+                  name: Must finish by (hard deadline)
+                - entity: input_button.load_optimizer_1_clear_deadline
+                  name: Clear travel deadline
           - type: entities
             title: Manual Free / Special Price Window
             show_header_toggle: false
@@ -767,7 +896,7 @@ views:
               - entity: sensor.load_optimizer_special_price_window
                 name: Integration Status
               - entity: switch.load_optimizer_1_auto_negative_price_enabled
-                name: Auto-run Free / Negative Price
+                name: Profitable extra runs
           - type: markdown
             title: Automatic Engine Traffic Lights
             content: >-
@@ -782,9 +911,9 @@ views:
 
               **Confidence:** {{ state_attr(overnight, 'confidence') or 0 }}% / {{ state_attr(overnight, 'confidence_threshold') or 20 }}% required
 
-              **Blockers:** {{ (state_attr(overnight, 'blockers') or []) | join(', ') or 'none' }}
+              **Blockers:** {{ (state_attr(overnight, 'blocker_messages') or []) | join(', ') or 'none' }}
 
-              **Waiting/warnings:** {{ (state_attr(overnight, 'warnings') or []) | join(', ') or 'none' }}
+              **Waiting/warnings:** {{ (state_attr(overnight, 'warning_messages') or []) | join(', ') or 'none' }}
 
               ## {{ icons.get(states(negative), '⚪') }} Free / negative price — {{ states(negative) | upper }}
               **Program:** {{ state_attr(negative, 'program') or 'none' }}
@@ -795,9 +924,9 @@ views:
 
               **Window runs:** {{ state_attr(negative, 'runs_in_window') or 0 }} / {{ state_attr(negative, 'maximum_runs_per_window') or 'unlimited' }}
 
-              **Blockers:** {{ (state_attr(negative, 'blockers') or []) | join(', ') or 'none' }}
+              **Blockers:** {{ (state_attr(negative, 'blocker_messages') or []) | join(', ') or 'none' }}
 
-              **Waiting/warnings:** {{ (state_attr(negative, 'warnings') or []) | join(', ') or 'none' }}
+              **Waiting/warnings:** {{ (state_attr(negative, 'warning_messages') or []) | join(', ') or 'none' }}
           - type: markdown
             title: Scheduler / Queued Request
             content: >

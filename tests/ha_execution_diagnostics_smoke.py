@@ -16,6 +16,7 @@ from custom_components.load_optimizer.orchestration import NativeOrchestrator
 async def main():
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         try:
             runtime = LegacyRuntime(hass)
             scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id="test"), None)

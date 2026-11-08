@@ -18,6 +18,7 @@ import voluptuous as vol
 async def main():
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         controller = None
         try:

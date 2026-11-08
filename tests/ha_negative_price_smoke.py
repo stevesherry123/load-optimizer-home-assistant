@@ -48,6 +48,7 @@ async def main():
     with tempfile.TemporaryDirectory(prefix="load-optimizer-negative-") as directory:
         (Path(directory) / "custom_components").symlink_to(ROOT / "custom_components", target_is_directory=True)
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         physical_commands = []
         events = []
@@ -117,6 +118,19 @@ async def main():
                 assert recommendation.attributes["ready_to_start"] is True
                 assert recommendation.attributes["start"] == Clock.current.isoformat()
                 assert recommendation.state == "Quick45"
+                assert recommendation.attributes["positive_net_benefit"] is True
+                assert recommendation.attributes["net_benefit_pence"] > 0
+                assert "consumables_cost_pence" in recommendation.attributes["unconfigured_costs"]
+                # A live policy edit must veto an obsolete profitable recommendation
+                # without waiting for the next scan or changing learned history.
+                expensive = {**entry.data, **entry.options,
+                    "instances_yaml": EXAMPLE.replace("      enabled: true", "      enabled: true\n      consumables_cost_pence: 1")}
+                request = {"mode": "negative_price", "automatic": True, "program": "Quick45",
+                    "start": Clock.current.isoformat(), "finish": (Clock.current + timedelta(minutes=28.4)).isoformat()}
+                before_learning = deepcopy(coordinator.legacy_runtime.state)
+                assert await coordinator.legacy_runtime.async_automatic_start_block(expensive, request) == "no_positive_net_benefit"
+                assert coordinator.legacy_runtime.state == before_learning
+
                 controller.state.update(active=True, auto_negative_price_enabled=True, auto_mode_enabled=False,
                                         door_opened_since_last_cycle=False)
                 assert controller._automatic_decision(Clock.current)["program"] == "Quick45"
