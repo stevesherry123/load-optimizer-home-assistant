@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.7.0-beta.10
+
+- Require one qualifying dishwasher door opening before normal automatic
+  scheduling. Make the minimum duration configurable and clear readiness
+  when cancelling a schedule.
+- Provide optional Home Assistant scripts for scheduling, starting and
+  cancelling dishwasher requests.
 - Preserve the selected dishwasher programme's available cost estimate and
   original price window for manual requests. Show both in the beta dashboard's
   execution record without treating the estimate as a measured cost.
