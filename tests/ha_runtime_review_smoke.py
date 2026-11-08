@@ -5,11 +5,14 @@ from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
 from threading import Event, get_ident
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
+from homeassistant import loader
+from homeassistant.bootstrap import async_from_config_dict
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from custom_components.load_optimizer import (
     _async_claim_native_status_entity_ids, _async_migrate_native_status_entities,
@@ -23,9 +26,13 @@ from custom_components.load_optimizer.orchestration import NativeOrchestrator
 async def main():
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
+        loader.async_setup(hass)
         try:
-            await er.async_get(hass).async_load()
-            await ir.async_get(hass).async_load()
+            assert await async_from_config_dict({
+                "homeassistant": {"time_zone": "Europe/London"},
+                "http": {"server_host": "127.0.0.1", "server_port": 18131},
+            }, hass) is hass
             notifications = []
             hass.services.async_register("persistent_notification", "create",
                 lambda call: notifications.append(call.data))
@@ -122,7 +129,12 @@ async def main():
             foreign = registry.async_get_or_create("sensor", "template", "foreign-template",
                 suggested_object_id=target.split(".")[1])
             hass.states.async_set(target, "unavailable")
-            entry = SimpleNamespace(entry_id="ownership-test", data={"load_type": "learned_appliance"})
+            entry = ConfigEntry(entry_id="ownership-test", domain=DOMAIN,
+                data={"load_type": "learned_appliance"}, options={}, source="user",
+                title="Synthetic ownership test", version=1, minor_version=1,
+                unique_id=None, discovery_keys=MappingProxyType({}), subentries_data=None)
+            with patch.object(type(hass.config_entries), "async_setup", new=AsyncMock(return_value=True)):
+                await hass.config_entries.async_add(entry)
             ev = SimpleNamespace(entry_id="advisory-ev", data={"load_type": "ev_charging"})
             _async_migrate_native_status_entities(hass, ev)
             assert not ir.async_get(hass).async_get_issue(DOMAIN, "legacy_status_conflict_advisory-ev")

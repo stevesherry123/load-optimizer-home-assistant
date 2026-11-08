@@ -23,7 +23,7 @@ ENTITY_ID = re.compile(r"[a-z_][a-z0-9_]*\.[a-z0-9_]+\Z")
 LOCAL_TIME = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d\Z")
 WRAPPED_OPTION_KEYS = {
     "blocked_window_entity", "cost_candidate_interval", "cost_forecast_hours",
-    "cost_forecast_interval", "cost_search_hours", "green_window_entity",
+    "cost_forecast_interval", "cost_search_hours", "green_window_entity", "free_window_entity",
     "instances_yaml", "publish_cost_forecast", "publish_diagnostics",
     "publish_profile_data", "scan_interval", "schedule_preference_weight_pence",
     "tariff_entities", "tariff_entity", "tariff_price_unit", "tariff_timezone",
@@ -200,8 +200,11 @@ def validate_appliance_options(options: dict[str, Any]) -> ApplianceConfiguratio
         _number(options, key, *bounds, integer=True, field=key)
     _number(options, "schedule_preference_weight_pence", 0, 10,
             field="schedule_preference_weight_pence")
-    for key in ("tariff_entity", "green_window_entity", "blocked_window_entity"):
+    for key in ("tariff_entity", "green_window_entity", "blocked_window_entity", "free_window_entity"):
         _entity(options.get(key), key, multiple=key != "tariff_entity")
+    for entity in str(options.get("free_window_entity") or "").split(","):
+        if entity.strip() and not entity.strip().startswith("calendar."):
+            raise ConfigurationError("free_window_entity", "Choose explicit free-electricity calendar entities.")
     tariffs = options.get("tariff_entities", "")
     if not isinstance(tariffs, (str, list)):
         raise ConfigurationError("tariff_entities", "Use comma-separated tariff entity IDs.")
@@ -223,10 +226,13 @@ def validate_appliance_options(options: dict[str, Any]) -> ApplianceConfiguratio
         ids.add(instance_id)
         for key in ("power_sensor", "energy_sensor", "program_sensor", "state_sensor",
                     "schedule_earliest_start_entity", "schedule_latest_finish_entity",
-                    "green_window_entity", "blocked_window_entity"):
+                    "green_window_entity", "blocked_window_entity", "free_window_entity"):
             _entity(entry.get(key), "instances_yaml", required=key == "power_sensor",
                     sensor=key in {"power_sensor", "energy_sensor"},
-                    multiple=key in {"green_window_entity", "blocked_window_entity"})
+                    multiple=key in {"green_window_entity", "blocked_window_entity", "free_window_entity"})
+        for entity in str(entry.get("free_window_entity") or "").split(","):
+            if entity.strip() and not entity.strip().startswith("calendar."):
+                raise ConfigurationError("instances_yaml", label + "free-electricity sources must be calendars.")
         for key, (minimum, maximum, integer) in {
             "active_power_threshold": (0, 100_000, False), "finish_delay": (1, 3600, True),
             "learning_min_runtime_minutes": (0, 10_080, False), "learning_min_samples": (1, 10_000, True),
