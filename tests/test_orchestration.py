@@ -390,8 +390,10 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_manual_request_keeps_the_original_quote_separate_from_start_time(self):
         quote = {"program": "Quick45", "start": "2026-10-08T15:00:00+00:00",
                  "finish": "2026-10-08T15:30:00+00:00", "cost_pence": -0.5}
+        options = [quote, *({**quote, "program": name, "cost_pence": 3.0}
+                           for name in ("Eco50", "Eco50", "Auto2", "MixedLoad", "Quick65"))]
         self.put("sensor.load_optimizer_1_now_recommendation", "Quick45",
-                 status="ready", **quote)
+                 status="ready", program_options=options, **quote)
         self.scheduler.async_evaluate = AsyncMock()
         await self.scheduler.async_request("now")
         request = self.scheduler.state["request"]
@@ -401,6 +403,10 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
             "estimated_cost_pence": -0.5,
         })
         self.assertNotIn("cost_pence", request)
+        alternatives = request["recommendation_alternatives"]
+        self.assertEqual([row["program"] for row in alternatives], ["Eco50", "Auto2", "MixedLoad"])
+        options[1]["cost_pence"] = 100
+        self.assertEqual(alternatives[0]["estimated_cost_pence"], 3.0)
 
     async def test_manual_override_does_not_inherit_another_programmes_quote(self):
         self.put("sensor.load_optimizer_1_now_recommendation", "Quick45", status="ready",

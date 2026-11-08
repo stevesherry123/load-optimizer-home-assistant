@@ -414,28 +414,41 @@ class NativeOrchestrator:
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         quote = option or (attributes if attributes.get("program") == program else {})
-        cost = quote.get("cost_pence")
-        quote_start = self._parse_datetime(quote.get("start"))
-        quote_finish = self._parse_datetime(quote.get("finish"))
-        if (
-            attributes.get("status") == "ready"
-            and type(cost) in (int, float)
-            and -float("inf") < cost < float("inf")
-            and quote_start and quote_finish and quote_finish > quote_start
-        ):
+        if attributes.get("status") == "ready" and (saved_quote := self._recommendation_quote(quote)):
             # Start Now can move the actual request outside the quoted interval.
-            self.state["request"]["recommendation_quote"] = {
-                "program": program,
-                "start": quote_start.isoformat(),
-                "finish": quote_finish.isoformat(),
-                "estimated_cost_pence": cost,
-            }
+            self.state["request"]["recommendation_quote"] = saved_quote
+            alternatives = []
+            seen = {program}
+            for candidate in attributes.get("program_options") or ():
+                alternative = self._recommendation_quote(candidate)
+                if alternative is None or alternative["program"] in seen:
+                    continue
+                alternatives.append(alternative)
+                seen.add(alternative["program"])
+                if len(alternatives) == 3:
+                    break
+            if alternatives:
+                self.state["request"]["recommendation_alternatives"] = alternatives
         self.state["execution_status"] = "queued"
         self.state["last_message"] = f"Queued {program} for {start}."
         self._record_schedule_event("queued", "user_request_queued", program=program, start=start)
         await self._async_save()
         self._publish()
         await self.async_evaluate()
+
+    def _recommendation_quote(self, option: dict[str, Any]) -> dict[str, Any] | None:
+        program = option.get("program")
+        cost = option.get("cost_pence")
+        start = self._parse_datetime(option.get("start"))
+        finish = self._parse_datetime(option.get("finish"))
+        if (
+            isinstance(program, str) and 0 < len(program) <= 100
+            and type(cost) in (int, float) and -float("inf") < cost < float("inf")
+            and start and finish and finish > start
+        ):
+            return {"program": program, "start": start.isoformat(),
+                    "finish": finish.isoformat(), "estimated_cost_pence": cost}
+        return None
 
     async def async_cancel(self) -> None:
         """Cancel a pending native request."""
