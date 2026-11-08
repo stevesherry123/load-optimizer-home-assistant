@@ -148,7 +148,7 @@ class ValidationRunnerTests(unittest.TestCase):
         with patch.object(runner.metadata, "version", side_effect=versions.__getitem__), \
              patch.object(runner.sys, "version_info", (3, 14)), \
              patch.object(runner, "ha_runtime_requirements", return_value=["pyotp==2.10.0"]):
-            self.assertEqual(runner.preflight(requirements)["homeassistant"], "2026.10.4")
+            self.assertEqual(runner.preflight(requirements)["homeassistant"], versions["homeassistant"])
             with self.assertRaisesRegex(ValueError, "homeassistant: expected 2026.10.2"):
                 runner.preflight()
 

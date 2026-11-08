@@ -58,7 +58,7 @@ shipped chart JavaScript across browser timezones and profile preferences.
 
 ## Pinned compatibility environment
 
-The second GitHub HA job tests **2026.10.4**, using
+The second GitHub HA job tests **2026.11.0**, using
 `dev/requirements-validation-compatibility.txt`. This is a pinned compatibility
 check, not a claim to track the latest release automatically. It runs every
 standard HA acceptance check, including EV control and source-consistency cases,

@@ -24,6 +24,7 @@ async def main():
         hass.config.skip_pip = True
         loader.async_setup(hass)
         hass.config_entries = ConfigEntries(hass, {})
+        await hass.config_entries.async_initialize()
         dr.async_setup(hass)
         await dr.async_load(hass)
         await er.async_load(hass)
