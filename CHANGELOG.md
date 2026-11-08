@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.0-beta.11
+
+- Retain up to three distinct alternative programme estimates from the manual
+  dishwasher request's scheduling mode. Show their original price windows in
+  the optional beta dashboard without changing how programmes are selected.
+
 ## 1.7.0-beta.10
 
 - Require one qualifying dishwasher door opening before normal automatic

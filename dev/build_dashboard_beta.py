@@ -192,6 +192,7 @@ def build():
         {% set snapshot = state_attr(native, 'last_start_decision_snapshot') %}
         {% set request = snapshot.get('request') if snapshot is mapping else none %}
         {% set quote = request.get('recommendation_quote') if request is mapping else none %}
+        {% set alternatives = request.get('recommendation_alternatives') if request is mapping else none %}
         {% macro home_time(value) -%}
         {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'Not recorded' }}
         {%- endmacro %}
@@ -206,6 +207,16 @@ def build():
         {% endif -%}
         | Result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
         | Detail | {{ (state_attr(native, 'last_message') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |
+        {% if alternatives is sequence and alternatives is not string and alternatives is not mapping and alternatives %}
+
+        **Other programme estimates for this request**
+
+        | Programme | Estimated cost | Estimate window |
+        |---|---|---|
+        {% for option in alternatives[:3] if option is mapping and option.estimated_cost_pence is number -%}
+        | {{ option.program | replace('|', '/') | replace('\\n', ' ') }} | {{ '%.2f p' | format(option.estimated_cost_pence) }} | {{ home_time(option.start) }} to {{ home_time(option.finish) }} |
+        {% endfor -%}
+        {% endif %}
     """)
     capabilities["grid_options"] = {"columns": "full"}
     diagnostics = view("Diagnostics", "diagnostics", "stethoscope",
