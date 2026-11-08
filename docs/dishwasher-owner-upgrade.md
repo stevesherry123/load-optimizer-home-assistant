@@ -5,6 +5,12 @@ trial commit `70dafaf`. It retains the trial controller, storage format,
 configuration flow and dashboard. The public dishwasher candidate remains a
 separate branch based on shared beta.
 
+An isolated HA 2026.11.0 rehearsal loaded persisted entries created by
+`70dafaf` with the owner candidate. It retained the existing learned cycle,
+entity IDs, customised dashboard and EV advisory settings, and added the
+two overnight time entities. Restoring the paired source and configuration
+copy restored the same baseline in a separate process.
+
 Before installing, match the live integration files to a reviewed source build.
 A beta.9 version label alone cannot distinguish the owner trial revisions.
 Confirm all appliance captures are idle, no request is pending and EV control
