@@ -1,5 +1,49 @@
 # Optional Dashboard
 
+The unreleased full and beta templates include a **Cycle costs** card showing
+electricity, consumables, water, wear, total cost and unconfigured assumptions.
+See [operating costs](operating-costs.md) for the calculation and configuration.
+
+## Development Scheduling Controls
+
+The unreleased full and beta dashboards show **Next wash** separately from a
+recommendation. The beta dashboard provides **Schedule one wash**, **Start now**
+and **Cancel pending schedule**, plus an advanced selected-programme start.
+The full dashboard exposes the same native actions in Scheduler Controls.
+These actions require configured, active native dishwasher control and retain
+the physical safety checks. Updating dashboard YAML alone does not install the
+matching integration code or activate control.
+
+| Display | Meaning |
+| --- | --- |
+| One wash authorised; waiting for a plan | Permission is saved, but no start is queued while prices or eligibility checks remain unresolved. A retained previous estimate is not a live queue. |
+| Programme queued | A programme and expected start/finish have been selected, with the original authorised start window shown. |
+| Starting | Start checks or commands are underway; running has not been confirmed. |
+| Dishwasher is washing | The appliance reports that it is running. A learning capture alone does not establish this state. |
+| No wash queued | There is no pending start. The summary explains cancellation, expiry or the most recent blocked request when applicable. |
+
+If no cycle fits completely, **Later finish** explains that the chosen start is
+inside the authorised window while completion falls afterwards. Times in Next
+wash are shown in Home Assistant's local timezone, including BST/GMT labels.
+
+**Overnight Start** and **Dishes Ready By** configure future requests. Window
+settings use the configured tariff timezone, shown in the Window settings card.
+An existing request keeps its original window after defaults change. Dishes
+Ready By is the preferred finish; a separately configured travel deadline remains
+a hard constraint. The full template shows the old optional travel controls only
+when their external helpers exist.
+
+**Schedule after loading (door rule)** is optional and off by default. Explicit
+scheduling does not require it. **Profitable extra runs** is a separate opt-in;
+authorising one normal wash does not enable extra runs. Both switches retain
+their existing entity IDs.
+
+Readiness and recent decisions use readable descriptions. New event records
+store a `description` alongside the original machine reason for diagnostics;
+older records remain readable through a generic or known-reason fallback.
+Ordinary status reads and event records do not send routine notifications.
+Cancellation clears pending permission and never stops an active wash.
+
 ## Start With One Appliance
 
 For the [new-install guide](getting-started.md), start with

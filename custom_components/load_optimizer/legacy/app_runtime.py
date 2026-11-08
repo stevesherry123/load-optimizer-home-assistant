@@ -17,10 +17,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .config_validation import ConfigurationError, appliance_document
 
 try:
-    from .costing import TariffDataUnavailable, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from .costing import TariffDataUnavailable, non_energy_cost_breakdown, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from .observability import EventEngine, configure_logging as configure_event_logging
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
-    from costing import TariffDataUnavailable, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from costing import TariffDataUnavailable, non_energy_cost_breakdown, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
 APP_VERSION = "1.7.0-beta.9"
@@ -970,10 +970,13 @@ def overnight_planning_coverage(config: dict, summaries: list[dict], policies: l
                                 latest: datetime | None = None) -> dict:
     """Require the whole operational night, including possible cycle tails."""
     window_start, window_end = operational_overnight_window(
-        now, config.get("schedule_overnight_start", "20:00"),
-        config.get("schedule_overnight_end", "08:00"),
+        now, config.get("schedule_overnight_start", "21:00"),
+        config.get("schedule_overnight_end", "07:00"),
         config.get("tariff_timezone", "Europe/London"),
     )
+    if config.get("schedule_request_window_start") and config.get("schedule_request_window_end"):
+        window_start = datetime_from_value(config["schedule_request_window_start"])
+        window_end = datetime_from_value(config["schedule_request_window_end"])
     allowed = {p["program"] for p in policies if p.get("enabled") and p.get("allow_normal_recommendation")}
     runtimes = [float(m["expected_runtime_minutes"]) for m in summaries
                 if m.get("program") in allowed and m.get("expected_runtime_minutes") is not None]
@@ -1162,6 +1165,8 @@ def default_program_policy(program: str) -> dict:
         "negative_price_priority": 50,
         "estimated_overhead_cost_pence": 0.0,
         "fixed_cost_pence": 0.0,
+        "consumables_cost_pence": 0.0,
+        "unconfigured_costs": ["fixed_cost_pence", "consumables_cost_pence", "water_litres", "water_cost_pence_per_litre", "wear_cost_pence"],
         "water_litres": 0.0,
         "water_cost_pence_per_litre": 0.0,
         "water_cost_pence": 0.0,
@@ -1178,14 +1183,7 @@ def normalise_program_policy(raw: dict) -> dict:
     classification = str(raw.get("classification", "unclassified")).lower()
     if classification not in PROGRAM_CLASSIFICATIONS:
         raise ValueError(f"Unsupported program classification: {classification}")
-    fixed_cost = max(0.0, float(raw.get(
-        "fixed_cost_pence",
-        raw.get("estimated_overhead_cost_pence", policy["fixed_cost_pence"]),
-    )))
-    water_litres = max(0.0, float(raw.get("water_litres", policy["water_litres"])))
-    water_cost = max(0.0, float(raw.get("water_cost_pence_per_litre", policy["water_cost_pence_per_litre"])))
-    wear_cost = max(0.0, float(raw.get("wear_cost_pence", policy["wear_cost_pence"])))
-    non_energy_cost = round(fixed_cost + (water_litres * water_cost) + wear_cost, 4)
+    costs = non_energy_cost_breakdown(raw)
     policy.update({
         "configured": True,
         "classification": classification,
@@ -1200,13 +1198,8 @@ def normalise_program_policy(raw: dict) -> dict:
         ))),
         "maximum_runs_per_window": max(0, int(raw.get("maximum_runs_per_window", policy["maximum_runs_per_window"]))),
         "negative_price_priority": max(1, min(100, int(raw.get("negative_price_priority", policy["negative_price_priority"])))),
-        "estimated_overhead_cost_pence": fixed_cost,
-        "fixed_cost_pence": fixed_cost,
-        "water_litres": water_litres,
-        "water_cost_pence_per_litre": water_cost,
-        "water_cost_pence": round(water_litres * water_cost, 4),
-        "wear_cost_pence": wear_cost,
-        "non_energy_cost_pence": non_energy_cost,
+        **costs,
+        "estimated_overhead_cost_pence": costs["fixed_cost_pence"],
     })
     if classification == "disabled":
         policy.update(enabled=False, allow_normal_recommendation=False, allow_negative_price_run=False)
@@ -1269,6 +1262,8 @@ def program_catalogue(models: dict, policies: list[dict]) -> list[dict]:
             "maximum_runs_per_window": policy.get("maximum_runs_per_window"),
             "negative_price_priority": policy.get("negative_price_priority"),
             "fixed_cost_pence": policy.get("fixed_cost_pence"),
+            "consumables_cost_pence": policy.get("consumables_cost_pence"),
+            "unconfigured_costs": policy.get("unconfigured_costs", []),
             "water_litres": policy.get("water_litres"),
             "water_cost_pence_per_litre": policy.get("water_cost_pence_per_litre"),
             "water_cost_pence": policy.get("water_cost_pence"),
@@ -1312,8 +1307,8 @@ def instance_config(instance_id: str | dict = "1", options: dict | None = None) 
         "schedule_equivalent_cost_tolerance_pence": float(_option_or_env(options, f"{prefix}_schedule_equivalent_cost_tolerance_pence", 0)),
         "schedule_preference_weight_pence": float(_option_or_env(options, f"{prefix}_schedule_preference_weight_pence", options.get("schedule_preference_weight_pence", 0.1))),
         "schedule_window_preference": str(_option_or_env(options, f"{prefix}_schedule_window_preference", "any")),
-        "schedule_overnight_start": str(_option_or_env(options, f"{prefix}_schedule_overnight_start", "20:00")),
-        "schedule_overnight_end": str(_option_or_env(options, f"{prefix}_schedule_overnight_end", "08:00")),
+        "schedule_overnight_start": str(_option_or_env(options, f"{prefix}_schedule_overnight_start", "21:00")),
+        "schedule_overnight_end": str(_option_or_env(options, f"{prefix}_schedule_overnight_end", "07:00")),
         "schedule_earliest_start_entity": str(_option_or_env(options, f"{prefix}_schedule_earliest_start_entity", "")).strip(),
         "schedule_latest_finish_entity": str(_option_or_env(options, f"{prefix}_schedule_latest_finish_entity", "")).strip(),
         "program_policies": options.get(f"{prefix}_program_policies", []),
@@ -1360,8 +1355,8 @@ def instance_config_from_entry(entry: dict, index: int, options: dict) -> dict:
         "schedule_equivalent_cost_tolerance_pence": float(entry.get("schedule_equivalent_cost_tolerance_pence", 0)),
         "schedule_preference_weight_pence": float(entry.get("schedule_preference_weight_pence", options.get("schedule_preference_weight_pence", 0.1))),
         "schedule_window_preference": str(entry.get("schedule_window_preference", "any")),
-        "schedule_overnight_start": str(entry.get("schedule_overnight_start", "20:00")),
-        "schedule_overnight_end": str(entry.get("schedule_overnight_end", "08:00")),
+        "schedule_overnight_start": str(entry.get("schedule_overnight_start", "21:00")),
+        "schedule_overnight_end": str(entry.get("schedule_overnight_end", "07:00")),
         "schedule_earliest_start_entity": str(entry.get("schedule_earliest_start_entity", "")).strip(),
         "schedule_latest_finish_entity": str(entry.get("schedule_latest_finish_entity", "")).strip(),
         "program_policies": entry.get("program_policies", []),
@@ -2008,6 +2003,10 @@ def publish_cost_entities(
             "cost_pence": rounded_pence(recommendation.get("cost_pence")) if recommendation_ready else None,
             "energy_cost_pence": rounded_pence(recommendation.get("energy_cost_pence")) if recommendation_ready else None,
             "non_energy_cost_pence": rounded_pence(recommendation.get("non_energy_cost_pence")) if recommendation_ready else None,
+            "net_benefit_pence": recommendation.get("net_benefit_pence") if recommendation_ready else None,
+            "positive_net_benefit": recommendation_ready and recommendation.get("positive_net_benefit", False),
+            "unconfigured_costs": recommendation.get("unconfigured_costs", []),
+            "operating_cost_breakdown": recommendation.get("operating_cost_breakdown"),
             "saving_vs_now_pence": rounded_pence(recommendation.get("saving_vs_now_pence")) if recommendation_ready else None,
             "energy_kwh": recommendation.get("energy_kwh"),
             "energy_kwh_per_minute": recommendation.get("energy_kwh_per_minute"),
@@ -2742,8 +2741,8 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     equivalent_cost_tolerance_pence=config.get("schedule_equivalent_cost_tolerance_pence", 0),
                     preference_weight_pence=config.get("schedule_preference_weight_pence", 0.1),
                     window_preference=config.get("schedule_window_preference", "any"),
-                    overnight_start=config.get("schedule_overnight_start", "20:00"),
-                    overnight_end=config.get("schedule_overnight_end", "08:00"),
+                    overnight_start=config.get("schedule_overnight_start", "21:00"),
+                    overnight_end=config.get("schedule_overnight_end", "07:00"),
                     schedule_timezone=config.get("tariff_timezone", "Europe/London"),
                     earliest_start_utc=earliest_start_utc,
                     latest_finish_utc=latest_finish_utc,
@@ -2752,6 +2751,10 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                     green_windows=green_windows,
                     blocked_windows=blocked_windows,
                     excluded_programs=blocked_remote_start_programs,
+                    overnight_window_utc=(
+                        datetime_from_value(config["schedule_request_window_start"]),
+                        datetime_from_value(config["schedule_request_window_end"]),
+                    ) if config.get("schedule_request_window_start") and config.get("schedule_request_window_end") else None,
                 )
                 cost_result.update({
                     **price_chart_data(chart_periods, now=now, timezone_name=config["tariff_timezone"]),

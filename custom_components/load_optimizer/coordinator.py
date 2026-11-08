@@ -82,6 +82,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.legacy_runtime and self.orchestrator:
             self.legacy_runtime.external_state_provider = self._orchestration_legacy_state
             self.orchestrator.set_automatic_preflight(self._async_automatic_start_block)
+            self.legacy_runtime.schedule_config_provider = self.orchestrator.configure_schedule
 
     async def _async_automatic_start_block(self, request: dict[str, Any]) -> str | None:
         if self.legacy_runtime is None:

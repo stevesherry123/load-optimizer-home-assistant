@@ -46,11 +46,11 @@ class NegativePriceRepeatTests(unittest.TestCase):
         self.assertTrue(recommendation["ready_to_start"])
         self.assertEqual(recommendation["energy_cost_pence"], -0.7)
 
-    def test_zero_price_also_allows_an_off_grid_start(self):
+    def test_zero_return_does_not_allow_an_off_grid_extra_start(self):
         self.periods[0]["price_p_per_kwh"] = 0
         recommendation = self.recommend()["negative_price_recommendation"]
-        self.assertTrue(recommendation["ready_to_start"])
-        self.assertEqual(recommendation["energy_cost_pence"], 0)
+        self.assertFalse(recommendation["ready_to_start"])
+        self.assertGreater(datetime.fromisoformat(recommendation["start"]), self.reference)
 
     def test_future_high_priority_programme_does_not_starve_ready_programme(self):
         later = {**self.model, "program": "Later", "expected_runtime_minutes": 150}
@@ -100,7 +100,7 @@ class NegativePriceRepeatTests(unittest.TestCase):
         self.periods[1] = {"start": self.start + timedelta(hours=1), "end": self.start + timedelta(hours=2),
                            "price_p_per_kwh": 20}
         self.periods.append({"start": self.start + timedelta(hours=2), "end": self.start + timedelta(hours=3),
-                             "price_p_per_kwh": 0})
+                             "price_p_per_kwh": -1})
         recommendation = self.recommend(reference_utc=self.reference + timedelta(hours=2))["negative_price_recommendation"]
         self.assertTrue(recommendation["ready_to_start"])
         self.assertEqual(recommendation["negative_window_runs"], 0)
