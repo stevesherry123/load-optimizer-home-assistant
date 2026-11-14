@@ -11,6 +11,12 @@ candidate and must not be merged wholesale to deliver this scope.
 
 ## Acceptance record
 
+Before tagging a beta, run `python dev/check_beta_release.py vX.Y.Z-beta.N RUN_ID`
+from the clean candidate checkout. It checks matching versions and release notes,
+local/remote tag collisions and the six GitHub validation jobs on the exact SHA.
+It does not create a tag, publish a release, verify live rollback or approve a
+deployment.
+
 - [x] First feature scope selected by the user: dishwasher scheduling and costs.
 - [x] Separate source branch prepared without later EV implementation commits.
 - [x] Clean implementation commit `473830b`: 536 unit tests, Bandit and all 20
