@@ -37,6 +37,7 @@ CONTROL_DEFAULTS: dict[str, Any] = {
     "auto_negative_price_enabled": False,
     "door_opened_since_last_cycle": False,
     "door_open_minimum_minutes": 2.0,
+    "start_recovery_required": False,
     "overnight_start": None,
     "overnight_end": None,
     "override_program": "engine",
@@ -81,7 +82,7 @@ REASON_MESSAGES = {
     "blocked_window_source_unavailable": "Automatic starts are paused because a configured no-run source cannot be read. Restore the source or explicitly remove it from the configuration.",
     "automatic_overnight_mode_off": "Automatic overnight mode is off.",
     "automatic_negative_price_mode_off": "Automatic free or negative-price mode is off.",
-    "start_confirmation_interrupted": "A restart interrupted start confirmation. Check the dishwasher before requesting another wash.",
+    "start_confirmation_interrupted": "A restart interrupted start confirmation. Check the dishwasher, then use Cancel Schedule to clear the recovery hold.",
     "start_reservation_not_saved": "The start could not be saved safely. Check Home Assistant storage before requesting another wash.",
     "door_not_opened_since_last_cycle": "Waiting for the dishwasher to be loaded: the door has not opened since the last wash.",
     "overnight_recommendation_not_ready": "Waiting for a fully priced, eligible overnight programme.",
@@ -360,6 +361,7 @@ class NativeOrchestrator:
             request = self.state.get("request") or {}
             self.state["request"] = None
             self.state["door_opened_since_last_cycle"] = False
+            self.state["start_recovery_required"] = True
             reason = "start_confirmation_interrupted"
             await self._async_outcome("blocked", request.get("mode"), request.get("program"),
                                       reason, explain_reason(reason))
@@ -593,6 +595,8 @@ class NativeOrchestrator:
 
     async def async_request(self, mode: str, *, override: bool = False) -> None:
         """Capture a user request from a native button."""
+        if self.state.get("start_recovery_required"):
+            raise HomeAssistantError(explain_reason("start_confirmation_interrupted"))
         if self._stopping or self._cancelling:
             raise HomeAssistantError("Appliance control is stopping; retry after it finishes")
         if self._execution_task and not self._execution_task.done():
@@ -723,6 +727,7 @@ class NativeOrchestrator:
             await self._async_dismiss_normal_attention(request)
             self.state["request"] = None
             self.state["door_opened_since_last_cycle"] = False
+            self.state["start_recovery_required"] = False
             await self._async_outcome(
                 "cancelled",
                 request.get("mode"),
@@ -802,6 +807,7 @@ class NativeOrchestrator:
         options_changed = self._refresh_program_options()
         normal_created = False
         if (self.state.get("active") and self.state.get("request") is None
+                and not self.state.get("start_recovery_required")
                 and self.state.get("auto_mode_enabled") and self.state.get("door_opened_since_last_cycle")
                 and self._state("sensor.load_optimizer_1_cycle_state") == "idle" and not self._is_running()
                 and not self._automatic_source_block() and self._overnight_window_unused(now)):
@@ -913,6 +919,8 @@ class NativeOrchestrator:
         return True
 
     def _automatic_decision(self, now: datetime) -> dict[str, Any]:
+        if self.state.get("start_recovery_required"):
+            return {"action": "wait", "reason": "start_confirmation_interrupted"}
         if self.state.get("request") is not None:
             return {"action": "wait", "reason": "request_already_pending"}
         if self._state("sensor.load_optimizer_1_cycle_state") != "idle":

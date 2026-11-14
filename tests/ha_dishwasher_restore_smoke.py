@@ -83,13 +83,23 @@ async def main():
                 await uncertain.async_load()
                 assert uncertain.state["request"] is None
                 assert uncertain.state["last_reason"] == "start_confirmation_interrupted"
+                assert uncertain.state["start_recovery_required"]
                 assert not uncertain.state["door_opened_since_last_cycle"]
                 assert uncertain._execution_task is None
                 _, reopened = fresh("reopened", uncertain_path)
                 await reopened.async_load()
                 assert reopened.state["request"] is None
                 assert reopened.state["last_reason"] == "start_confirmation_interrupted"
-                print("Real disk restore: bounded requests survive; cancellation, expiry and interrupted commands do not replay")
+                reopened.state.update(auto_mode_enabled=True, auto_negative_price_enabled=True,
+                                      door_opened_since_last_cycle=True)
+                reopened.hass.states.async_set("sensor.load_optimizer_1_cycle_state", "idle")
+                await reopened.async_evaluate(now)
+                assert reopened.state["request"] is None
+                assert reopened.state["shadow_decision"]["reason"] == "start_confirmation_interrupted"
+                await reopened.async_cancel()
+                assert not reopened.state["start_recovery_required"]
+                assert not reopened.state["door_opened_since_last_cycle"]
+                print("Real disk restore: interrupted commands do not replay; recovery requires acknowledgement")
             finally:
                 for hass in instances:
                     await hass.async_stop(force=True)

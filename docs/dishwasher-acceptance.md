@@ -101,7 +101,8 @@ Record the same request/window surviving, with no duplicate start.
 A restart during a command sequence is different from a queued-request restart.
 The controller verifies its local command reservation before sending an
 appliance command. If confirmation is interrupted, the request must not
-replay on boot. Check the dishwasher before requesting another wash. A
+replay on boot. Check the dishwasher, then press **Cancel Schedule** to
+acknowledge the recovery hold before requesting another wash. A
 storage-write failure must block the first command.
 
 Before rollback, turn optional modes off, cancel pending requests and finish any
