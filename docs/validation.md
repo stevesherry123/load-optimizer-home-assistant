@@ -31,6 +31,19 @@ in separate processes. Independent checks keep running after a failure; any
 failure or timeout makes the final exit status nonzero. No check is ignored.
 Each check has a five-minute timeout, configurable with `--timeout`.
 
+Reports record the Git commit/branch, dirty working-tree flag, selected suites and
+a SHA-256 fingerprint of tracked and unignored source files, including symlinks
+and file modes. The runner compares identity before and after checks; a mismatch
+returns failure even if individual checks passed. The report directory itself
+and ignored files are excluded from that fingerprint. No source contents or
+credential values are included in the identity record.
+
+Dirty working-tree runs remain useful for development, but their commit alone
+does not identify the changed code. Commit the candidate and rerun from a clean
+tree for release evidence. If Git/source identity cannot be verified, checks can
+still execute but the report explicitly lacks verified revision evidence; do not
+use that report as a release gate. See [release readiness](release-readiness.md).
+
 Results go to a unique ignored `.local/validation/` directory with per-check logs,
 `results.json` and `summary.md`. `--suite ha` runs just HA checks; `--list` lists
 checks without importing HA. Do not commit generated logs or private local files.
@@ -42,6 +55,17 @@ described in that script. It is not part of the standard HA dependency set.
 Requesting that suite without its prerequisites fails; it is never reported as
 a pass merely because it was not selected. Standard HA checks still execute the
 shipped chart JavaScript across browser timezones and profile preferences.
+
+## Pinned compatibility environment
+
+The second GitHub HA job tests **2026.11.0**, using
+`dev/requirements-validation-compatibility.txt`. This is a pinned compatibility
+check, not a claim to track the latest release automatically. It runs every
+standard HA acceptance check, including EV control and source-consistency cases,
+with the same environment preflight, source identity and failure reporting.
+Use `--requirements dev/requirements-validation-compatibility.txt --suite ha`
+with the runner in a separate environment installed from that requirements file.
+The default minimum-version environment and its pins remain separate.
 
 ## GitHub Triggers
 

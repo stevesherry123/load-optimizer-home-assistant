@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- Make the full and beta dashboards distinguish wash permission awaiting a plan,
+  queued timing, unconfirmed starting and appliance-confirmed washing. Show the
+  original window, expected late finish, cancellation and expiry clearly.
+- Expose native overnight window settings and schedule/start-now/cancel controls
+  in the dashboards. Label door-based scheduling and profitable extra runs as
+  separate options; preserve their entity IDs and existing opt-ins.
+- Publish household-facing readiness messages and persist readable scheduling
+  event descriptions. Explicit wash permission no longer shows door-rule or
+  automatic-mode prerequisites that do not apply to that request.
+- Require strictly positive whole-cycle net benefit for opportunistic extra runs,
+  using unrounded electricity and operating costs. Keep normal requested washing
+  eligible when it costs money; zero-return free cycles no longer authorise extras.
+- Rank profitable extra runs by net benefit per run, with programme priority as
+  a tie-breaker. Revalidate live costs before automatic commands.
+- Add separate consumables costs, preserve the legacy overhead alias, disclose
+  unconfigured costs and show a full cycle-cost breakdown in both dashboards.
+- Persist one-wash overnight permission independently of tariff recommendations;
+  notify for missing prices and resume inside the original window when they return.
+- Add native Overnight Start and Dishes Ready By time controls, with new defaults
+  of 21:00–07:00 while retaining explicit YAML windows. Prefer complete cycle fits;
+  otherwise allow a later finish while keeping the start inside the window.
+- Keep normal washing ahead of opportunistic runs, permit explicit scheduling
+  without door-based authorisation, and recheck full-cycle prices and window bounds
+  before sending start commands. Cancellation and expiry prevent request revival.
+
 ## 1.7.0-beta.11
 
 - Retain up to three distinct alternative programme estimates from the manual

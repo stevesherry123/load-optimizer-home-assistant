@@ -267,7 +267,7 @@ def validate_appliance_options(options: dict[str, Any]) -> ApplianceConfiguratio
                         "minimum_hours_between_runs", "maximum_runs_per_window"):
                 _number(policy, key, 1 if key.endswith(("rank", "priority")) else 0,
                         100 if key.endswith(("rank", "priority")) else 100_000, integer=True, label=label)
-            for key in ("fixed_cost_pence", "estimated_overhead_cost_pence", "water_litres",
+            for key in ("fixed_cost_pence", "consumables_cost_pence", "estimated_overhead_cost_pence", "water_litres",
                         "water_cost_pence_per_litre", "wear_cost_pence"):
                 _number(policy, key, 0, 100_000, label=label)
             try:
