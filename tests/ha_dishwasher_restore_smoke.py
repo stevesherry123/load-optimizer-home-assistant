@@ -74,7 +74,22 @@ async def main():
                 assert expired_again.state["request"] is None
                 assert expired_again.state["last_result"] == "expired"
                 assert expired_again._execution_task is None
-                print("Real disk restore: bounded request/settings retained; cancellation and expiry remain terminal; no device services called")
+
+                # Simulate interruption after a persisted reservation, before
+                # a terminal start outcome has been written.
+                original.state.update(execution_status="commanding", door_opened_since_last_cycle=True)
+                await original._async_save()
+                uncertain_path, uncertain = fresh("uncertain", original_path)
+                await uncertain.async_load()
+                assert uncertain.state["request"] is None
+                assert uncertain.state["last_reason"] == "start_confirmation_interrupted"
+                assert not uncertain.state["door_opened_since_last_cycle"]
+                assert uncertain._execution_task is None
+                _, reopened = fresh("reopened", uncertain_path)
+                await reopened.async_load()
+                assert reopened.state["request"] is None
+                assert reopened.state["last_reason"] == "start_confirmation_interrupted"
+                print("Real disk restore: bounded requests survive; cancellation, expiry and interrupted commands do not replay")
             finally:
                 for hass in instances:
                     await hass.async_stop(force=True)

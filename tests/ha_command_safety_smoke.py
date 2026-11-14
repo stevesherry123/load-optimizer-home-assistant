@@ -1,6 +1,7 @@
 """Exercise command cancellation and safety on real HA, with synthetic devices."""
 
 import asyncio
+from copy import deepcopy
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -26,7 +27,8 @@ async def main():
             for action in ("async_cancel", "async_stop"):
                 for pause in range(5):
                     scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id="synthetic"), None)
-                    scheduler.store = SimpleNamespace(async_save=AsyncMock())
+                    scheduler.store = SimpleNamespace(async_save=AsyncMock(),
+                        async_load=AsyncMock(side_effect=lambda: deepcopy(scheduler.store.async_save.await_args.args[0])))
                     scheduler.state.update(active=True, auto_mode_enabled=False,
                                            auto_negative_price_enabled=False)
                     scheduler.config = {

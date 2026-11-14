@@ -58,7 +58,8 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
             async_create_task=Mock(side_effect=schedule),
         )
         self.scheduler = NativeOrchestrator(self.hass, SimpleNamespace(entry_id="test"), None)
-        self.scheduler.store = SimpleNamespace(async_save=AsyncMock())
+        self.scheduler.store = SimpleNamespace(async_save=AsyncMock(),
+            async_load=AsyncMock(side_effect=lambda: deepcopy(self.scheduler.store.async_save.await_args.args[0])))
         self.scheduler.state = {**namespace["CONTROL_DEFAULTS"], "schedule_events": [], "run_history": []}
         self.scheduler.state.update(active=True, auto_mode_enabled=True, door_opened_since_last_cycle=True)
         self.scheduler.config = {
@@ -829,7 +830,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(time < start + timedelta(hours=2) or start + timedelta(hours=3) <= time < start + timedelta(hours=4.5)
                             for time, _ in runs))
         self.assertTrue(all(later[0] - earlier[0] >= timedelta(minutes=30) for earlier, later in zip(runs, runs[1:])))
-        self.assertEqual(check.await_count, len(runs) * 3)
+        self.assertEqual(check.await_count, len(runs) * 4)
         self.assertEqual(sum(call.args[:2] == ("button", "press") for call in self.hass.services.async_call.await_args_list), 5)
 
     async def test_live_source_disappearing_blocks_even_when_scan_reported_ready(self):
@@ -883,10 +884,10 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.put("sensor.load_optimizer_1_negative_price_recommendation", "MachineCare", status="ready",
                  program="MachineCare", power_hungry_window_fits_negative_price=True)
         for slack, allowed_domains, attempts in (
-            (10, ["switch"], [0, 15]),
-            (18, ["switch", "select"], [0, 15, 20]),
-            (35, ["switch", "select", "button"], [0, 15, 20, 40]),
-            (55, ["switch", "select", "button", "home_connect_alt"], [0, 15, 20, 40, 60]),
+            (10, ["switch"], [0, 0, 15]),
+            (18, ["switch", "select"], [0, 0, 15, 20]),
+            (35, ["switch", "select", "button"], [0, 0, 15, 20, 40]),
+            (55, ["switch", "select", "button", "home_connect_alt"], [0, 0, 15, 20, 40, 60]),
         ):
             with self.subTest(slack_seconds=slack):
                 Clock.current = start
@@ -927,7 +928,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.state["last_reason"], "automatic_preflight_unavailable")
 
     async def test_automatic_start_and_each_fallback_use_fresh_preflight(self):
-        for starting_domain, count in (("button", 3), ("home_connect_alt", 4), ("home_connect", 5)):
+        for starting_domain, count in (("button", 4), ("home_connect_alt", 5), ("home_connect", 6)):
             with self.subTest(starting_domain=starting_domain):
                 self.scheduler.state["door_opened_since_last_cycle"] = True
                 self.put("sensor.operation", "BSH.Common.EnumType.OperationState.Ready")
@@ -951,16 +952,25 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_run_failure_during_power_on_delay_prevents_start_commands(self):
         self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
         self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
-        check = AsyncMock(side_effect=[None, "blocked_window_source_unavailable"])
+        check = AsyncMock(side_effect=[None, None, "blocked_window_source_unavailable"])
         self.scheduler.set_automatic_preflight(check)
         request = {"mode": "automatic", "program": "MixedLoad", "start": Clock.current.isoformat()}
         with patch.object(asyncio, "sleep", new=AsyncMock()):
             await self.scheduler._async_execute(request)
         self.assertEqual(self.scheduler.state["last_reason"], "blocked_window_source_unavailable")
-        self.assertEqual(check.await_count, 2)
+        self.assertEqual(check.await_count, 3)
         calls = self.hass.services.async_call.await_args_list
         self.assertTrue(any(call.args[:2] == ("switch", "turn_on") for call in calls))
         self.assertFalse(any(call.args[0] in {"button", "select", "home_connect", "home_connect_alt"} for call in calls))
+
+    async def test_failed_command_reservation_blocks_all_appliance_calls(self):
+        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.scheduler.store.async_load = AsyncMock(return_value={"state": {"execution_status": "queued"}})
+        await self.scheduler._async_execute({"mode": "now", "program": "MixedLoad", "automatic": False})
+        self.assertEqual(self.scheduler.state["last_reason"], "start_reservation_not_saved")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        self.assertTrue(all(call.args[0] == "persistent_notification"
+                            for call in self.hass.services.async_call.await_args_list))
 
     async def test_disabling_automatic_mode_during_preflight_prevents_command(self):
         for mode, setting, reason in (

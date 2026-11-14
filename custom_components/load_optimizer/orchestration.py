@@ -81,6 +81,8 @@ REASON_MESSAGES = {
     "blocked_window_source_unavailable": "Automatic starts are paused because a configured no-run source cannot be read. Restore the source or explicitly remove it from the configuration.",
     "automatic_overnight_mode_off": "Automatic overnight mode is off.",
     "automatic_negative_price_mode_off": "Automatic free or negative-price mode is off.",
+    "start_confirmation_interrupted": "A restart interrupted start confirmation. Check the dishwasher before requesting another wash.",
+    "start_reservation_not_saved": "The start could not be saved safely. Check Home Assistant storage before requesting another wash.",
     "door_not_opened_since_last_cycle": "Waiting for the dishwasher to be loaded: the door has not opened since the last wash.",
     "overnight_recommendation_not_ready": "Waiting for a fully priced, eligible overnight programme.",
     "overnight_tariff_coverage_incomplete": "Waiting for prices covering the whole overnight search and possible cycle finishes before choosing a start time.",
@@ -354,6 +356,13 @@ class NativeOrchestrator:
         for key in LEGACY_CONFIG_HELPERS:
             if configured.get(key):
                 self.config[key] = str(configured[key])
+        if self.state.get("execution_status") == "commanding":
+            request = self.state.get("request") or {}
+            self.state["request"] = None
+            self.state["door_opened_since_last_cycle"] = False
+            reason = "start_confirmation_interrupted"
+            await self._async_outcome("blocked", request.get("mode"), request.get("program"),
+                                      reason, explain_reason(reason))
         if self._refresh_program_options():
             await self._async_save()
         self._loaded = True
@@ -992,6 +1001,25 @@ class NativeOrchestrator:
                 "program_not_selectable",
                 f"{program_key} is not available on the Bosch program selector.",
             )
+            return
+        snapshot = self.state["last_start_decision_snapshot"]
+        try:
+            await self._async_save()
+            persisted = await self.store.async_load()
+        except (OSError, HomeAssistantError, ValueError):
+            persisted = None
+        if self._stopping or self._cancelling or not self.state.get("active"):
+            return
+        stored_state = persisted.get("state") if isinstance(persisted, dict) else None
+        if (not isinstance(stored_state, dict) or stored_state.get("execution_status") != "commanding"
+                or stored_state.get("last_start_decision_snapshot") != snapshot):
+            self.state["request"] = None
+            self.state["door_opened_since_last_cycle"] = False
+            reason = "start_reservation_not_saved"
+            await self._async_outcome("blocked", mode, program, reason, explain_reason(reason))
+            return
+        # A disk read can yield to door, mode and other source changes.
+        if not await self._async_start_allowed(request):
             return
         try:
             await self._async_call(
