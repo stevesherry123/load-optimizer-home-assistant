@@ -53,7 +53,7 @@ async def main():
                     if card["title"] == "Next wash":
                         assert ("No wash queued" if populated else "Scheduling status unavailable") in rendered
                     if card["title"] == "Execution record":
-                        assert "| Manual recommendation estimate | Not recorded |" in rendered
+                        assert "| Recommendation estimate | Not recorded |" in rendered
                         assert "Estimate window" not in rendered
                         assert "Other programme estimates" not in rendered
                         if populated:
@@ -71,7 +71,7 @@ async def main():
                         "start": "2026-10-27T04:10:00Z", "finish": "2026-10-27T08:30:00Z",
                     }]}}})
                 rendered = Template(execution["content"], hass).async_render(parse_result=False)
-                assert f"| Manual recommendation estimate | {price:.2f} p |" in rendered
+                assert f"| Recommendation estimate | {price:.2f} p |" in rendered
                 assert "| Estimate window | Tue 27 Oct 04:00 GMT to Tue 27 Oct 04:30 GMT |\n| Result" in rendered, rendered
                 assert "| Last start | Tue 27 Oct 04:03 GMT |" in rendered
                 assert "| Eco50 | 0.00 p | Tue 27 Oct 04:10 GMT to Tue 27 Oct 08:30 GMT |" in rendered

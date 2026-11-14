@@ -192,7 +192,7 @@ def build():
         | Scheduler | {{ states(native) }} |
         | Last start | {{ home_time(state_attr(native, 'last_attempt')) }} |
         | Programme | {{ state_attr(native, 'last_program') or 'Not recorded' }} |
-        | Manual recommendation estimate | {{ ('%.2f p' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else 'Not recorded' }} |
+        | Recommendation estimate | {{ ('%.2f p' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else 'Not recorded' }} |
         {% if quote is mapping and quote.estimated_cost_pence is number -%}
         | Estimate window | {{ home_time(quote.start) }} to {{ home_time(quote.finish) }} |
         {% endif -%}

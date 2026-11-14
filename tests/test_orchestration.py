@@ -152,6 +152,32 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.state["execution_status"], "queued")
         self.assertEqual(self.hass.services.async_call.await_args.args[:2], ("persistent_notification", "dismiss"))
 
+    async def test_overnight_quote_tracks_replans_then_freezes_with_the_request(self):
+        attributes = {"program": "Quick45", "status": "ready", "confidence": 88,
+                      "start": "2026-10-08T22:00:00+00:00",
+                      "finish": "2026-10-08T22:30:00+00:00", "cost_pence": 9}
+        alternate = {**attributes, "program": "Eco50", "cost_pence": 12}
+        entity = "sensor.load_optimizer_1_overnight_recommendation"
+        self.put(entity, "Quick45", **attributes, program_options=[alternate])
+        await self.scheduler.async_request("overnight")
+        request = self.scheduler.state["request"]
+        self.assertEqual(request["recommendation_quote"]["estimated_cost_pence"], 9)
+        self.assertEqual(request["recommendation_alternatives"][0]["program"], "Eco50")
+        alternate["cost_pence"] = 99
+        self.assertEqual(request["recommendation_alternatives"][0]["estimated_cost_pence"], 12)
+
+        self.put(entity, "Quick45", **attributes)
+        await self.scheduler.async_evaluate()
+        self.assertNotIn("recommendation_alternatives", request)
+        self.put(entity, "Quick45", **{**attributes, "cost_pence": 7})
+        await self.scheduler.async_evaluate()
+        self.assertEqual(request["recommendation_quote"]["estimated_cost_pence"], 7)
+
+        Clock.current = datetime.fromisoformat(attributes["start"]) - timedelta(minutes=1)
+        self.put(entity, "Quick45", **{**attributes, "cost_pence": 3})
+        await self.scheduler.async_evaluate()
+        self.assertEqual(request["recommendation_quote"]["estimated_cost_pence"], 7)
+
     async def test_normal_permission_survives_storage_reload_without_new_window(self):
         self.scheduler.state["auto_mode_enabled"] = False
         await self.scheduler.async_request("overnight")

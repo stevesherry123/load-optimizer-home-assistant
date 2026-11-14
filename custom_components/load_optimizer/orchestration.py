@@ -302,9 +302,15 @@ class NativeOrchestrator:
                         "plan_reason": attributes.get("reason"),
                         "net_benefit_pence": attributes.get("net_benefit_pence"),
                         "operating_cost_breakdown": deepcopy(attributes.get("operating_cost_breakdown")),
-                        "unconfigured_costs": list(attributes.get("unconfigured_costs", []))}
-                if any(request.get(key) != value for key, value in plan.items()):
+                        "unconfigured_costs": list(attributes.get("unconfigured_costs", [])),
+                        **self._recommendation_evidence(attributes, attributes)}
+                quote_keys = ("recommendation_quote", "recommendation_alternatives")
+                if (any(request.get(key) != value for key, value in plan.items())
+                        or any(key in request and key not in plan for key in quote_keys)):
                     previous_program, previous_start = request.get("program"), request.get("start")
+                    for key in quote_keys:
+                        if key not in plan:
+                            request.pop(key, None)
                     request.update(plan, replanned_at=now.isoformat())
                     self._record_schedule_event("replanned" if previous_start else "queued", "normal_wash_plan_updated", now=now,
                                                 previous_program=previous_program, previous_start=previous_start,
@@ -649,21 +655,8 @@ class NativeOrchestrator:
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         quote = option or (attributes if attributes.get("program") == program else {})
-        if attributes.get("status") == "ready" and (saved_quote := self._recommendation_quote(quote)):
-            # Start Now can move the actual request outside the quoted interval.
-            self.state["request"]["recommendation_quote"] = saved_quote
-            alternatives = []
-            seen = {program}
-            for candidate in attributes.get("program_options") or ():
-                alternative = self._recommendation_quote(candidate)
-                if alternative is None or alternative["program"] in seen:
-                    continue
-                alternatives.append(alternative)
-                seen.add(alternative["program"])
-                if len(alternatives) == 3:
-                    break
-            if alternatives:
-                self.state["request"]["recommendation_alternatives"] = alternatives
+        # Start Now can move the actual request outside the quoted interval.
+        self.state["request"].update(self._recommendation_evidence(attributes, quote))
         self.state["execution_status"] = "queued"
         self.state["last_message"] = f"Queued {program} for {start}."
         self._record_schedule_event("queued", "user_request_queued", program=program, start=start)
@@ -684,6 +677,27 @@ class NativeOrchestrator:
             return {"program": program, "start": start.isoformat(),
                     "finish": finish.isoformat(), "estimated_cost_pence": cost}
         return None
+
+    def _recommendation_evidence(self, attributes: dict, quote: dict) -> dict:
+        saved = self._recommendation_quote(quote) if attributes.get("status") == "ready" else None
+        if saved is None:
+            return {}
+        evidence = {"recommendation_quote": saved}
+        alternatives = []
+        seen = {saved["program"]}
+        for candidate in attributes.get("program_options") or ():
+            if not isinstance(candidate, dict):
+                continue
+            alternative = self._recommendation_quote(candidate)
+            if alternative is None or alternative["program"] in seen:
+                continue
+            alternatives.append(alternative)
+            seen.add(alternative["program"])
+            if len(alternatives) == 3:
+                break
+        if alternatives:
+            evidence["recommendation_alternatives"] = alternatives
+        return evidence
 
     async def async_cancel(self) -> None:
         """Cancel a pending native request."""
