@@ -751,6 +751,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"], "power_source_unavailable")
 
     async def test_saved_automatic_requests_require_fresh_source_preflight(self):
+        self.scheduler.state["auto_negative_price_enabled"] = True
         for mode in ("automatic", "negative_price"):
             with self.subTest(mode=mode):
                 check = AsyncMock(return_value="blocked_window_source_unavailable")
@@ -765,6 +766,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                              for call in calls))
 
     async def test_automatic_negative_preflight_is_not_replaced_by_another_programmes_fit(self):
+        self.scheduler.state["auto_negative_price_enabled"] = True
         self.put("sensor.load_optimizer_1_negative_price_recommendation", "MachineCare", status="not_ready",
                  program="MachineCare", power_hungry_window_fits_negative_price=False)
         check = AsyncMock(return_value=None)
@@ -777,6 +779,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.state["last_reason"], "power_hungry_window_outside_negative_price")
 
     async def test_negative_command_delays_and_fallbacks_reprice_at_each_actual_attempt(self):
+        self.scheduler.state["auto_negative_price_enabled"] = True
         start = Clock.current
         model = {"program": "Quick45", "expected_runtime_minutes": 30, "expected_energy_kwh": 0.7,
                  "representative_profile_w": [1000, 1000], "confidence": 90, "recent_cycles": []}
@@ -866,6 +869,48 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         calls = self.hass.services.async_call.await_args_list
         self.assertTrue(any(call.args[:2] == ("switch", "turn_on") for call in calls))
         self.assertFalse(any(call.args[0] in {"button", "select", "home_connect", "home_connect_alt"} for call in calls))
+
+    async def test_disabling_automatic_mode_during_preflight_prevents_command(self):
+        for mode, setting, reason in (
+            ("automatic", "auto_mode_enabled", "automatic_overnight_mode_off"),
+            ("negative_price", "auto_negative_price_enabled", "automatic_negative_price_mode_off"),
+        ):
+            with self.subTest(mode=mode):
+                self.hass.services.async_call.reset_mock()
+                self.scheduler.state[setting] = True
+                request = {"mode": mode, "program": "Quick45", "automatic": True,
+                           "start": Clock.current.isoformat()}
+                self.scheduler.state["request"] = deepcopy(request)
+
+                async def check(_request):
+                    self.scheduler.state[setting] = False
+
+                self.scheduler.set_automatic_preflight(check)
+                await self.scheduler._async_execute(request)
+                self.assertEqual(self.scheduler.state["last_reason"], reason)
+                self.assertIsNone(self.scheduler.state["request"])
+                self.assertTrue(all(call.args[0] == "persistent_notification"
+                                    for call in self.hass.services.async_call.await_args_list))
+
+    async def test_pausing_door_mode_during_preflight_preserves_authorised_window(self):
+        await self.scheduler.async_evaluate()
+        request = deepcopy(self.scheduler.state["request"])
+        self.assertTrue(request["normal_wash"])
+        self.assertTrue(request["automatic"])
+        Clock.current = datetime.fromisoformat(request["start"])
+
+        async def check(_request):
+            self.scheduler.state["auto_mode_enabled"] = False
+
+        self.scheduler.set_automatic_preflight(check)
+        self.hass.services.async_call.reset_mock()
+        await self.scheduler._async_execute(request)
+
+        saved = self.scheduler.state["request"]
+        self.assertEqual(saved, {**request, "waiting_reason": "automatic_overnight_mode_off"})
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        self.assertEqual(self.scheduler.store.async_save.await_args.args[0]["state"]["request"], saved)
+        self.hass.services.async_call.assert_not_awaited()
 
     async def test_manual_request_preserves_cooldown_override_and_does_not_use_automatic_preflight(self):
         self.scheduler.state["door_opened_since_last_cycle"] = False

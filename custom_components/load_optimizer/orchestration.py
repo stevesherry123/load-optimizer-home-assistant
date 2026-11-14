@@ -80,6 +80,7 @@ REASON_MESSAGES = {
     "power_source_unavailable": "Automatic starts are paused until valid appliance power readings return.",
     "blocked_window_source_unavailable": "Automatic starts are paused because a configured no-run source cannot be read. Restore the source or explicitly remove it from the configuration.",
     "automatic_overnight_mode_off": "Automatic overnight mode is off.",
+    "automatic_negative_price_mode_off": "Automatic free or negative-price mode is off.",
     "door_not_opened_since_last_cycle": "Waiting for the dishwasher to be loaded: the door has not opened since the last wash.",
     "overnight_recommendation_not_ready": "Waiting for a fully priced, eligible overnight programme.",
     "overnight_tariff_coverage_incomplete": "Waiting for prices covering the whole overnight search and possible cycle finishes before choosing a start time.",
@@ -1063,8 +1064,15 @@ class NativeOrchestrator:
         if not isinstance(automatic, bool):
             # Persisted pre-upgrade negative-price requests did not record origin.
             automatic = mode in {"automatic", "negative_price"}
+        def paused_reason() -> str | None:
+            if not automatic:
+                return None
+            if mode == "negative_price":
+                return None if self.state.get("auto_negative_price_enabled") else "automatic_negative_price_mode_off"
+            return None if self.state.get("auto_mode_enabled") else "automatic_overnight_mode_off"
+
         # Automatic preflight prices this request; a published fit may describe another programme.
-        reason = self._safety_block(
+        reason = paused_reason() or self._safety_block(
             mode, program, explicit_override=bool(request.get("explicit_program_override")),
             check_negative_fit=not automatic, require_door_permission=bool(automatic),
         )
@@ -1072,9 +1080,7 @@ class NativeOrchestrator:
             now = datetime.now(timezone.utc)
             if not self._request_due(request, now):
                 reason = "outside_authorised_start_window"
-            elif automatic and not self.state.get("auto_mode_enabled"):
-                reason = "automatic_overnight_mode_off"
-            elif self._overnight_planning_block(self._recommendation("overnight")):
+            elif not reason and self._overnight_planning_block(self._recommendation("overnight")):
                 reason = "overnight_tariff_coverage_incomplete"
         if not reason and (automatic or request.get("normal_wash")):
             reason = self._automatic_source_block()
@@ -1087,12 +1093,22 @@ class NativeOrchestrator:
                     except Exception as error:
                         LOGGER.warning("Automatic source preflight failed (%s)", type(error).__name__)
                         reason = "automatic_preflight_unavailable"
+            if self._stopping or self._cancelling or not self.state.get("active"):
+                return False
             if not reason:
-                reason = self._safety_block(mode, program, explicit_override=False, check_negative_fit=False,
+                reason = paused_reason() or self._safety_block(mode, program, explicit_override=False, check_negative_fit=False,
                                             require_door_permission=bool(automatic))
             if not reason and request.get("normal_wash") and not self._request_due(request, datetime.now(timezone.utc)):
                 reason = "outside_authorised_start_window"
         if reason:
+            if request.get("normal_wash") and reason == "automatic_overnight_mode_off":
+                saved = self.state.get("request")
+                if saved and saved.get("created_at") == request.get("created_at"):
+                    self.state["execution_status"] = "awaiting_plan"
+                    saved["waiting_reason"] = reason
+                    await self._async_save()
+                    self._publish()
+                    return False
             if request.get("normal_wash") and ("tariff" in reason or "fully_priced" in reason):
                 saved = self.state.get("request")
                 if saved and saved.get("created_at") == request.get("created_at"):

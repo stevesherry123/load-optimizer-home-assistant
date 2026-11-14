@@ -127,6 +127,7 @@ async def main():
                 controller = coordinator.orchestrator
                 controller.config = dict(CONTROL)
                 controller.state["active"] = True
+                controller.state["auto_mode_enabled"] = True
                 controller.state["door_opened_since_last_cycle"] = True
                 for key in ("bosch_connected_sensor", "bosch_remote_control_sensor", "bosch_remote_start_sensor"):
                     hass.states.async_set(CONTROL[key], "on")
