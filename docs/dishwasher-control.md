@@ -86,6 +86,11 @@ heuristic, not proof of dirty dishes. Initial/restored states, interrupted door
 telemetry and openings during a running wash do not qualify. A short reopening
 does not revoke an existing permission; the closed-door safety check still applies.
 
+If the door is open or its state is unavailable at the first planned start
+check, an authorised overnight wash waits for a confirmed closed door and a
+new fully priced start inside the original window. This does not extend the
+window, send a start command, or automatically retry a sequence already begun.
+
 ### Script And Voice Requests
 
 [`examples/dishwasher-scripts.yaml`](examples/dishwasher-scripts.yaml) contains

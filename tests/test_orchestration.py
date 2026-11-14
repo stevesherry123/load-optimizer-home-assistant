@@ -255,6 +255,72 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.state["last_reason"], "outside_authorised_start_window")
         self.assertTrue(all(call.args[0] == "persistent_notification" for call in self.hass.services.async_call.await_args_list))
 
+    async def test_open_door_waits_for_a_new_start_without_extending_permission(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = self.scheduler.state["request"]
+        original_end = request["window_end"]
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.put("binary_sensor.door", "on")
+        await self.scheduler._async_execute(deepcopy(request))
+        self.assertEqual(request["waiting_reason"], "door_open")
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        self.assertTrue(all(call.args[0] == "persistent_notification"
+                            for call in self.hass.services.async_call.await_args_list))
+        self.put("binary_sensor.door", "off")
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45", status="ready",
+                 program="Quick45", start="2026-10-08T22:15:00+00:00",
+                 finish="2026-10-08T22:45:00+00:00", confidence=88)
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "queued")
+        self.assertEqual(request["window_end"], original_end)
+        self.assertEqual(request["start"], "2026-10-08T22:15:00+00:00")
+        self.assertNotIn("door_blocked_start", request)
+        self.assertIsNone(self.scheduler._execution_task)
+
+    async def test_open_door_after_commands_begin_does_not_schedule_retry(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.put("binary_sensor.door", "on")
+        self.assertFalse(await self.scheduler._async_start_allowed(request, recheck=True))
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_reason"], "door_open")
+
+    async def test_pausing_automatic_mode_after_commands_begin_does_not_retry(self):
+        await self.scheduler.async_evaluate()
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.scheduler.state["auto_mode_enabled"] = False
+        self.assertFalse(await self.scheduler._async_start_allowed(request, recheck=True))
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_reason"], "automatic_overnight_mode_off")
+
+    async def test_open_door_wait_expires_at_original_window_end(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.put("binary_sensor.door", "unavailable")
+        await self.scheduler._async_execute(request)
+        self.assertEqual(self.scheduler.automation_explanation["reason_code"], "door_state_unavailable")
+        count = self.hass.services.async_call.await_count
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.hass.services.async_call.await_count, count)
+        Clock.current = datetime.fromisoformat(request["window_end"])
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_result"], "expired")
+        self.put("binary_sensor.door", "off")
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertTrue(all(call.args[0] == "persistent_notification"
+                            for call in self.hass.services.async_call.await_args_list))
+
     async def test_price_loss_at_preflight_retains_permission_for_recovery(self):
         self.scheduler.state["auto_mode_enabled"] = False
         await self.scheduler.async_request("overnight")

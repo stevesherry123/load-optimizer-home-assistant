@@ -261,6 +261,9 @@ class NativeOrchestrator:
             self.state["execution_status"] = "awaiting_plan"
             request["waiting_reason"] = "automatic_overnight_mode_off"
             return request != before
+        door_blocked_start = self._parse_datetime(request.get("door_blocked_start"))
+        if door_blocked_start and self._state(self.config.get("bosch_door_sensor")) not in {"off", "closed"}:
+            return False
         if ("price_failure_revision" in request
                 and request["price_failure_revision"] == self._overnight_revision()):
             # A command-time price failure needs a new planner report. Polling
@@ -271,6 +274,8 @@ class NativeOrchestrator:
         coverage = attributes.get("overnight_planning_coverage", {})
         next_start = self._parse_datetime(attributes.get("start"))
         finish = self._parse_datetime(attributes.get("finish"))
+        if door_blocked_start and (not next_start or next_start <= door_blocked_start or next_start < now):
+            return False
         reason = self._overnight_planning_block(recommendation)
         if reason:
             self.state["execution_status"] = "awaiting_plan"
@@ -317,6 +322,7 @@ class NativeOrchestrator:
                                                 program=plan["program"], start=plan["start"], finish=plan["finish"])
             request.pop("waiting_reason", None)
             request.pop("price_failure_revision", None)
+            request.pop("door_blocked_start", None)
             await self._async_dismiss_normal_attention(request)
             self.state["execution_status"] = "queued"
         return request != before
@@ -1115,7 +1121,18 @@ class NativeOrchestrator:
             if not reason and request.get("normal_wash") and not self._request_due(request, datetime.now(timezone.utc)):
                 reason = "outside_authorised_start_window"
         if reason:
-            if request.get("normal_wash") and reason == "automatic_overnight_mode_off":
+            if request.get("normal_wash") and not recheck and reason in {"door_open", "door_state_unavailable"}:
+                saved = self.state.get("request")
+                if saved and saved.get("created_at") == request.get("created_at"):
+                    self.state["execution_status"] = "awaiting_plan"
+                    saved["door_blocked_start"] = request.get("start")
+                    await self._async_normal_attention(saved, reason,
+                        f"{explain_reason(reason)} Planning can resume inside the original start window.")
+                    await self._async_save()
+                    self._publish()
+                    return False
+            if (request.get("normal_wash") and not recheck
+                    and reason == "automatic_overnight_mode_off"):
                 saved = self.state.get("request")
                 if saved and saved.get("created_at") == request.get("created_at"):
                     self.state["execution_status"] = "awaiting_plan"
