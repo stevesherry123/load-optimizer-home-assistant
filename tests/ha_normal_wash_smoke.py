@@ -27,7 +27,6 @@ async def main():
         hass.config.skip_pip = True
         hass.config.time_zone = "Europe/London"
         controller = NativeOrchestrator(hass, SimpleNamespace(entry_id="synthetic"), None)
-        controller.store = SimpleNamespace(async_save=AsyncMock())
         controller.state.update(active=True, auto_mode_enabled=False, door_opened_since_last_cycle=False)
         controller.config = {
             "bosch_program_select": "select.synthetic_programme",
