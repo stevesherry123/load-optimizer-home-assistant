@@ -2,4 +2,4 @@ homeassistant==2026.11.0
 home-assistant-frontend==20261028.4
 pyotp==2.10.0
 PyQRCode==1.2.1
-bandit==1.8.6
+bandit==1.9.4

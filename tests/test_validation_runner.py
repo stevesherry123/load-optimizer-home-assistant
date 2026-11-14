@@ -14,9 +14,27 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("validation_runner", ROOT / "dev/validate.py")
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
+bandit_spec = importlib.util.spec_from_file_location("check_bandit", ROOT / "dev/check_bandit.py")
+bandit_check = importlib.util.module_from_spec(bandit_spec)
+bandit_spec.loader.exec_module(bandit_check)
 
 
 class ValidationRunnerTests(unittest.TestCase):
+    def test_bandit_must_scan_source_without_skips_or_findings(self):
+        clean = {"errors": [], "results": [], "metrics": {"_totals": {"loc": 15}}}
+        self.assertTrue(bandit_check.scan_passed(0, clean))
+        for report in (
+            {**clean, "errors": [{"filename": "fixture.py"}]},
+            {**clean, "results": [{"test_id": "B101"}]},
+            {**clean, "metrics": {"_totals": {"loc": 0}}},
+            {**clean, "errors": None},
+            {},
+            None,
+        ):
+            with self.subTest(report=report):
+                self.assertFalse(bandit_check.scan_passed(0, report))
+        self.assertFalse(bandit_check.scan_passed(1, clean))
+
     def test_source_identity_tracks_edits_without_disclosing_source_contents(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

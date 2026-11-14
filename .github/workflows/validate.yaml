@@ -29,8 +29,8 @@ jobs:
           python-version: "3.12"
       - name: Scan integration Python
         run: |
-          pip install "bandit==1.8.6"
-          bandit -r custom_components/load_optimizer
+          pip install "bandit==1.9.4"
+          python dev/check_bandit.py
       - name: Scan repository history for credentials
         run: |
           curl --fail --location --proto '=https' --tlsv1.2 \
