@@ -94,11 +94,17 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install current stable Home Assistant
-        run: pip install "homeassistant==2026.10.4" "pyotp==2.8.0" "PyQRCode==1.2.1"
+        run: pip install "homeassistant==2026.11.1" "pyotp==2.10.0" "PyQRCode==1.2.1"
       - name: Import integration platforms and config flow
         run: python tests/ha_import_smoke.py
       - name: Verify appliance cancellation, unload and physical interlocks
         run: python tests/ha_command_safety_smoke.py
+      - name: Verify worker scans, maintenance outcomes and entity ownership
+        run: python tests/ha_runtime_review_smoke.py
+      - name: Verify documented onboarding, reload and restart
+        run: python tests/ha_onboarding_smoke.py
+      - name: Verify sensor-outage learning and no-run source enforcement
+        run: python tests/ha_runtime_safety_smoke.py
 
   hacs:
     name: HACS validation
