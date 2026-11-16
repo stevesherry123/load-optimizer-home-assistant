@@ -63,7 +63,8 @@ async def main():
             for price in (-0.5, 0, 12.25):
                 hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "confirmed", {
                     "last_attempt": "2026-10-27T04:03:00Z",
-                    "last_start_decision_snapshot": {"request": {"recommendation_quote": {
+                    "last_program": "Older | program",
+                    "last_start_decision_snapshot": {"request": {"program": "Quick45", "recommendation_quote": {
                         "program": "Quick45", "estimated_cost_pence": price,
                         "start": "2026-10-27T04:00:00Z", "finish": "2026-10-27T04:30:00Z",
                     }, "recommendation_alternatives": [{
@@ -72,8 +73,10 @@ async def main():
                     }]}}})
                 rendered = Template(execution["content"], hass).async_render(parse_result=False)
                 assert f"| Recommendation estimate | {price:.2f} p |" in rendered
-                assert "| Estimate window | Tue 27 Oct 04:00 GMT to Tue 27 Oct 04:30 GMT |\n| Result" in rendered, rendered
-                assert "| Last start | Tue 27 Oct 04:03 GMT |" in rendered
+                assert "| Estimate window | Tue 27 Oct 04:00 GMT to Tue 27 Oct 04:30 GMT |\n| Last recorded result" in rendered, rendered
+                assert "| Last start attempt | Tue 27 Oct 04:03 GMT |" in rendered
+                assert "| Attempted programme | Quick45 |" in rendered
+                assert "| Result programme | Older / program |" in rendered
                 assert "| Eco50 | 0.00 p | Tue 27 Oct 04:10 GMT to Tue 27 Oct 08:30 GMT |" in rendered
             hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "queued", {"request": {
                 "program": "MixedLoad", "start": "2026-10-28T22:00:00Z", "finish": "2026-10-29T00:00:00Z", "cost_pence": 40}})

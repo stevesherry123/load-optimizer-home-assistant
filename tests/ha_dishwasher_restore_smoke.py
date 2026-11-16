@@ -75,6 +75,30 @@ async def main():
                 assert expired_again.state["last_result"] == "expired"
                 assert expired_again._execution_task is None
 
+                completed_path, completed = fresh("completed", original_path)
+                await completed.async_load()
+                capture_start = now - timedelta(hours=2)
+                completed.hass.states.async_set("sensor.load_optimizer_1_last_finish", now.isoformat())
+                await completed._async_record_cycle_end(capture_start)
+                assert completed.state["last_result"] == "completed"
+                completed._new_normal_request(now, automatic=False)
+                completed.state["request"].update(
+                    program="Eco50", start=(now + timedelta(hours=1)).isoformat(),
+                    finish=(now + timedelta(hours=4)).isoformat(),
+                )
+                completed.state["execution_status"] = "queued"
+                await completed._async_save()
+                _, duplicate = fresh("duplicate", completed_path)
+                await duplicate.async_load()
+                duplicate.hass.states.async_set("sensor.load_optimizer_1_last_finish", now.isoformat())
+                events = deepcopy(duplicate.state["schedule_events"])
+                await duplicate._async_record_cycle_end(capture_start)
+                assert duplicate.state["request"] == completed.state["request"]
+                assert duplicate.state["execution_status"] == "queued"
+                assert duplicate.state["schedule_events"] == events
+                assert duplicate._execution_task is None
+                print("Real disk restore: duplicate completion leaves a newer request untouched")
+
                 # Simulate interruption after a persisted reservation, before
                 # a terminal start outcome has been written.
                 original.state.update(execution_status="commanding", door_opened_since_last_cycle=True)

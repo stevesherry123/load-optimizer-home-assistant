@@ -4,10 +4,10 @@ The selected first feature release covers bounded overnight wash requests,
 configurable window controls, normal-wash priority, strictly positive total-benefit
 extra runs, configured operating costs and readable household controls.
 
-This branch starts at `4606832`, the last dishwasher-only milestone commit.
-Later EV planning and automatic charging changes are outside its scope. Existing
-base advisory behaviour is retained. The broader draft PR #26 is not this release
-candidate and must not be merged wholesale to deliver this scope.
+The reconciled candidate combines the dishwasher-only work with the
+`v1.7.0-beta.11` programme estimates. Later EV planning and automatic charging
+changes are outside its scope. Existing advisory behaviour is retained. The
+broader draft PR #26 is not this candidate and must not be merged wholesale.
 
 ## Acceptance record
 
@@ -31,15 +31,20 @@ deployment.
 - [x] Inspect the dishwasher cards in isolated HA at desktop and phone widths.
       See the [browser review](dishwasher-acceptance.md#browser-review-evidence).
 - [ ] Unfamiliar-user scheduling walkthrough on the trial installation.
-- [ ] Fresh-install, backup and rollback acceptance.
-      Isolated real-file scheduling restoration now has a dedicated acceptance
-      fixture; full HA backup, learned-profile and older-release rollback remain pending.
+- [x] Isolated storage upgrade, restart and paired rollback from the published
+      `v1.5.9` package, with synthetic learning and native-control settings and
+      all device service calls forbidden. Repeat on the final release SHA.
+- [ ] Fresh-install, whole-HA backup and supervised owner rollback acceptance.
+      The isolated storage rehearsal is not evidence for a real backup restore.
+- [ ] Confirm the finish target policy. The draft currently allows a clearly
+      labelled late finish; a strict finish deadline is a different policy.
 - [ ] Final version, matching manifest/runtime metadata and release notes.
 - [ ] Review exact green candidate, then separately promote and publish.
 
-Missing prices must notify and retain permission only inside the original window.
-A late-finishing fallback must still start within it. Extra runs must have
-positive total benefit and cannot displace a requested normal wash.
+Missing prices can retain permission only inside the original window and only
+before device commands begin. A late-finishing fallback in the current draft
+must still start inside that window. Extra runs must have positive total benefit
+and cannot displace a requested normal wash.
 
 See [validation](validation.md) and [dishwasher setup](dishwasher-control.md).
 Use the [acceptance walkthrough](dishwasher-acceptance.md) to collect the remaining

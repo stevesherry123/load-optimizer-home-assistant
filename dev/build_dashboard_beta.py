@@ -190,13 +190,14 @@ def build():
         | Record | Value |
         |---|---|
         | Scheduler | {{ states(native) }} |
-        | Last start | {{ home_time(state_attr(native, 'last_attempt')) }} |
-        | Programme | {{ state_attr(native, 'last_program') or 'Not recorded' }} |
+        | Last start attempt | {{ home_time(state_attr(native, 'last_attempt')) }} |
+        | Attempted programme | {{ (request.program | default('Not recorded', true)) | replace('|', '/') | replace('\\n', ' ') if request is mapping else 'Not recorded' }} |
         | Recommendation estimate | {{ ('%.2f p' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else 'Not recorded' }} |
         {% if quote is mapping and quote.estimated_cost_pence is number -%}
         | Estimate window | {{ home_time(quote.start) }} to {{ home_time(quote.finish) }} |
         {% endif -%}
-        | Result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
+        | Last recorded result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
+        | Result programme | {{ (state_attr(native, 'last_program') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |
         | Detail | {{ (state_attr(native, 'last_message') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |
         {% if alternatives is sequence and alternatives is not string and alternatives is not mapping and alternatives %}
 
