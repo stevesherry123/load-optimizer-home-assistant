@@ -195,7 +195,7 @@ def build():
         | Record | Value |
         |---|---|
         | Scheduler | {{ states(native) }} |
-        | Last start | {{ home_time(state_attr(native, 'last_attempt')) }} |
+        | Last start attempt | {{ home_time(state_attr(native, 'last_attempt')) }} |
         | Programme | {{ state_attr(native, 'last_program') or 'Not recorded' }} |
         | Result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
         | Detail | {{ (state_attr(native, 'last_message') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |

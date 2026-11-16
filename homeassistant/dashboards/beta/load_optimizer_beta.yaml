@@ -605,7 +605,7 @@ views:
 
         | Scheduler | {{ states(native) }} |
 
-        | Last start | {{ home_time(state_attr(native, ''last_attempt'')) }} |
+        | Last start attempt | {{ home_time(state_attr(native, ''last_attempt'')) }} |
 
         | Programme | {{ state_attr(native, ''last_program'') or ''Not recorded'' }} |
 
