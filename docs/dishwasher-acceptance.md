@@ -82,6 +82,18 @@ the automated evidence and mark any unobserved physical case as unobserved.
 
 ## Restart, installation and rollback
 
+Identify the baseline and candidate by file contents, not only the version
+label. In the development checkout run
+`python dev/fingerprint_install.py --git-ref TAG_OR_COMMIT`. On the HA host,
+an administrator can run a trusted copy of the same script with
+`--installed /config/custom_components/load_optimizer`; use the actual
+configuration path if it differs. Compare both the file count and SHA-256.
+The script reads only the integration package and skips Python bytecode caches.
+It does not read Home Assistant settings or stores, and it does not attest
+which files a running process loaded before its last restart. If the
+installation does not match a known package, verify an exact rollback copy
+instead of assuming reinstalling the displayed version would restore it.
+
 On the separate test installation, follow setup from a blank configuration and
 confirm learning, a priced recommendation and registered controls without copying
 the maintainer's private data. Record any undocumented step.
