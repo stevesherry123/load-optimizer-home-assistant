@@ -2,6 +2,7 @@
   "domain": "load_optimizer",
   "name": "Load Optimizer",
   "after_dependencies": [],
+  "categories": ["energy"],
   "codeowners": ["@stevesherry123"],
   "config_flow": true,
   "documentation": "https://github.com/stevesherry123/load-optimizer-home-assistant",
