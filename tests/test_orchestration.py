@@ -2,6 +2,7 @@
 
 import ast
 import asyncio
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import logging
 from pathlib import Path
@@ -15,7 +16,7 @@ SOURCE = Path(__file__).resolve().parents[1] / "custom_components/load_optimizer
 tree = ast.parse(SOURCE.read_text())
 tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
 namespace = {
-    "asyncio": asyncio, "datetime": datetime, "timedelta": timedelta,
+    "asyncio": asyncio, "deepcopy": deepcopy, "datetime": datetime, "timedelta": timedelta,
     "timezone": timezone, "logging": logging, "ZoneInfo": ZoneInfo,
     "dt_util": SimpleNamespace(as_local=lambda now: now.astimezone(ZoneInfo("Europe/London"))),
     "Any": object, "Callable": object, "HomeAssistant": object, "ConfigEntry": object,
@@ -50,9 +51,11 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
             config=SimpleNamespace(time_zone="Europe/London"),
             services=SimpleNamespace(async_call=AsyncMock()),
             async_create_task=Mock(side_effect=schedule),
+            is_stopping=False,
         )
         self.scheduler = NativeOrchestrator(self.hass, SimpleNamespace(entry_id="test"), None)
         self.scheduler.store = SimpleNamespace(async_save=AsyncMock())
+        self.scheduler._async_committed_attempt = AsyncMock(side_effect=lambda: self.scheduler.state["last_attempt"])
         self.scheduler.state = {**namespace["CONTROL_DEFAULTS"], "schedule_events": [], "run_history": []}
         self.scheduler.state.update(active=True, auto_mode_enabled=True, door_opened_since_last_cycle=True)
         self.scheduler.config = {
@@ -108,6 +111,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_saved_automatic_requests_require_fresh_source_preflight(self):
         for mode in ("automatic", "negative_price"):
             with self.subTest(mode=mode):
+                self.scheduler.state["auto_negative_price_enabled"] = True
                 check = AsyncMock(return_value="blocked_window_source_unavailable")
                 self.scheduler.set_automatic_preflight(check)
                 request = {"mode": mode, "program": "MixedLoad", "start": Clock.current.isoformat()}
@@ -128,7 +132,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.state["last_reason"], "automatic_preflight_unavailable")
 
     async def test_automatic_start_and_each_fallback_use_fresh_preflight(self):
-        for starting_domain, count in (("button", 3), ("home_connect_alt", 4), ("home_connect", 5)):
+        for starting_domain, count in (("button", 4), ("home_connect_alt", 5), ("home_connect", 6)):
             with self.subTest(starting_domain=starting_domain):
                 self.scheduler.state["door_opened_since_last_cycle"] = True
                 self.put("sensor.operation", "BSH.Common.EnumType.OperationState.Ready")
@@ -152,16 +156,42 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_run_failure_during_power_on_delay_prevents_start_commands(self):
         self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
         self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
-        check = AsyncMock(side_effect=[None, "blocked_window_source_unavailable"])
+        check = AsyncMock(side_effect=[None, None, "blocked_window_source_unavailable"])
         self.scheduler.set_automatic_preflight(check)
         request = {"mode": "automatic", "program": "MixedLoad", "start": Clock.current.isoformat()}
         with patch.object(asyncio, "sleep", new=AsyncMock()):
             await self.scheduler._async_execute(request)
         self.assertEqual(self.scheduler.state["last_reason"], "blocked_window_source_unavailable")
-        self.assertEqual(check.await_count, 2)
+        self.assertEqual(check.await_count, 3)
         calls = self.hass.services.async_call.await_args_list
         self.assertTrue(any(call.args[:2] == ("switch", "turn_on") for call in calls))
         self.assertFalse(any(call.args[0] in {"button", "select", "home_connect", "home_connect_alt"} for call in calls))
+
+    async def test_failed_reservation_blocks_first_appliance_command(self):
+        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.scheduler._async_committed_attempt.side_effect = OSError("synthetic write failure")
+        await self.scheduler._async_execute({"mode": "now", "program": "MixedLoad", "automatic": False})
+        self.assertEqual(self.scheduler.state["last_reason"], "start_reservation_not_saved")
+        self.assertTrue(all(call.args[0] == "persistent_notification"
+                            for call in self.hass.services.async_call.await_args_list))
+
+    async def test_disabling_mode_during_source_check_prevents_appliance_calls(self):
+        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        for mode, setting in (("automatic", "auto_mode_enabled"), ("negative_price", "auto_negative_price_enabled")):
+            with self.subTest(mode=mode):
+                self.scheduler.state[setting] = True
+                self.put("sensor.load_optimizer_1_negative_price_recommendation", "MixedLoad",
+                         power_hungry_window_fits_negative_price=True)
+
+                async def disable(_request):
+                    self.scheduler.state[setting] = False
+
+                self.scheduler.set_automatic_preflight(disable)
+                await self.scheduler._async_execute({"mode": mode, "program": "MixedLoad", "automatic": True})
+                self.assertEqual(self.scheduler.state["last_reason"],
+                    "automatic_negative_price_mode_off" if mode == "negative_price" else "automatic_overnight_mode_off")
+        self.assertTrue(all(call.args[0] == "persistent_notification"
+                            for call in self.hass.services.async_call.await_args_list))
 
     async def test_manual_request_preserves_cooldown_override_and_does_not_use_automatic_preflight(self):
         self.scheduler.state["door_opened_since_last_cycle"] = False
@@ -346,6 +376,15 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.state["last_result"], "completed")
         self.assertEqual(self.scheduler.state["execution_status"], "idle")
 
+    async def test_replayed_completion_preserves_newer_request(self):
+        capture = Clock.current - timedelta(hours=1)
+        self.put("sensor.load_optimizer_1_last_finish", Clock.current.isoformat())
+        await self.scheduler._async_record_cycle_end(capture)
+        self.scheduler.state.update(request={"program": "Quick45"}, execution_status="queued")
+        await self.scheduler._async_record_cycle_end(capture)
+        self.assertEqual(self.scheduler.state["request"], {"program": "Quick45"})
+        self.assertEqual(self.scheduler.state["execution_status"], "queued")
+
     async def test_observed_real_run_can_complete_even_when_learning_is_rejected(self):
         self.scheduler.state["confirmed_cycle_started_at"] = "2026-10-08T15:09:05+00:00"
         await self.scheduler._async_record_cycle_end(datetime(2026, 10, 8, 15, 9, tzinfo=timezone.utc))
@@ -408,6 +447,15 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.scheduler.state["last_auto_normal_request"] = "2026-10-24T15:00:33+00:00"
         self.assertEqual(self.scheduler.automation_explanation["automatic_eligible_after"],
                          "2026-10-25T16:00:00+00:00")
+
+    async def test_eligibility_after_daily_reset_reports_remaining_cooldown(self):
+        self.scheduler.state["last_auto_normal_request"] = "2026-10-08T14:59:00+00:00"
+        Clock.current = datetime(2026, 10, 8, 15, 1, tzinfo=timezone.utc)
+        self.assertEqual(self.scheduler.automation_explanation["automatic_eligible_after"],
+                         "2026-10-09T02:59:00+00:00")
+        eligible = datetime(2026, 10, 9, 2, 59, tzinfo=timezone.utc)
+        self.assertFalse(self.scheduler._overnight_window_unused(eligible - timedelta(seconds=1)))
+        self.assertTrue(self.scheduler._overnight_window_unused(eligible))
 
     async def test_queue_and_last_attempt_are_not_confused_with_recommendation(self):
         await self.scheduler.async_evaluate()

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CoreState, HomeAssistant
 
 from custom_components.load_optimizer.orchestration import NativeOrchestrator
 
@@ -24,8 +24,8 @@ async def main():
         try:
             for action in ("async_cancel", "async_stop"):
                 for pause in range(5):
-                    scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id="synthetic"), None)
-                    scheduler.store = SimpleNamespace(async_save=AsyncMock())
+                    entry = SimpleNamespace(entry_id=f"{action}_{pause}", data={}, options={})
+                    scheduler = NativeOrchestrator(hass, entry, None)
                     scheduler.state.update(active=True, auto_mode_enabled=False,
                                            auto_negative_price_enabled=False)
                     scheduler.config = {
@@ -73,6 +73,18 @@ async def main():
                         assert calls.await_args_list == before, (action, pause)
                     assert scheduler.state["request"] == (request if action == "async_stop" else None)
                     await scheduler.async_stop()
+                    if action == "async_stop":
+                        recovered = NativeOrchestrator(hass, entry, None)
+                        await recovered.async_load()
+                        assert recovered.state["start_recovery_required"]
+                        assert not recovered.state["request"]
+                        await recovered.async_evaluate()
+                        assert recovered.state["shadow_decision"]["reason"] == "start_confirmation_interrupted"
+                        assert recovered._execution_task is None
+                        assert not await recovered._async_start_allowed(request)
+                        assert recovered.automation_explanation["state"] == "attention_required"
+                        await recovered.async_cancel()
+                        assert not recovered.state["start_recovery_required"]
 
             # A manual convenience override never exempts physical interlocks.
             scheduler._stopping = False
@@ -83,6 +95,20 @@ async def main():
                 assert not await scheduler._async_start_allowed(request, recheck=True), name
             await scheduler.async_stop()
             print("Real-HA cancellation/unload at all five delays and manual physical interlocks passed")
+
+            scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id="deferred"), None)
+            scheduler.state.update(execution_status="commanding", last_attempt="first")
+            await scheduler._async_save()
+            assert await scheduler._async_committed_attempt() == "first"
+            hass.set_state(CoreState.stopping)
+            try:
+                scheduler.state["last_attempt"] = "pending"
+                await scheduler._async_save()
+                assert (await scheduler.store.async_load())["state"]["last_attempt"] == "pending"
+                assert await scheduler._async_committed_attempt() == "first"
+            finally:
+                hass.set_state(CoreState.running)
+            print("Real-HA shutdown writes cannot be mistaken for committed start reservations")
         finally:
             await hass.async_stop(force=True)
 

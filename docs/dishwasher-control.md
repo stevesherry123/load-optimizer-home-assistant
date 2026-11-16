@@ -99,5 +99,10 @@ separately. To relinquish ownership, call
 requests but does not stop an already running wash. Legacy installations may
 have captured package automations re-enabled, so use their migration guide.
 
+If a reload or restart interrupts start confirmation, the integration holds
+new start requests instead of repeating the command. Check whether the
+dishwasher is already running, then use **Cancel Schedule** on its device page
+to clear the hold. This does not stop an active wash.
+
 For waiting or failed starts, see [troubleshooting](troubleshooting.md). Never
 remove safety or missing-data checks to force a request through.

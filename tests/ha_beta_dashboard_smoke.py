@@ -44,6 +44,7 @@ async def main():
                         assert ("No wash queued" if populated else "Scheduling status unavailable") in rendered
                     if card["title"] == "Execution record" and populated:
                         assert "Quick45" in rendered and "completed" in rendered and "04:00 GMT" in rendered
+                        assert "| Last start attempt |" in rendered
                         assert rendered.startswith("| Record | Value |\n|---|---|"), rendered
             hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "queued", {"request": {
                 "program": "MixedLoad", "start": "2026-10-28T22:00:00Z", "finish": "2026-10-29T00:00:00Z", "cost_pence": 40}})
