@@ -47,9 +47,12 @@ def fingerprint(files) -> dict:
     hashes = {}
     version = None
     for name, content in files:
+        if (not re.fullmatch(r"[a-zA-Z0-9._-]+(?:/[a-zA-Z0-9._-]+)*", name)
+                or any(part in {".", ".."} for part in name.split("/"))):
+            raise ValueError("Unsupported package file name")
         if name in hashes:
             raise ValueError("Duplicate package file")
-        hashes[name] = hashlib.sha256(content).digest()
+        hashes[name] = hashlib.sha256(content).hexdigest()
         if name == "manifest.json":
             manifest = json.loads(content)
             version = manifest.get("version") if isinstance(manifest, dict) else None
@@ -61,7 +64,7 @@ def fingerprint(files) -> dict:
         raise ValueError("Incomplete Load Optimizer package")
     digest = hashlib.sha256()
     for name, value in sorted(hashes.items()):
-        digest.update(name.encode("utf-8") + b"\0" + value)
+        digest.update(f"{value}  ./{name}\n".encode("ascii"))
     return {"manifest_version": version, "files": len(hashes), "sha256": digest.hexdigest()}
 
 

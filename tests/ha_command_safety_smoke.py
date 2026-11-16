@@ -1,7 +1,6 @@
 """Exercise command cancellation and safety on real HA, with synthetic devices."""
 
 import asyncio
-from copy import deepcopy
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -10,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CoreState, HomeAssistant
 
 from custom_components.load_optimizer.orchestration import NativeOrchestrator
 
@@ -26,9 +25,7 @@ async def main():
         try:
             for action in ("async_cancel", "async_stop"):
                 for pause in range(5):
-                    scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id="synthetic"), None)
-                    scheduler.store = SimpleNamespace(async_save=AsyncMock(),
-                        async_load=AsyncMock(side_effect=lambda: deepcopy(scheduler.store.async_save.await_args.args[0])))
+                    scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id=f"{action}_{pause}"), None)
                     scheduler.state.update(active=True, auto_mode_enabled=False,
                                            auto_negative_price_enabled=False)
                     scheduler.config = {
@@ -86,6 +83,20 @@ async def main():
                 assert not await scheduler._async_start_allowed(request, recheck=True), name
             await scheduler.async_stop()
             print("Real-HA cancellation/unload at all five delays and manual physical interlocks passed")
+
+            scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id="committed"), None)
+            scheduler.state["execution_status"] = "queued"
+            await scheduler._async_save()
+            hass.set_state(CoreState.stopping)
+            try:
+                scheduler.state["execution_status"] = "commanding"
+                await scheduler._async_save()
+                assert (await scheduler.store.async_load())["state"]["execution_status"] == "commanding"
+                assert (await scheduler._async_committed_start_state())["execution_status"] == "queued"
+                assert not await scheduler._async_start_allowed(request)
+            finally:
+                hass.set_state(CoreState.running)
+            print("Real-HA deferred shutdown write is not treated as a committed command reservation")
         finally:
             await hass.async_stop(force=True)
 

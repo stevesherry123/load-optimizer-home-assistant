@@ -94,6 +94,21 @@ which files a running process loaded before its last restart. If the
 installation does not match a known package, verify an exact rollback copy
 instead of assuming reinstalling the displayed version would restore it.
 
+If the HA Terminal app does not have Python, the standard checksum tools
+produce the same count and digest for release files:
+
+```bash
+(
+    set -e -o pipefail
+    cd /config/custom_components/load_optimizer
+    test -f orchestration.py
+    test -z "$(find . -name __pycache__ -prune -o -type l -print)"
+    find . -name __pycache__ -prune -o -type f -print | wc -l
+    find . -name __pycache__ -prune -o -type f -print0 |
+        LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum
+)
+```
+
 Use the pinned HA test environment to rehearse the storage portion across
 two exact Git revisions:
 
@@ -124,8 +139,9 @@ or capture, and someone able to supervise a retained request when its window ope
 Record the same request/window surviving, with no duplicate start.
 
 A restart during a command sequence is different from a queued-request restart.
-The controller verifies its local command reservation before sending an
-appliance command. If confirmation is interrupted, the request must not
+The controller verifies its command reservation on disk before sending an
+appliance command. A deferred shutdown write is not a committed reservation.
+If confirmation is interrupted, the request must not
 replay on boot. Check the dishwasher, then press **Cancel Schedule** to
 acknowledge the recovery hold before requesting another wash. A
 storage-write failure must block the first command.

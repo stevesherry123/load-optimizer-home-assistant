@@ -56,10 +56,14 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
             config=SimpleNamespace(time_zone="Europe/London"),
             services=SimpleNamespace(async_call=AsyncMock()),
             async_create_task=Mock(side_effect=schedule),
+            is_stopping=False,
         )
         self.scheduler = NativeOrchestrator(self.hass, SimpleNamespace(entry_id="test"), None)
         self.scheduler.store = SimpleNamespace(async_save=AsyncMock(),
             async_load=AsyncMock(side_effect=lambda: deepcopy(self.scheduler.store.async_save.await_args.args[0])))
+        self.scheduler._async_committed_start_state = AsyncMock(
+            side_effect=lambda: deepcopy(self.scheduler.store.async_save.await_args.args[0]["state"]),
+        )
         self.scheduler.state = {**namespace["CONTROL_DEFAULTS"], "schedule_events": [], "run_history": []}
         self.scheduler.state.update(active=True, auto_mode_enabled=True, door_opened_since_last_cycle=True)
         self.scheduler.config = {
@@ -989,7 +993,8 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_failed_command_reservation_blocks_all_appliance_calls(self):
         self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
-        self.scheduler.store.async_load = AsyncMock(return_value={"state": {"execution_status": "queued"}})
+        self.scheduler._async_committed_start_state.return_value = {"execution_status": "queued"}
+        self.scheduler._async_committed_start_state.side_effect = None
         await self.scheduler._async_execute({"mode": "now", "program": "MixedLoad", "automatic": False})
         self.assertEqual(self.scheduler.state["last_reason"], "start_reservation_not_saved")
         self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])

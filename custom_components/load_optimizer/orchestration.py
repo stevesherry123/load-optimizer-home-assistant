@@ -18,6 +18,7 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
+from homeassistant.util.json import load_json_object
 
 from .const import DOMAIN
 from .legacy.costing import operational_overnight_window, parse_clock
@@ -161,6 +162,7 @@ class NativeOrchestrator:
             hass,
             STORE_VERSION,
             f"{DOMAIN}.native_orchestration.{entry.entry_id}",
+            atomic_writes=True,
         )
         self.state: dict[str, Any] = dict(CONTROL_DEFAULTS)
         self.config: dict[str, str] = {}
@@ -802,7 +804,7 @@ class NativeOrchestrator:
 
     async def async_evaluate(self, now: datetime | None = None) -> None:
         """Evaluate shadow or active scheduling decisions."""
-        if self._stopping or self._cancelling:
+        if self._stopping or self._cancelling or self.hass.is_stopping:
             return
         now = now or datetime.now(timezone.utc)
         options_changed = self._refresh_program_options()
@@ -1014,12 +1016,11 @@ class NativeOrchestrator:
         snapshot = self.state["last_start_decision_snapshot"]
         try:
             await self._async_save()
-            persisted = await self.store.async_load()
+            stored_state = await self._async_committed_start_state()
         except (OSError, HomeAssistantError, ValueError):
-            persisted = None
-        if self._stopping or self._cancelling or not self.state.get("active"):
+            stored_state = None
+        if self._stopping or self._cancelling or self.hass.is_stopping or not self.state.get("active"):
             return
-        stored_state = persisted.get("state") if isinstance(persisted, dict) else None
         if (not isinstance(stored_state, dict) or stored_state.get("execution_status") != "commanding"
                 or stored_state.get("last_start_decision_snapshot") != snapshot):
             self.state["request"] = None
@@ -1114,7 +1115,7 @@ class NativeOrchestrator:
             )
 
     async def _async_start_allowed(self, request: dict[str, Any], *, recheck: bool = False) -> bool:
-        if (self._stopping or self._cancelling or not self.state.get("active")
+        if (self._stopping or self._cancelling or self.hass.is_stopping or not self.state.get("active")
                 or self.state.get("start_recovery_required")):
             return False
         mode, program = request.get("mode"), request.get("program")
@@ -1151,7 +1152,7 @@ class NativeOrchestrator:
                     except Exception as error:
                         LOGGER.warning("Automatic source preflight failed (%s)", type(error).__name__)
                         reason = "automatic_preflight_unavailable"
-            if self._stopping or self._cancelling or not self.state.get("active"):
+            if self._stopping or self._cancelling or self.hass.is_stopping or not self.state.get("active"):
                 return False
             if not reason:
                 reason = paused_reason() or self._safety_block(mode, program, explicit_override=False, check_negative_fit=False,
@@ -1456,6 +1457,14 @@ class NativeOrchestrator:
                 "program_options": self.program_options,
             }
         )
+
+    async def _async_committed_start_state(self) -> dict | None:
+        # Store.async_load can return a pending write before it reaches disk.
+        stored = await self.hass.async_add_executor_job(load_json_object, self.store.path)
+        if stored.get("version") != STORE_VERSION or stored.get("key") != self.store.key:
+            return None
+        data = stored.get("data")
+        return data.get("state") if isinstance(data, dict) else None
 
     def _record_schedule_event(self, event: str, reason: str, *, now=None, **detail) -> None:
         item = {"timestamp": (now or datetime.now(timezone.utc)).isoformat(),

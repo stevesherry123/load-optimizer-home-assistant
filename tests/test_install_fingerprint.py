@@ -1,6 +1,7 @@
 """Package identity checks must detect local patches even at the same version."""
 
 import io
+from hashlib import sha256
 import json
 from pathlib import Path
 import tarfile
@@ -19,6 +20,13 @@ FILES = {
 
 
 class InstallFingerprintTests(unittest.TestCase):
+    def test_digest_is_compatible_with_sorted_sha256sum_output(self):
+        stream = "".join(f"{sha256(content).hexdigest()}  ./{name}\n"
+                         for name, content in sorted(FILES.items())).encode("ascii")
+        self.assertEqual(fingerprint(FILES.items())["sha256"], sha256(stream).hexdigest())
+        with self.assertRaisesRegex(ValueError, "Unsupported package file name"):
+            fingerprint((*FILES.items(), ("unexpected\nfile", b"data")))
+
     def test_archive_and_installed_tree_agree_until_locally_patched(self):
         buffer = io.BytesIO()
         with tarfile.open(fileobj=buffer, mode="w") as archive:
