@@ -337,6 +337,30 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.hass.services.async_call.await_count, count)
         self.assertIsNone(self.scheduler._execution_task)
 
+    async def test_price_loss_after_a_command_does_not_restore_overnight_request(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.Quick45"])
+        request = deepcopy(self.scheduler.state["request"])
+        self.assertEqual(request["program"], "Quick45")
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.scheduler.set_automatic_preflight(AsyncMock(
+            side_effect=[None, None, None, None, "normal_wash_cycle_not_fully_priced"],
+        ))
+        with patch.object(asyncio, "sleep", new=AsyncMock()):
+            await self.scheduler._async_execute(request)
+
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["execution_status"], "blocked")
+        self.assertEqual(self.scheduler.state["last_reason"], "normal_wash_cycle_not_fully_priced")
+        self.assertEqual([call.args[0] for call in self.hass.services.async_call.await_args_list
+                          if call.args[0] != "persistent_notification"], ["switch", "select", "button"])
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value=None))
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertIsNone(self.scheduler._execution_task)
+
     async def test_start_snapshot_is_detached_and_survives_later_decisions_and_reload(self):
         request = {"mode": "automatic", "program": "Eco50", "automatic": True,
                    "start": Clock.current.isoformat(), "cost_pence": 23.5,
@@ -1196,6 +1220,39 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         await self.scheduler._async_record_cycle_end(datetime(2026, 10, 8, 14, tzinfo=timezone.utc))
         self.assertEqual(self.scheduler.state["last_result"], "completed")
         self.assertEqual(self.scheduler.state["execution_status"], "idle")
+
+    async def test_replayed_completion_does_not_clear_new_request_after_reload(self):
+        start = Clock.current - timedelta(hours=2)
+        self.put("sensor.load_optimizer_1_last_finish", Clock.current.isoformat())
+        await self.scheduler._async_record_cycle_end(start)
+        self.assertEqual(self.scheduler.state["last_completed_capture_start"], start.isoformat())
+
+        self.scheduler.state["door_opened_since_last_cycle"] = True
+        await self.scheduler.async_evaluate()
+        stored = deepcopy(self.scheduler.store.async_save.await_args.args[0])
+        self.assertIsNotNone(stored["state"]["request"])
+        restored = NativeOrchestrator(self.hass, SimpleNamespace(entry_id="test", data={}, options={}),
+                                      self.scheduler.migration)
+        restored.store = SimpleNamespace(
+            async_load=AsyncMock(return_value=stored),
+            async_save=AsyncMock(),
+        )
+        await restored.async_load()
+        restored.store.async_save.reset_mock()
+        events = deepcopy(restored.state["schedule_events"])
+        for replay in (start, start - timedelta(hours=1)):
+            await restored._async_record_cycle_end(replay)
+        self.assertEqual(restored.state["request"], stored["state"]["request"])
+        self.assertTrue(restored.state["door_opened_since_last_cycle"])
+        self.assertEqual(restored.state["schedule_events"], events)
+        restored.store.async_save.assert_not_awaited()
+
+        Clock.current += timedelta(hours=2)
+        self.put("sensor.load_optimizer_1_last_finish", Clock.current.isoformat())
+        await restored._async_record_cycle_end(Clock.current - timedelta(minutes=45))
+        self.assertIsNone(restored.state["request"])
+        self.assertEqual(restored.state["last_result"], "completed")
+        self.assertEqual(restored.state["schedule_events"][0]["event"], "completed")
 
     async def test_observed_real_run_can_complete_even_when_learning_is_rejected(self):
         self.scheduler.state["confirmed_cycle_started_at"] = "2026-10-08T15:09:05+00:00"

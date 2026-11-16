@@ -57,6 +57,7 @@ CONTROL_DEFAULTS: dict[str, Any] = {
     "last_start_decision_snapshot": None,
     "last_auto_negative_price_request": None,
     "last_auto_normal_request": None,
+    "last_completed_capture_start": None,
     "run_history": [],
     "schedule_events": [],
     "shadow_decision": None,
@@ -1176,7 +1177,8 @@ class NativeOrchestrator:
                     await self._async_save()
                     self._publish()
                     return False
-            if request.get("normal_wash") and ("tariff" in reason or "fully_priced" in reason):
+            if (request.get("normal_wash") and not recheck
+                    and ("tariff" in reason or "fully_priced" in reason)):
                 saved = self.state.get("request")
                 if saved and saved.get("created_at") == request.get("created_at"):
                     self.state["execution_status"] = "awaiting_plan"
@@ -1253,6 +1255,9 @@ class NativeOrchestrator:
         return None
 
     async def _async_record_cycle_end(self, capture_started_at: datetime) -> None:
+        last_capture = self._parse_datetime(self.state.get("last_completed_capture_start"))
+        if last_capture is not None and capture_started_at <= last_capture:
+            return
         operation = self._state(self.config.get("bosch_operation_state_sensor"))
         now = datetime.now(timezone.utc)
         learned_finish = self._parse_datetime(self._state("sensor.load_optimizer_1_last_finish"))
@@ -1285,6 +1290,7 @@ class NativeOrchestrator:
                     f"operation={operation}."
                 ),
                 "last_cycle_completed_at": now.isoformat(),
+                "last_completed_capture_start": capture_started_at.isoformat(),
                 "last_cycle_operation_state": operation,
                 "last_outcome_at": now.isoformat(),
                 "door_opened_since_last_cycle": False,
