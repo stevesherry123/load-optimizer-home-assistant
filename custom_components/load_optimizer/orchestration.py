@@ -1400,24 +1400,24 @@ class NativeOrchestrator:
             return 20.0
         return threshold if 0 <= threshold <= 100 else 20.0
 
-    def _cooldown_elapsed(self, key: str, minutes: int, now: datetime) -> bool:
-        previous = self._parse_datetime(self.state.get(key))
-        return previous is None or now >= previous + timedelta(minutes=minutes)
-
     def _negative_retry_after(self, now: datetime) -> datetime | None:
         previous = self._parse_datetime(self.state.get("last_auto_negative_price_request"))
         eligible = previous + timedelta(minutes=30) if previous else None
         return eligible if eligible and now < eligible else None
 
-    def _overnight_window_unused(self, now: datetime) -> bool:
+    def _overnight_eligible_after(self) -> datetime | None:
         previous = self._parse_datetime(self.state.get("last_auto_normal_request"))
-        local_now = dt_util.as_local(now)
-        cutoff = local_now.replace(hour=16, minute=0, second=0, microsecond=0)
-        if local_now < cutoff:
-            cutoff -= timedelta(days=1)
-        return (
-            previous is None or previous < cutoff.astimezone(timezone.utc)
-        ) and self._cooldown_elapsed("last_auto_normal_request", 720, now)
+        if previous is None:
+            return None
+        local_previous = dt_util.as_local(previous)
+        cutoff = local_previous.replace(hour=16, minute=0, second=0, microsecond=0)
+        if local_previous >= cutoff:
+            cutoff += timedelta(days=1)
+        return max(cutoff.astimezone(timezone.utc), previous + timedelta(hours=12))
+
+    def _overnight_window_unused(self, now: datetime) -> bool:
+        eligible = self._overnight_eligible_after()
+        return eligible is None or now >= eligible
 
     def _request_due(self, request: dict[str, Any], now: datetime) -> bool:
         start = self._parse_datetime(request.get("start"))
@@ -1668,12 +1668,8 @@ class NativeOrchestrator:
         last_request_key = "last_auto_negative_price_request" if mode == "negative_price" else "last_auto_normal_request"
         previous = self._parse_datetime(self.state.get(last_request_key))
         eligible_after = readiness.get("retry_eligible_after")
-        if mode == "overnight" and previous and not self._overnight_window_unused(now):
-            local_now = dt_util.as_local(now)
-            cutoff = local_now.replace(hour=16, minute=0, second=0, microsecond=0)
-            if local_now >= cutoff:
-                cutoff += timedelta(days=1)
-            eligible_after = max(cutoff.astimezone(timezone.utc), previous + timedelta(hours=12)).isoformat()
+        if mode == "overnight" and (eligible := self._overnight_eligible_after()) and now < eligible:
+            eligible_after = eligible.isoformat()
         return {
             "state": state, "mode": mode, "reason_code": reason, "summary": summary,
             "action_required": action_required,

@@ -1322,6 +1322,16 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.automation_explanation["automatic_eligible_after"],
                          "2026-10-25T16:00:00+00:00")
 
+    async def test_eligibility_after_daily_reset_reports_remaining_cooldown(self):
+        self.scheduler.state["last_auto_normal_request"] = "2026-10-08T14:59:00+00:00"
+        Clock.current = datetime(2026, 10, 8, 15, 1, tzinfo=timezone.utc)
+        self.assertFalse(self.scheduler._overnight_window_unused(Clock.current))
+        self.assertEqual(self.scheduler.automation_explanation["automatic_eligible_after"],
+                         "2026-10-09T02:59:00+00:00")
+        eligible = datetime(2026, 10, 9, 2, 59, tzinfo=timezone.utc)
+        self.assertFalse(self.scheduler._overnight_window_unused(eligible - timedelta(seconds=1)))
+        self.assertTrue(self.scheduler._overnight_window_unused(eligible))
+
     async def test_queue_and_last_attempt_are_not_confused_with_recommendation(self):
         await self.scheduler.async_evaluate()
         status = self.scheduler.automation_explanation
