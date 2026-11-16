@@ -1,7 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.5.10-beta.1
 
+- Persist and verify a dishwasher start reservation before sending appliance
+  commands. If Home Assistant restarts before confirmation, hold further
+  starts until the user checks the dishwasher and presses Cancel Schedule.
+- Prevent a late learning result from clearing a newer dishwasher request.
+  Recheck automatic permission after preflight and stop dispatch while Home
+  Assistant is shutting down.
 - Fix the new-install guide's missing recommendation policy and add executable
   generic-appliance and Home Connect examples, with negative-price runs off.
 - Separate fresh Home Connect activation from legacy migration; document current
@@ -33,7 +39,8 @@
   cycle after the search/forecast horizon. Include active capture elapsed time
   and restored startup models, without extending candidate start times or
   changing learning. Cover late no-run events and full green-window overlap.
-- Unreleased development only; no version bump, deployment or new control opt-in.
+- This prerelease is for testing. No new automatic control opt-in or
+  experimental EV charging control is included.
 
 ## 1.5.9
 
