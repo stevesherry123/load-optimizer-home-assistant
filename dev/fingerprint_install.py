@@ -65,6 +65,19 @@ def fingerprint(files) -> dict:
     return {"manifest_version": version, "files": len(hashes), "sha256": digest.hexdigest()}
 
 
+def archived_package(ref: str) -> tuple[str, bytes]:
+    root = Path(__file__).resolve().parents[1]
+    commit = subprocess.run(
+        ["git", "rev-parse", "--verify", "--end-of-options", ref + "^{commit}"],
+        cwd=root, check=True, capture_output=True, text=True, timeout=15,
+    ).stdout.strip()
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", commit, "--", str(PACKAGE)],
+        cwd=root, check=True, capture_output=True, timeout=30,
+    ).stdout
+    return commit, archive
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
@@ -75,15 +88,7 @@ def main() -> int:
         if args.installed is not None:
             result = fingerprint(installed_files(args.installed))
         else:
-            root = Path(__file__).resolve().parents[1]
-            commit = subprocess.run(
-                ["git", "rev-parse", "--verify", "--end-of-options", args.git_ref + "^{commit}"],
-                cwd=root, check=True, capture_output=True, text=True, timeout=15,
-            ).stdout.strip()
-            archive = subprocess.run(
-                ["git", "archive", "--format=tar", commit, "--", str(PACKAGE)],
-                cwd=root, check=True, capture_output=True, timeout=30,
-            ).stdout
+            commit, archive = archived_package(args.git_ref)
             result = {**fingerprint(archive_files(archive)), "commit": commit}
     except (OSError, ValueError, tarfile.TarError, subprocess.SubprocessError) as error:
         parser.exit(1, f"Cannot identify package ({type(error).__name__}).\n")

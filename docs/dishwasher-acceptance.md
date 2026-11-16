@@ -94,6 +94,19 @@ which files a running process loaded before its last restart. If the
 installation does not match a known package, verify an exact rollback copy
 instead of assuming reinstalling the displayed version would restore it.
 
+Use the pinned HA test environment to rehearse the storage portion across
+two exact Git revisions:
+
+```sh
+python dev/rehearse_dishwasher_rollback.py --baseline v1.5.9 --candidate HEAD
+```
+
+Fetch the baseline tag first if it is not local. The rehearsal uses only
+synthetic learning, native controls and a pending wash in temporary HA
+directories. A fresh process tests each read. It restores the baseline store
+alongside the baseline code and forbids all HA service calls. It does not
+exercise a production backup, integration registration or real hardware.
+
 On the separate test installation, follow setup from a blank configuration and
 confirm learning, a priced recommendation and registered controls without copying
 the maintainer's private data. Record any undocumented step.

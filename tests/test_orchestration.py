@@ -1325,6 +1325,24 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(status["last_start_attempt"])
         self.assertTrue(any(event["event"] == "queued" for event in self.scheduler.state["schedule_events"]))
 
+    async def test_recovery_hold_blocks_readiness_even_after_completion_is_reported(self):
+        self.scheduler.state.update(start_recovery_required=True, last_result="completed")
+        for mode in ("overnight", "negative_price"):
+            readiness = self.scheduler.readiness(mode)
+            self.assertEqual(readiness["state"], "red")
+            self.assertIn("start_confirmation_interrupted", readiness["blockers"])
+        status = self.scheduler.automation_explanation
+        self.assertEqual(status["state"], "attention_required")
+        self.assertEqual(status["reason_code"], "start_confirmation_interrupted")
+        self.assertIn("Cancel Schedule", status["action_required"])
+        self.assertFalse(await self.scheduler._async_start_allowed(
+            {"mode": "now", "program": "Quick45", "automatic": False},
+        ))
+        self.hass.services.async_call.assert_not_awaited()
+
+        await self.scheduler.async_cancel()
+        self.assertNotIn("start_confirmation_interrupted", self.scheduler.readiness("overnight")["blockers"])
+
     async def test_wait_reason_changes_are_persisted_but_not_logged_each_minute(self):
         self.scheduler.state["auto_mode_enabled"] = False
         await self.scheduler.async_evaluate()

@@ -1114,7 +1114,8 @@ class NativeOrchestrator:
             )
 
     async def _async_start_allowed(self, request: dict[str, Any], *, recheck: bool = False) -> bool:
-        if self._stopping or self._cancelling or not self.state.get("active"):
+        if (self._stopping or self._cancelling or not self.state.get("active")
+                or self.state.get("start_recovery_required")):
             return False
         mode, program = request.get("mode"), request.get("program")
         automatic = request.get("automatic")
@@ -1512,6 +1513,8 @@ class NativeOrchestrator:
         explicit_permission = mode == "overnight" and request.get("normal_wash") and request.get("automatic") is False
         blockers: list[str] = []
         warnings: list[str] = []
+        if self.state.get("start_recovery_required"):
+            blockers.append("start_confirmation_interrupted")
         if reason := self._automatic_source_block():
             blockers.append(reason)
         if self._state("sensor.load_optimizer_1_status") != "ready":
@@ -1617,6 +1620,10 @@ class NativeOrchestrator:
             summary = "The dishwasher has confirmed it is washing. Cancelling a pending schedule will not stop this wash."
             if request:
                 summary += " A separate wash request is still waiting."
+        elif self.state.get("start_recovery_required"):
+            state, reason = "attention_required", "start_confirmation_interrupted"
+            summary = messages[reason]
+            action_required = "Check the dishwasher, then press Cancel Schedule to clear the recovery hold."
         elif request and request.get("normal_wash") and self.state.get("execution_status") == "awaiting_plan":
             state, reason = "waiting", request.get("waiting_reason", "awaiting_plan")
             summary = messages.get(reason, "One wash is authorised; waiting for an eligible plan inside its start window.")
