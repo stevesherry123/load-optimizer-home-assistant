@@ -127,6 +127,7 @@ async def main():
                 controller.config = dict(CONTROL)
                 controller.state["active"] = True
                 controller.state["door_opened_since_last_cycle"] = True
+                controller.state["auto_mode_enabled"] = True
                 for key in ("bosch_connected_sensor", "bosch_remote_control_sensor", "bosch_remote_start_sensor"):
                     hass.states.async_set(CONTROL[key], "on")
                 hass.states.async_set(CONTROL["bosch_door_sensor"], "off")
@@ -145,6 +146,7 @@ async def main():
                 # No scan: the real coordinator callback must fetch changed events itself.
                 assert not await controller._async_start_allowed(request)
                 assert controller.state["last_reason"] == "blocked_window_overlap"
+                controller.state["auto_mode_enabled"] = False
                 assert coordinator.legacy_runtime.state["instances"]["1"].get("runs", 0) == 0
                 assert identities(hass, entry.entry_id) == before
                 assert not physical_commands
