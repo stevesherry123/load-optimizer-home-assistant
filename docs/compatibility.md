@@ -14,8 +14,9 @@ A recommendation and a physical start command are separate capabilities.
 | Historical analysis / import / AI summaries | Experimental tariff beta only | Not stable features. AI is not required for learning or scheduling. |
 
 Home Assistant 2024.12 or later is the declared minimum. Automated checks use
-that version, with an additional pinned HA 2026.10.4 import and command-lifecycle
-check on Python 3.14. These do not certify every HA release or appliance model. The owner's
+that version and also exercise imports, onboarding, restart, entity ownership
+and command safety on pinned HA 2026.11.1 with Python 3.14. These checks do not
+certify every HA release or appliance model. The owner's
 successful Home Connect wash is evidence for that installation, not universal
 manufacturer compatibility. Community reports should include HA and integration
 versions and whether learning, recommendations or starting was tested, without

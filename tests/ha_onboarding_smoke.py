@@ -29,7 +29,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.config_validation import custom_serializer
-from voluptuous_serialize import convert
+try:
+    from probatio import to_field_list as convert
+except ImportError:
+    from voluptuous_serialize import convert
 
 from custom_components.load_optimizer.legacy import app_runtime
 from custom_components.load_optimizer.config_flow import _appliance_review
@@ -288,6 +291,7 @@ async def session(config_dir, example_name, snapshot=None):
         control.update(bosch_selected_program_sensor=appliance["program_sensor"],
                        bosch_operation_state_sensor=appliance["state_sensor"])
     hass = HomeAssistant(str(config_dir))
+    hass.config.skip_pip = True
     loader.async_setup(hass)
     start = Clock.current
     rates = [{"start": (start + timedelta(minutes=30 * index)).isoformat(),
@@ -328,21 +332,27 @@ async def session(config_dir, example_name, snapshot=None):
             raise AssertionError("Unexpected device command during read-only onboarding")
         return await original_call(registry, domain, service, service_data, *args, **kwargs)
 
+    # Newer HA binds during setup rather than at start. Test both lifecycles without opening a socket.
     with patch("custom_components.load_optimizer.price_cap.PriceCapManager.async_status",
                new=AsyncMock(return_value={"status": "not_configured", "source": "test"})), \
          patch("custom_components.load_optimizer.legacy_runtime.datetime", Clock), \
          patch.object(app_runtime, "datetime", Clock), \
+         patch("homeassistant.bootstrap.DEFAULT_INTEGRATIONS", set()), \
+         patch.object(HomeAssistantHTTP, "async_bind", new=AsyncMock(), create=True), \
          patch.object(HomeAssistantHTTP, "start", new=AsyncMock()), \
          patch.object(HomeAssistantHTTP, "stop", new=AsyncMock()), \
          patch.object(type(hass.services), "async_call", new=guarded_call):
         try:
             assert await async_from_config_dict({
                 "homeassistant": {"name": "Synthetic onboarding", "time_zone": "Europe/London"},
+                "http": {},
                 "template": template_config,
             }, hass) is hass
+            assert "http" in hass.config.components and "template" in hass.config.components
             await hass.async_start()
             await hass.async_block_till_done()
-            assert hass.states.get("sensor.ev_usable_battery_capacity").state == "60"
+            capacity = hass.states.get("sensor.ev_usable_battery_capacity")
+            assert capacity is not None and float(capacity.state) == 60, capacity
             assert hass.states.get("sensor.ev_charging_connection").state == "connected"
             dashboard_store = LovelaceStorage(hass, {"id": "onboarding", "url_path": "onboarding-test"})
 
