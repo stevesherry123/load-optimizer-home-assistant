@@ -45,6 +45,22 @@ own acceptance gates; their names are not release metadata or a promise of safe
 side-by-side installation. Use published tags and release notes to identify the
 supported installed scope, not a historical branch-cleanup inventory.
 
+## Maintainer Verification
+
+Use `python dev/check_beta_release.py TAG RUN_ID --commit SHA` before tagging a
+beta. It checks version parity, an unused tag and six passing jobs on the exact
+commit; a pull request's merge-test run does not replace that check. Add
+`--published` to audit an existing prerelease and its actual remote tag target.
+The script makes no changes on GitHub.
+
+Use `python dev/fingerprint_install.py --git-ref SHA` to identify that commit's
+package. The same digest and file count should match `--release-archive PATH`
+for the downloaded GitHub source tarball and `--installed PATH` for the
+integration directory on the HA host. Pass `--expect-sha256 DIGEST` to fail if
+the files don't match the expected package. A matching manifest version alone cannot
+detect a locally changed file. Only the integration source is read; this does
+not verify the saved learning or prove a backup can be restored.
+
 ## What Users Read
 
 The README is the main entry point in GitHub and HACS. HACS retrieves versioned
