@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from bisect import bisect_left, bisect_right
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, localcontext
@@ -407,7 +408,25 @@ QUOTE_TARIFF_PERIOD_LIMIT = 8
 QUOTE_TARIFF_OVERRIDE_SOURCES = ("free_electricity_calendar", "manual_special_price_window")
 
 
-def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> dict:
+def _ordered_tariff_bounds(periods: list[dict]) -> tuple[list[datetime], list[datetime]] | None:
+    """Index normalized UTC periods once, retaining the old scan for other inputs."""
+    starts, ends = [], []
+    for period in periods:
+        try:
+            start, end = period["start"], period["end"]
+        except (KeyError, TypeError):
+            return None
+        if (not isinstance(start, datetime) or not isinstance(end, datetime)
+                or start.tzinfo is not timezone.utc or end.tzinfo is not timezone.utc
+                or start >= end or (ends and start < ends[-1])):
+            return None
+        starts.append(start)
+        ends.append(end)
+    return starts, ends
+
+
+def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict], *,
+                        _tariff_bounds: tuple[list[datetime], list[datetime]] | None = None) -> dict:
     """Overlay a scaled learned profile on tariff periods."""
     with localcontext() as context:
         context.prec = 80
@@ -422,7 +441,13 @@ def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> di
             segment_start = start + timedelta(seconds=segment["offset_start"])
             segment_end = start + timedelta(seconds=segment["offset_end"])
             covered_seconds = 0.0
-            for period in periods:
+            relevant = periods
+            if _tariff_bounds is not None:
+                starts, ends = _tariff_bounds
+                first = bisect_right(ends, segment_start)
+                last = bisect_left(starts, segment_end, lo=first)
+                relevant = periods[first:last]
+            for period in relevant:
                 overlap_start = max(segment_start, period["start"])
                 overlap_end = min(segment_end, period["end"])
                 if overlap_end <= overlap_start:
@@ -1078,6 +1103,7 @@ def forecast_cycle_costs(
     excluded = set(excluded_programs or [])
     forecast_end = reference_utc + timedelta(hours=max(0, forecast_hours))
     start_at = _next_candidate(reference_utc, forecast_interval_minutes)
+    tariff_bounds = _ordered_tariff_bounds(periods)
     candidates = []
     diagnostics = []
     for model in models:
@@ -1129,7 +1155,7 @@ def forecast_cycle_costs(
                 start += timedelta(minutes=forecast_interval_minutes)
                 continue
             try:
-                estimate = estimate_cycle_cost(start, model, periods)
+                estimate = estimate_cycle_cost(start, model, periods, _tariff_bounds=tariff_bounds)
             except ValueError:
                 diagnostic["rejected_points"] += 1
                 start += timedelta(minutes=forecast_interval_minutes)
@@ -1243,6 +1269,7 @@ def recommend_cycle(
     rejected_negative_run_history = 0
     program_diagnostics = []
     search_end = reference_utc + timedelta(hours=search_hours)
+    tariff_bounds = _ordered_tariff_bounds(periods)
     earliest_allowed_start = earliest_start_utc.astimezone(timezone.utc) if earliest_start_utc else reference_utc
     latest_allowed_finish = latest_finish_utc.astimezone(timezone.utc) if latest_finish_utc else None
     first_start = _next_candidate(max(reference_utc, earliest_allowed_start), candidate_interval_minutes)
@@ -1313,7 +1340,7 @@ def recommend_cycle(
             is_overnight = in_time_window(start, overnight_start, overnight_end, schedule_timezone)
             is_daytime = not is_overnight
             try:
-                estimate = estimate_cycle_cost(start, model, periods)
+                estimate = estimate_cycle_cost(start, model, periods, _tariff_bounds=tariff_bounds)
             except ValueError:
                 diagnostic["rejected_unpriced_points"] += 1
                 continue
@@ -1469,7 +1496,7 @@ def recommend_cycle(
             now_breakdown = []
             now_operating_breakdown = None
         else:
-            now_estimate = estimate_cycle_cost(reference_utc, selected_model, periods)
+            now_estimate = estimate_cycle_cost(reference_utc, selected_model, periods, _tariff_bounds=tariff_bounds)
             policy = policy_by_program[cheapest["program"]]
             now_estimate = apply_operating_costs(now_estimate, policy)
             now_cost = now_estimate["total_cost_pence"]
