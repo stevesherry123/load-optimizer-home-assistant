@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, patch
 from ha_onboarding_smoke import Clock, CONTROL, ROOT, configure, identities
 from homeassistant import loader
 from homeassistant.bootstrap import async_from_config_dict
-from homeassistant.components.http import HomeAssistantHTTP
 from homeassistant.core import HomeAssistant, SupportsResponse
 from custom_components.load_optimizer.legacy import app_runtime
 
@@ -73,8 +72,7 @@ async def main():
              patch("custom_components.load_optimizer.legacy_runtime.datetime", Clock), \
              patch("custom_components.load_optimizer.orchestration.datetime", Clock), \
              patch.object(app_runtime, "datetime", Clock), \
-             patch.object(HomeAssistantHTTP, "start", new=AsyncMock()), \
-             patch.object(HomeAssistantHTTP, "stop", new=AsyncMock()), \
+             patch("homeassistant.bootstrap.DEFAULT_INTEGRATIONS", set()), \
              patch.object(type(hass.services), "async_call", new=guarded_call):
             try:
                 assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
@@ -132,6 +130,17 @@ async def main():
                 controller.state.update(active=True, auto_negative_price_enabled=True, auto_mode_enabled=False,
                                         door_opened_since_last_cycle=False)
                 assert controller._automatic_decision(Clock.current)["program"] == "Quick45"
+                with patch.object(controller, "_request_due", return_value=False):
+                    await controller.async_evaluate()
+                reserved = controller.state["request"]
+                quote = reserved["recommendation_quote"]
+                assert reserved["mode"] == "negative_price"
+                assert quote["program"] == recommendation.state
+                assert quote["estimated_net_benefit_pence"] == recommendation.attributes["net_benefit_pence"]
+                assert quote["tariff_evidence"]["energy_cost_pence"] < 0
+                assert (await controller._async_committed_start_state())["request"] == reserved
+                assert not physical_commands
+                controller.state.update(request=None, execution_status="idle")
                 first_request = Clock.current
                 controller.state["last_auto_negative_price_request"] = first_request.isoformat()
                 Clock.current += timedelta(minutes=28.4)

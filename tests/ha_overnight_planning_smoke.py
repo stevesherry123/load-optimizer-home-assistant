@@ -14,7 +14,6 @@ from ha_onboarding_smoke import Clock, ROOT, configure, identities
 from ha_negative_price_smoke import cycle
 from homeassistant import loader
 from homeassistant.bootstrap import async_from_config_dict
-from homeassistant.components.http import HomeAssistantHTTP
 from homeassistant.core import HomeAssistant
 from custom_components.load_optimizer.legacy import app_runtime
 
@@ -64,8 +63,7 @@ async def main():
              patch("custom_components.load_optimizer.orchestration.datetime", Clock), \
              patch("custom_components.load_optimizer.legacy_runtime.datetime", Clock), \
              patch.object(app_runtime, "datetime", Clock), \
-             patch.object(HomeAssistantHTTP, "start", new=AsyncMock()), \
-             patch.object(HomeAssistantHTTP, "stop", new=AsyncMock()), \
+             patch("homeassistant.bootstrap.DEFAULT_INTEGRATIONS", set()), \
              patch.object(type(hass.services), "async_call", new=guarded_call):
             try:
                 assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
@@ -102,6 +100,7 @@ async def main():
                 assert controller.state["request"]["normal_wash"]
                 assert controller.state["execution_status"] == "awaiting_plan"
                 assert controller.automation_explanation["reason_code"] == "overnight_tariff_coverage_incomplete"
+                assert "recommendation_quote" not in controller.state["request"]
                 print("Real HA: partial prices retain wash permission, notify, and cannot start a wash")
 
                 Clock.current += timedelta(minutes=2)
@@ -109,6 +108,10 @@ async def main():
                 await coordinator.async_refresh()
                 await controller.async_evaluate()
                 assert controller.state["request"]["program"] == "Eco50"
+                first_quote = deepcopy(controller.state["request"]["recommendation_quote"])
+                assert first_quote["overnight_selection_reason"] == "best_overnight"
+                assert first_quote["tariff_evidence"]["period_count"] >= 8
+                assert first_quote["tariff_evidence"]["periods"][0]["rate_source"] == "contracted"
                 original_created = controller.state["request"]["created_at"]
                 original_reserved = controller.state["last_auto_normal_request"]
                 Clock.current += timedelta(minutes=2)
@@ -119,6 +122,13 @@ async def main():
                 assert controller.state["request"]["created_at"] == original_created
                 assert controller.state["last_auto_normal_request"] == original_reserved
                 assert any(e["event"] == "replanned" for e in controller.state["schedule_events"])
+                revised_quote = controller.state["request"]["recommendation_quote"]
+                recommendation = hass.states.get("sensor.load_optimizer_1_overnight_recommendation")
+                assert revised_quote["program"] == recommendation.state == "Quick65"
+                assert revised_quote["estimated_cost_pence"] == recommendation.attributes["cost_pence"]
+                assert revised_quote["tariff_evidence"]["energy_cost_pence"] == recommendation.attributes["tariff_evidence"]["energy_cost_pence"]
+                assert revised_quote["tariff_evidence"]["periods"][0]["start"] == revised_quote["start"]
+                assert first_quote["program"] == "Eco50"
                 print("Real HA: late full rates select Eco50; price revision replans without consuming another reservation")
 
                 # A manual programme and time must survive future planner changes and reload.
