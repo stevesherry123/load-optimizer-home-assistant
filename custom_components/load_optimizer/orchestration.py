@@ -678,7 +678,9 @@ class NativeOrchestrator:
         }
         quote = option or (attributes if attributes.get("program") == program else {})
         # Start Now can move the actual request outside the quoted interval.
-        self.state["request"].update(self._recommendation_evidence(attributes, quote))
+        self.state["request"].update(self._recommendation_evidence(
+            attributes, quote, include_selection=not override,
+        ))
         self.state["execution_status"] = "queued"
         self.state["last_message"] = f"Queued {program} for {start}."
         self._record_schedule_event("queued", "user_request_queued", program=program, start=start)
@@ -700,10 +702,15 @@ class NativeOrchestrator:
                     "finish": finish.isoformat(), "estimated_cost_pence": cost}
         return None
 
-    def _recommendation_evidence(self, attributes: dict, quote: dict) -> dict:
+    def _recommendation_evidence(self, attributes: dict, quote: dict, *, include_selection: bool = True) -> dict:
         saved = self._recommendation_quote(quote) if attributes.get("status") == "ready" else None
         if saved is None:
             return {}
+        reason = attributes.get("reason")
+        if (include_selection and attributes.get("intent") == "overnight"
+                and reason in ("best_overnight", "cheapest_start_in_window_late_finish")
+                and saved == self._recommendation_quote(attributes)):
+            saved["overnight_selection_reason"] = reason
         evidence = {"recommendation_quote": saved}
         alternatives = []
         seen = {saved["program"]}

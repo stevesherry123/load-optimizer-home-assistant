@@ -195,6 +195,12 @@ def build():
         | Recommendation estimate | {{ ('%.2f p' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else 'Not recorded' }} |
         {% if quote is mapping and quote.estimated_cost_pence is number -%}
         | Estimate window | {{ home_time(quote.start) }} to {{ home_time(quote.finish) }} |
+        {% set selection = quote.get('overnight_selection_reason') -%}
+        {% if selection == 'best_overnight' -%}
+        | Why this estimate was selected | Lowest estimated total cost among eligible plans that finish within the overnight window. |
+        {% elif selection == 'cheapest_start_in_window_late_finish' -%}
+        | Why this estimate was selected | No eligible plan finished within the window. This was the lowest-cost eligible start, with a later finish. |
+        {% endif -%}
         {% endif -%}
         | Last recorded result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
         | Result programme | {{ (state_attr(native, 'last_program') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |

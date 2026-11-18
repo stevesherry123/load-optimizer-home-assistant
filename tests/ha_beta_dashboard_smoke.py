@@ -60,20 +60,30 @@ async def main():
                             assert "Quick45" in rendered and "completed" in rendered and "04:00 GMT" in rendered
                             assert rendered.startswith("| Record | Value |\n|---|---|"), rendered
             execution = next(card for card in templates if card["title"] == "Execution record")
-            for price in (-0.5, 0, 12.25):
+            for price, reason, rationale in (
+                (-0.5, None, None),
+                (0, "best_overnight", "Lowest estimated total cost among eligible plans"),
+                (12.25, "cheapest_start_in_window_late_finish", "No eligible plan finished within the window"),
+                (12.25, "unknown_reason", None),
+            ):
                 hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "confirmed", {
                     "last_attempt": "2026-10-27T04:03:00Z",
                     "last_program": "Older | program",
                     "last_start_decision_snapshot": {"request": {"program": "Quick45", "recommendation_quote": {
                         "program": "Quick45", "estimated_cost_pence": price,
                         "start": "2026-10-27T04:00:00Z", "finish": "2026-10-27T04:30:00Z",
+                        **({"overnight_selection_reason": reason} if reason else {}),
                     }, "recommendation_alternatives": [{
                         "program": "Eco50", "estimated_cost_pence": 0,
                         "start": "2026-10-27T04:10:00Z", "finish": "2026-10-27T08:30:00Z",
                     }]}}})
                 rendered = Template(execution["content"], hass).async_render(parse_result=False)
                 assert f"| Recommendation estimate | {price:.2f} p |" in rendered
-                assert "| Estimate window | Tue 27 Oct 04:00 GMT to Tue 27 Oct 04:30 GMT |\n| Last recorded result" in rendered, rendered
+                assert "| Estimate window | Tue 27 Oct 04:00 GMT to Tue 27 Oct 04:30 GMT |\n" in rendered, rendered
+                if rationale:
+                    assert f"| Why this estimate was selected | {rationale}" in rendered, rendered
+                else:
+                    assert "Why this estimate was selected" not in rendered, rendered
                 assert "| Last start attempt | Tue 27 Oct 04:03 GMT |" in rendered
                 assert "| Attempted programme | Quick45 |" in rendered
                 assert "| Result programme | Older / program |" in rendered

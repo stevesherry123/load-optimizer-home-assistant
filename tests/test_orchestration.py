@@ -159,6 +159,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_overnight_quote_tracks_replans_then_freezes_with_the_request(self):
         attributes = {"program": "Quick45", "status": "ready", "confidence": 88,
+                      "intent": "overnight", "reason": "best_overnight",
                       "start": "2026-10-08T22:00:00+00:00",
                       "finish": "2026-10-08T22:30:00+00:00", "cost_pence": 9}
         alternate = {**attributes, "program": "Eco50", "cost_pence": 12}
@@ -167,6 +168,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         await self.scheduler.async_request("overnight")
         request = self.scheduler.state["request"]
         self.assertEqual(request["recommendation_quote"]["estimated_cost_pence"], 9)
+        self.assertEqual(request["recommendation_quote"]["overnight_selection_reason"], "best_overnight")
         self.assertEqual(request["recommendation_alternatives"][0]["program"], "Eco50")
         alternate["cost_pence"] = 99
         self.assertEqual(request["recommendation_alternatives"][0]["estimated_cost_pence"], 12)
@@ -174,14 +176,68 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.put(entity, "Quick45", **attributes)
         await self.scheduler.async_evaluate()
         self.assertNotIn("recommendation_alternatives", request)
-        self.put(entity, "Quick45", **{**attributes, "cost_pence": 7})
+        self.put(entity, "Quick45", **{**attributes, "cost_pence": 7,
+                 "finish": "2026-10-09T07:00:00+00:00", "reason": "cheapest_start_in_window_late_finish"})
         await self.scheduler.async_evaluate()
         self.assertEqual(request["recommendation_quote"]["estimated_cost_pence"], 7)
+        self.assertEqual(request["recommendation_quote"]["overnight_selection_reason"],
+                         "cheapest_start_in_window_late_finish")
 
         Clock.current = datetime.fromisoformat(attributes["start"]) - timedelta(minutes=1)
         self.put(entity, "Quick45", **{**attributes, "cost_pence": 3})
         await self.scheduler.async_evaluate()
         self.assertEqual(request["recommendation_quote"]["estimated_cost_pence"], 7)
+        self.assertEqual(request["recommendation_quote"]["overnight_selection_reason"],
+                         "cheapest_start_in_window_late_finish")
+
+    async def test_manual_overnight_override_never_claims_optimiser_selection(self):
+        selected = {"program": "Quick45", "start": "2026-10-08T22:00:00+00:00",
+                    "finish": "2026-10-08T22:30:00+00:00", "cost_pence": 9}
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45",
+                 status="ready", intent="overnight", reason="best_overnight",
+                 program_options=[selected], **selected)
+        self.scheduler.state["override_program"] = "Quick45"
+        self.scheduler.async_evaluate = AsyncMock()
+        await self.scheduler.async_request("overnight", override=True)
+        quote = self.scheduler.state["request"]["recommendation_quote"]
+        self.assertEqual(quote["estimated_cost_pence"], 9)
+        self.assertNotIn("overnight_selection_reason", quote)
+
+    async def test_real_overnight_planner_reason_is_saved_with_its_quote(self):
+        start = datetime(2026, 10, 8, 20, tzinfo=timezone.utc)
+        end = start + timedelta(hours=10)
+        Clock.current = start - timedelta(hours=1)
+        periods = [{"start": first, "end": last, "price_p_per_kwh": price}
+                   for first, last, price in (
+                       (Clock.current, start + timedelta(hours=2), 20),
+                       (start + timedelta(hours=2), end, 8),
+                       (end, end + timedelta(hours=11), 15),
+                   )]
+        for runtime, expected in ((30, "best_overnight"), (630, "cheapest_start_in_window_late_finish")):
+            with self.subTest(runtime=runtime):
+                self.scheduler.state.update(request=None, execution_status="idle")
+                model = {"program": "Quick45", "expected_runtime_minutes": runtime,
+                         "expected_energy_kwh": 1.0, "representative_profile_w": [100, 100],
+                         "confidence": 90, "recent_cycles": []}
+                policy = {"program": "Quick45", "enabled": True,
+                          "allow_normal_recommendation": True, "allow_negative_price_run": False,
+                          "preference_rank": 50}
+                result = recommend_cycle([model], [policy], periods, reference_utc=Clock.current,
+                                         search_hours=12, candidate_interval_minutes=30, forecast_hours=0,
+                                         overnight_start="21:00", overnight_end="07:00",
+                                         schedule_timezone="Europe/London")
+                recommendation = result["overnight_recommendation"]
+                self.assertEqual(recommendation["reason"], expected)
+                self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45", **recommendation)
+
+                await self.scheduler.async_request("overnight")
+
+                saved = self.scheduler.store.async_save.await_args.args[0]["state"]["request"]
+                quote = saved["recommendation_quote"]
+                self.assertEqual(quote["overnight_selection_reason"], expected)
+                self.assertEqual(quote["estimated_cost_pence"], recommendation["cost_pence"])
+                self.assertEqual(datetime.fromisoformat(quote["finish"]) > end, runtime == 630)
+        self.hass.services.async_call.assert_not_awaited()
 
     async def test_normal_permission_survives_storage_reload_without_new_window(self):
         self.scheduler.state["auto_mode_enabled"] = False
