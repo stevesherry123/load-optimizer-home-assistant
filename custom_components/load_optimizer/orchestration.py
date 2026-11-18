@@ -128,7 +128,8 @@ REASON_MESSAGES = {
     "authorised_window_closed": "The authorised start window closed without a confirmed start. Request another wash if needed.",
     "cancelled_by_user": "The pending schedule was cancelled. An active wash is not stopped.",
     "one_normal_wash_requested": "One normal wash was authorised for the selected overnight window.",
-    "normal_wash_plan_updated": "The pending wash programme or start time was updated.",
+    "normal_wash_plan_updated": "A programme and timing were recorded for the pending wash.",
+    "normal_wash_estimate_revised": "The estimate changed; the pending wash timings did not.",
     "user_request_queued": "The requested wash was scheduled for a start-time safety check.",
     "automatic_request_queued": "An authorised automatic wash was scheduled.",
     "overnight_recommendation_updated": "The overnight plan was updated after a new recommendation.",
@@ -319,16 +320,31 @@ class NativeOrchestrator:
                         "unconfigured_costs": list(attributes.get("unconfigured_costs", [])),
                         **self._recommendation_evidence(attributes, attributes)}
                 quote_keys = ("recommendation_quote", "recommendation_alternatives")
-                if (any(request.get(key) != value for key, value in plan.items())
-                        or any(key in request and key not in plan for key in quote_keys)):
+                # Keep coverage from the plan's selection, not the moving live
+                # search cursor. Live coverage still gates readiness and starts.
+                changed_keys = {key for key, value in plan.items()
+                                if key != "planning_coverage" and request.get(key) != value}
+                changed_keys.update(key for key in quote_keys if key in request and key not in plan)
+                if changed_keys or "planning_coverage" not in request:
                     previous_program, previous_start = request.get("program"), request.get("start")
+                    schedule_changed = bool(changed_keys & {"program", "start", "finish"})
+                    estimate_changed = bool(changed_keys & {"recommendation_quote", "cost_pence", "net_benefit_pence",
+                                                           "operating_cost_breakdown", "unconfigured_costs", "plan_reason"})
                     for key in quote_keys:
                         if key not in plan:
                             request.pop(key, None)
-                    request.update(plan, replanned_at=now.isoformat())
-                    self._record_schedule_event("replanned" if previous_start else "queued", "normal_wash_plan_updated", now=now,
-                                                previous_program=previous_program, previous_start=previous_start,
-                                                program=plan["program"], start=plan["start"], finish=plan["finish"])
+                    request.update(plan)
+                    if schedule_changed:
+                        request["replanned_at"] = now.isoformat()
+                        self._record_schedule_event(
+                            "replanned" if previous_start else "queued",
+                            "normal_wash_plan_updated", now=now,
+                            previous_program=previous_program, previous_start=previous_start,
+                            program=plan["program"], start=plan["start"], finish=plan["finish"],
+                        )
+                    elif estimate_changed:
+                        self._record_schedule_event("estimate_updated", "normal_wash_estimate_revised", now=now,
+                                                    program=plan["program"], start=plan["start"], finish=plan["finish"])
             request.pop("waiting_reason", None)
             request.pop("price_failure_revision", None)
             request.pop("door_blocked_start", None)

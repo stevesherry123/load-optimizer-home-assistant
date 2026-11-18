@@ -241,6 +241,8 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         revised = deepcopy(request["recommendation_quote"])
         self.assertEqual(revised["estimated_cost_pence"], 12)
         self.assertEqual(revised["tariff_evidence"]["periods"][0]["price_p_per_kwh"], 6)
+        self.assertEqual(self.scheduler.state["schedule_events"][0]["event"], "estimate_updated")
+        self.assertFalse(any(event["event"] == "replanned" for event in self.scheduler.state["schedule_events"]))
 
         Clock.current = datetime.fromisoformat(quote["start"]) - timedelta(minutes=1)
         rows[0].update(price_p_per_kwh=14, energy_cost_pence=7)
@@ -637,6 +639,31 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         await self.scheduler.async_evaluate()
         self.scheduler.store.async_save.assert_not_awaited()
         self.hass.services.async_call.assert_not_awaited()
+
+    async def test_advancing_price_search_cursor_does_not_replan_or_write_the_same_request(self):
+        entity = "sensor.load_optimizer_1_overnight_recommendation"
+        Clock.current = datetime(2026, 10, 8, 20, tzinfo=timezone.utc)
+        attrs = {**self.values[entity].attributes, "cost_pence": 12}
+        coverage = attrs.pop("overnight_planning_coverage")
+        self.put(entity, "Quick45", **attrs,
+                 overnight_planning_coverage={**coverage, "required_start": Clock.current.isoformat()})
+        await self.scheduler.async_evaluate()
+        original = deepcopy(self.scheduler.state["request"])
+        events = deepcopy(self.scheduler.state["schedule_events"])
+        self.scheduler.store.async_save.reset_mock()
+
+        for _ in range(25):
+            Clock.current += timedelta(minutes=1)
+            self.put(entity, "Quick45", **attrs,
+                     overnight_planning_coverage={**coverage, "required_start": Clock.current.isoformat()})
+            await self.scheduler.async_evaluate()
+
+        self.scheduler.store.async_save.assert_not_awaited()
+        self.assertEqual(self.scheduler.state["request"], original)
+        self.assertEqual(self.scheduler.state["schedule_events"], events)
+        self.assertEqual(self.scheduler.automation_explanation["overnight_planning_coverage"]["required_start"],
+                         Clock.current.isoformat())
+        self.assertIsNone(self.scheduler._execution_task)
 
     async def test_replanning_never_edits_manual_active_frozen_or_another_night_requests(self):
         self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready",

@@ -42,6 +42,8 @@ Readiness and recent decisions use readable descriptions. New event records
 store a `description` alongside the original machine reason for diagnostics;
 older records remain readable through a generic or known-reason fallback.
 Ordinary status reads and event records do not send routine notifications.
+An estimate-only revision does not change the pending wash timings. A routine
+coverage refresh with the same plan does not create another decision record.
 Cancellation clears pending permission and never stops an active wash.
 
 In the beta dashboard, **Execution record** separates the estimate used to
