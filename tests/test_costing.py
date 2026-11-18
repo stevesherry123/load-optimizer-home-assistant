@@ -7,6 +7,7 @@ INTEGRATION_ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "
 sys.path.insert(0, str(INTEGRATION_ROOT))
 
 from legacy.costing import (
+    QUOTE_TARIFF_PERIOD_LIMIT,
     _negative_power_window_fit,
     estimate_cycle_cost,
     normalize_tariff_periods,
@@ -17,6 +18,7 @@ from legacy.costing import (
     recommend_cycle,
     tariff_periods_from_entity,
 )
+from legacy.app_runtime import overlay_free_windows
 
 
 class NegativePriceSchedulingTests(unittest.TestCase):
@@ -563,6 +565,49 @@ class CostEstimationTests(unittest.TestCase):
                 "energy_cost_pence": 16.6667,
             },
         ])
+
+    def test_overnight_tariff_evidence_records_effective_rates_without_provider_metadata(self):
+        start = self.start
+        free_end = start + timedelta(minutes=15)
+        manual_end = start + timedelta(minutes=30)
+        periods = overlay_free_windows([self.period(0, 60, 12)], [
+            {"start": start, "end": free_end, "entity_id": "calendar.private_fixture"},
+        ])
+        periods = overlay_price_window(periods, start=free_end, end=manual_end,
+                                       price_p_per_kwh=-4, label="Private label fixture")
+        model = {**self.model, "program": "Test", "expected_runtime_minutes": 60,
+                 "expected_energy_kwh": 1, "representative_profile_w": [500, 500], "confidence": 90}
+        policy = {"program": "Test", "enabled": True, "allow_normal_recommendation": True,
+                  "allow_negative_price_run": False, "preference_rank": 50, "fixed_cost_pence": 2}
+
+        result = recommend_cycle([model], [policy], periods, reference_utc=start,
+                                 search_hours=1, candidate_interval_minutes=15,
+                                 overnight_start="00:00", overnight_end="07:00", schedule_timezone="UTC",
+                                 forecast_hours=0)
+
+        overnight = result["overnight_recommendation"]
+        self.assertEqual(overnight["cost_pence"], 7)
+        evidence = overnight["tariff_evidence"]
+        self.assertEqual(evidence["energy_cost_pence"], 5)
+        self.assertEqual(evidence["non_energy_cost_pence"], 2)
+        self.assertEqual(evidence["period_count"], 3)
+        self.assertEqual([row.get("rate_source", "contracted") for row in evidence["periods"]],
+                         ["free_electricity_calendar", "manual_special_price_window", "contracted"])
+        self.assertEqual([row["energy_kwh"] for row in evidence["periods"]], [0.25, 0.25, 0.5])
+        self.assertEqual([row["energy_cost_pence"] for row in evidence["periods"]], [0, -1, 6])
+        self.assertNotIn("fixture", repr(evidence).lower())
+        self.assertNotIn("tariff_evidence", result["now_recommendation"])
+
+        model["expected_runtime_minutes"] = 180
+        short_periods = [self.period(first, first + 15, 20) for first in range(0, 180, 15)]
+        result = recommend_cycle([model], [policy], short_periods, reference_utc=start,
+                                 search_hours=1, candidate_interval_minutes=15,
+                                 overnight_start="00:00", overnight_end="07:00", schedule_timezone="UTC",
+                                 forecast_hours=0)
+        evidence = result["overnight_recommendation"]["tariff_evidence"]
+        self.assertEqual(evidence["period_count"], 12)
+        self.assertEqual(len(evidence["periods"]), QUOTE_TARIFF_PERIOD_LIMIT)
+        self.assertEqual(evidence["energy_cost_pence"], 20)
 
     def test_tariff_gap_rejects_cost(self):
         with self.assertRaisesRegex(ValueError, "fully cover"):

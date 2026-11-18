@@ -44,6 +44,16 @@ older records remain readable through a generic or known-reason fallback.
 Ordinary status reads and event records do not send routine notifications.
 Cancellation clears pending permission and never stops an active wash.
 
+In the beta dashboard, **Execution record** separates the estimate used to
+choose an overnight wash from the start attempt and reported result. New
+estimates retain their electricity and configured non-electricity costs, plus
+up to eight effective rate periods with estimated energy. The table identifies
+contracted rates, free calendar rates and manual price overrides without saving
+calendar names or account details. Longer estimates show how many periods are
+omitted; the total still includes them. Old records and explicit programme
+overrides do not acquire a rate breakdown from today's data. These are modelled
+costs at planning time, not a bill or a measurement of what the wash used.
+
 ## Start With One Appliance
 
 For the [new-install guide](getting-started.md), start with

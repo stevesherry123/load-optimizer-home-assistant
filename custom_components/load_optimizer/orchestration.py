@@ -21,7 +21,10 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.json import load_json_object
 
 from .const import DOMAIN
-from .legacy.costing import operational_overnight_window, parse_clock
+from .legacy.costing import (
+    QUOTE_TARIFF_OVERRIDE_SOURCES, QUOTE_TARIFF_PERIOD_LIMIT,
+    operational_overnight_window, parse_clock,
+)
 from .orchestration_migration import LEGACY_AUTOMATION_IDS, OrchestrationMigration
 
 LOGGER = logging.getLogger(__name__)
@@ -708,9 +711,11 @@ class NativeOrchestrator:
             return {}
         reason = attributes.get("reason")
         if (include_selection and attributes.get("intent") == "overnight"
-                and reason in ("best_overnight", "cheapest_start_in_window_late_finish")
                 and saved == self._recommendation_quote(attributes)):
-            saved["overnight_selection_reason"] = reason
+            if reason in ("best_overnight", "cheapest_start_in_window_late_finish"):
+                saved["overnight_selection_reason"] = reason
+            if rates := self._quote_tariff_evidence(attributes.get("tariff_evidence"), saved):
+                saved["tariff_evidence"] = rates
         evidence = {"recommendation_quote": saved}
         alternatives = []
         seen = {saved["program"]}
@@ -727,6 +732,43 @@ class NativeOrchestrator:
         if alternatives:
             evidence["recommendation_alternatives"] = alternatives
         return evidence
+
+    def _quote_tariff_evidence(self, evidence: object, quote: dict) -> dict | None:
+        """Keep a bounded, detached breakdown, never provider or event metadata."""
+        if not isinstance(evidence, dict):
+            return None
+        count, periods = evidence.get("period_count"), evidence.get("periods")
+        if (type(count) is not int or count < 1 or not isinstance(periods, list)
+                or len(periods) != min(count, QUOTE_TARIFF_PERIOD_LIMIT)):
+            return None
+
+        def finite(value):
+            return type(value) in (int, float) and -float("inf") < value < float("inf")
+
+        cost_keys = ("energy_cost_pence", "non_energy_cost_pence")
+        if not all(finite(evidence.get(key)) for key in cost_keys):
+            return None
+        start, finish = datetime.fromisoformat(quote["start"]), datetime.fromisoformat(quote["finish"])
+        rows = []
+        previous_end = start
+        for period in periods:
+            if not isinstance(period, dict):
+                return None
+            values = {key: period.get(key) for key in ("price_p_per_kwh", "energy_kwh", "energy_cost_pence")}
+            source = period.get("rate_source", "contracted")
+            if (not all(finite(value) for value in values.values()) or values["energy_kwh"] < 0
+                    or source not in ("contracted", *QUOTE_TARIFF_OVERRIDE_SOURCES)):
+                return None
+            first = self._parse_datetime(period.get("start"))
+            last = self._parse_datetime(period.get("end"))
+            if not first or not last:
+                return None
+            first, last = max(start, first), min(finish, last)
+            if first < previous_end or last <= first:
+                return None
+            rows.append({"start": first.isoformat(), "end": last.isoformat(), "rate_source": source, **values})
+            previous_end = last
+        return {"period_count": count, "periods": rows, **{key: evidence[key] for key in cost_keys}}
 
     async def async_cancel(self) -> None:
         """Cancel a pending native request."""

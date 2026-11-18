@@ -55,6 +55,7 @@ async def main():
                     if card["title"] == "Execution record":
                         assert "| Recommendation estimate | Not recorded |" in rendered
                         assert "Estimate window" not in rendered
+                        assert "Rates used in this estimate" not in rendered
                         assert "Other programme estimates" not in rendered
                         if populated:
                             assert "Quick45" in rendered and "completed" in rendered and "04:00 GMT" in rendered
@@ -88,6 +89,25 @@ async def main():
                 assert "| Attempted programme | Quick45 |" in rendered
                 assert "| Result programme | Older / program |" in rendered
                 assert "| Eco50 | 0.00 p | Tue 27 Oct 04:10 GMT to Tue 27 Oct 08:30 GMT |" in rendered
+            tariff_periods = [
+                {"start": "2026-10-27T04:00:00Z", "end": "2026-10-27T04:10:00Z",
+                 "price_p_per_kwh": 0, "energy_kwh": 0.1, "rate_source": "free_electricity_calendar"},
+                {"start": "2026-10-27T04:10:00Z", "end": "2026-10-27T04:20:00Z",
+                 "price_p_per_kwh": -5, "energy_kwh": 0.2, "rate_source": "manual_special_price_window"},
+            ]
+            hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "completed", {
+                "last_start_decision_snapshot": {"request": {"program": "Quick45", "recommendation_quote": {
+                    "program": "Quick45", "estimated_cost_pence": 3,
+                    "start": "2026-10-27T04:00:00Z", "finish": "2026-10-27T05:30:00Z",
+                    "tariff_evidence": {"period_count": 9, "energy_cost_pence": -1,
+                                        "non_energy_cost_pence": 4, "periods": tariff_periods * 4},
+                }}}})
+            rendered = Template(execution["content"], hass).async_render(parse_result=False)
+            assert "Rates used in this estimate" in rendered
+            assert "Estimated electricity: -1.0000 p. Configured non-electricity costs: 4.0000 p." in rendered
+            assert "Showing the first 8 of 9 priced periods. The estimate includes all periods." in rendered
+            assert "| 0.0000 p/kWh | Free electricity calendar | 0.1000 kWh |" in rendered
+            assert "| -5.0000 p/kWh | Manual price override | 0.2000 kWh |" in rendered
             hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "queued", {"request": {
                 "program": "MixedLoad", "start": "2026-10-28T22:00:00Z", "finish": "2026-10-29T00:00:00Z", "cost_pence": 40}})
             card = next(card for card in templates if card["title"] == "Next wash")

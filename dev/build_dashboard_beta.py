@@ -184,6 +184,7 @@ def build():
         {% set request = snapshot.get('request') if snapshot is mapping else none %}
         {% set quote = request.get('recommendation_quote') if request is mapping else none %}
         {% set alternatives = request.get('recommendation_alternatives') if request is mapping else none %}
+        {% set tariff = quote.get('tariff_evidence') if quote is mapping else none %}
         {% macro home_time(value) -%}
         {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'Not recorded' }}
         {%- endmacro %}
@@ -205,6 +206,22 @@ def build():
         | Last recorded result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
         | Result programme | {{ (state_attr(native, 'last_program') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |
         | Detail | {{ (state_attr(native, 'last_message') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |
+        {% if tariff is mapping and tariff.periods is sequence and tariff.period_count is number and tariff.energy_cost_pence is number and tariff.non_energy_cost_pence is number %}
+
+        **Rates used in this estimate**
+
+        Estimated electricity: {{ '%.4f p' | format(tariff.energy_cost_pence) }}. Configured non-electricity costs: {{ '%.4f p' | format(tariff.non_energy_cost_pence) }}.
+        {% set sources = {'contracted': 'Contracted rate', 'free_electricity_calendar': 'Free electricity calendar', 'manual_special_price_window': 'Manual price override'} -%}
+        {% if tariff.period_count > tariff.periods | count %}
+        Showing the first {{ tariff.periods | count }} of {{ tariff.period_count }} priced periods. The estimate includes all periods.
+        {% endif %}
+
+        | Estimate window | Rate | Source | Estimated energy |
+        |---|---|---|---|
+        {% for row in tariff.periods[:8] if row is mapping and row.price_p_per_kwh is number and row.energy_kwh is number -%}
+        | {{ home_time(row.start) }} to {{ home_time(row.end) }} | {{ '%.4f p/kWh' | format(row.price_p_per_kwh) }} | {{ sources.get(row.rate_source, 'Unknown source') }} | {{ '%.4f kWh' | format(row.energy_kwh) }} |
+        {% endfor -%}
+        {% endif %}
         {% if alternatives is sequence and alternatives is not string and alternatives is not mapping and alternatives %}
 
         **Other programme estimates for this request**

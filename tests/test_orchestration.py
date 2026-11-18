@@ -15,7 +15,8 @@ from zoneinfo import ZoneInfo
 
 SOURCE = Path(__file__).resolve().parents[1] / "custom_components/load_optimizer/orchestration.py"
 sys.path.insert(0, str(SOURCE.parent))
-from legacy.costing import recommend_cycle, operational_overnight_window, parse_clock
+from legacy.costing import (QUOTE_TARIFF_OVERRIDE_SOURCES, QUOTE_TARIFF_PERIOD_LIMIT,
+                            recommend_cycle, operational_overnight_window, parse_clock)
 
 tree = ast.parse(SOURCE.read_text())
 tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
@@ -26,6 +27,8 @@ namespace = {
     "Any": object, "Callable": object, "HomeAssistant": object, "ConfigEntry": object,
     "OrchestrationMigration": object, "Event": object, "callback": lambda fn: fn,
     "operational_overnight_window": operational_overnight_window, "parse_clock": parse_clock,
+    "QUOTE_TARIFF_OVERRIDE_SOURCES": QUOTE_TARIFF_OVERRIDE_SOURCES,
+    "QUOTE_TARIFF_PERIOD_LIMIT": QUOTE_TARIFF_PERIOD_LIMIT,
     "Store": Mock, "DOMAIN": "load_optimizer", "STATE_ON": "on",
     "LEGACY_AUTOMATION_IDS": [], "HomeAssistantError": RuntimeError,
 }
@@ -195,6 +198,9 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                     "finish": "2026-10-08T22:30:00+00:00", "cost_pence": 9}
         self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45",
                  status="ready", intent="overnight", reason="best_overnight",
+                 tariff_evidence={"energy_cost_pence": 9, "non_energy_cost_pence": 0, "period_count": 1,
+                                  "periods": [{"start": selected["start"], "end": selected["finish"],
+                                               "price_p_per_kwh": 9, "energy_kwh": 1, "energy_cost_pence": 9}]},
                  program_options=[selected], **selected)
         self.scheduler.state["override_program"] = "Quick45"
         self.scheduler.async_evaluate = AsyncMock()
@@ -202,6 +208,73 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         quote = self.scheduler.state["request"]["recommendation_quote"]
         self.assertEqual(quote["estimated_cost_pence"], 9)
         self.assertNotIn("overnight_selection_reason", quote)
+        self.assertNotIn("tariff_evidence", quote)
+
+    async def test_tariff_evidence_follows_a_same_price_replan_then_is_saved_detached(self):
+        entity = "sensor.load_optimizer_1_overnight_recommendation"
+        quote = {"program": "Quick45", "start": "2026-10-08T22:10:00+00:00",
+                 "finish": "2026-10-08T22:40:00+00:00", "cost_pence": 12}
+        rows = [
+            {"start": "2026-10-08T22:00:00+00:00", "end": "2026-10-08T22:25:00+00:00",
+             "price_p_per_kwh": 18, "energy_kwh": 0.5, "energy_cost_pence": 9,
+             "source_entity": "event.private_account_fixture"},
+            {"start": "2026-10-08T22:25:00+00:00", "end": "2026-10-08T23:00:00+00:00",
+             "price_p_per_kwh": 6, "energy_kwh": 0.5, "energy_cost_pence": 3,
+             "rate_source": "manual_special_price_window", "event_label": "Private label fixture"},
+        ]
+        evidence = {"energy_cost_pence": 12, "non_energy_cost_pence": 0, "period_count": 2, "periods": rows}
+        attrs = dict(quote, status="ready", intent="overnight", reason="best_overnight",
+                     confidence=90, tariff_evidence=evidence)
+        self.put(entity, "Quick45", **attrs)
+        await self.scheduler.async_request("overnight")
+        request = self.scheduler.state["request"]
+        first = request["recommendation_quote"]["tariff_evidence"]
+        self.assertEqual(first["periods"][0]["start"], quote["start"])
+        self.assertEqual(first["periods"][-1]["end"], quote["finish"])
+        self.assertNotIn("fixture", repr(first).lower())
+
+        rows[0].update(price_p_per_kwh=6, energy_cost_pence=3)
+        rows[1].update(price_p_per_kwh=18, energy_cost_pence=9)
+        self.assertEqual(first["periods"][0]["price_p_per_kwh"], 18)
+        self.put(entity, "Quick45", **attrs)
+        await self.scheduler.async_evaluate()
+        revised = deepcopy(request["recommendation_quote"])
+        self.assertEqual(revised["estimated_cost_pence"], 12)
+        self.assertEqual(revised["tariff_evidence"]["periods"][0]["price_p_per_kwh"], 6)
+
+        Clock.current = datetime.fromisoformat(quote["start"]) - timedelta(minutes=1)
+        rows[0].update(price_p_per_kwh=14, energy_cost_pence=7)
+        rows[1].update(price_p_per_kwh=10, energy_cost_pence=5)
+        await self.scheduler.async_evaluate()
+        self.assertEqual(request["recommendation_quote"], revised)
+
+        Clock.current += timedelta(minutes=1)
+        self.scheduler._async_start_allowed = AsyncMock(return_value=True)
+        await self.scheduler._async_execute(request)
+        record = self.scheduler.store.async_save.await_args.args[0]["state"]
+        self.assertEqual(record["last_start_decision_snapshot"]["request"]["recommendation_quote"], revised)
+        self.assertEqual([call.args[0] for call in self.hass.services.async_call.await_args_list],
+                         ["persistent_notification"])
+
+    def test_bad_tariff_evidence_is_not_saved_but_valid_quote_remains(self):
+        quote = {"program": "Quick45", "start": "2026-10-08T22:00:00+00:00",
+                 "finish": "2026-10-08T22:30:00+00:00", "cost_pence": 0}
+        row = {"start": quote["start"], "end": quote["finish"], "rate_source": "contracted",
+               "price_p_per_kwh": 0, "energy_kwh": 1, "energy_cost_pence": 0}
+        for count, rows in (
+            (0, []), (2, [row]), (2, [row, row]), (9, [row] * 9),
+            (1, [{**row, "price_p_per_kwh": float("nan")}]),
+            (1, [{**row, "rate_source": "calendar.private_label"}]),
+            (1, [{**row, "end": quote["start"]}]),
+            (1, [{**row, "start": quote["finish"]}]),
+        ):
+            with self.subTest(count=count, rows=rows):
+                attrs = dict(quote, status="ready", intent="overnight", tariff_evidence={
+                    "energy_cost_pence": 0, "non_energy_cost_pence": 0, "period_count": count, "periods": rows,
+                })
+                saved = self.scheduler._recommendation_evidence(attrs, attrs)["recommendation_quote"]
+                self.assertEqual(saved["estimated_cost_pence"], 0)
+                self.assertNotIn("tariff_evidence", saved)
 
     async def test_real_overnight_planner_reason_is_saved_with_its_quote(self):
         start = datetime(2026, 10, 8, 20, tzinfo=timezone.utc)

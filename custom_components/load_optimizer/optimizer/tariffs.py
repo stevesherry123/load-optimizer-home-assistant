@@ -403,6 +403,10 @@ def _apply_negative_run_limit(model: dict, policy: dict, negative_fit: dict) -> 
     return result
 
 
+QUOTE_TARIFF_PERIOD_LIMIT = 8
+QUOTE_TARIFF_OVERRIDE_SOURCES = ("free_electricity_calendar", "manual_special_price_window")
+
+
 def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> dict:
     """Overlay a scaled learned profile on tariff periods."""
     with localcontext() as context:
@@ -438,6 +442,7 @@ def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> di
                     "start": period["start"],
                     "end": period["end"],
                     "price_p_per_kwh": period["price_p_per_kwh"],
+                    "rate_source": period.get("source"),
                     "energy_kwh": Decimal(0),
                     "energy_cost_pence": Decimal(0),
                 })
@@ -458,6 +463,8 @@ def estimate_cycle_cost(start: datetime, model: dict, periods: list[dict]) -> di
                 "price_p_per_kwh": item["price_p_per_kwh"],
                 "energy_kwh": float(round(item["energy_kwh"] * scale, 6)),
                 "energy_cost_pence": float(round(item["energy_cost_pence"] * scale, 4)),
+                **({"rate_source": item["rate_source"]}
+                   if item["rate_source"] in QUOTE_TARIFF_OVERRIDE_SOURCES else {}),
             }
             for item in sorted(breakdown_by_start.values(), key=lambda value: value["start"])
             if item["energy_kwh"] > 0
@@ -746,6 +753,15 @@ def summarize_decision(
     seconds_until_start = None
     if start:
         seconds_until_start = max(0, round((start - reference_utc).total_seconds()))
+    breakdown = candidate.get("cost_breakdown")
+    tariff_evidence = {}
+    if intent == "overnight" and breakdown:
+        tariff_evidence["tariff_evidence"] = {
+            "energy_cost_pence": candidate["energy_cost_pence"],
+            "non_energy_cost_pence": candidate["non_energy_cost_pence"],
+            "period_count": len(breakdown),
+            "periods": breakdown[:QUOTE_TARIFF_PERIOD_LIMIT],
+        }
     return {
         "intent": intent,
         "status": "ready",
@@ -784,6 +800,7 @@ def summarize_decision(
         "is_green_window_start": candidate.get("is_green_window_start"),
         "program_options": program_options or [],
         "display_program_options": display_program_options or program_options or [],
+        **tariff_evidence,
     }
 
 
