@@ -824,6 +824,8 @@ views:
 
         {% set tariff = quote.get(''tariff_evidence'') if quote is mapping else none %}
 
+        {% set benefit = quote.get(''estimated_net_benefit_pence'') if quote is mapping else none %}
+
         {% macro home_time(value) -%}
 
         {{ (as_datetime(value) | as_local).strftime(''%a %d %b %H:%M %Z'') if as_datetime(value, none) else ''Not recorded'' }}
@@ -840,7 +842,7 @@ views:
 
         | Attempted programme | {{ (request.program | default(''Not recorded'', true)) | replace(''|'', ''/'') | replace(''\n'', '' '') if request is mapping else ''Not recorded'' }} |
 
-        | Recommendation estimate | {{ (''%.2f p'' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else ''Not recorded'' }} |
+        | Recommendation estimate | {{ ''Under 0.01 p net benefit'' if benefit is number and 0 < benefit < 0.005 else ((''%.2f p'' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else ''Not recorded'') }} |
 
         {% if quote is mapping and quote.estimated_cost_pence is number -%}
 
@@ -857,6 +859,12 @@ views:
         | Why this estimate was selected | No eligible plan finished within the window. This was the lowest-cost eligible start, with a later finish. |
 
         {% endif -%}
+
+        {% endif -%}
+
+        {% if benefit is number and benefit > 0 -%}
+
+        | Estimated net benefit of extra wash | {{ ''Under 0.0001 p'' if benefit < 0.0001 else ''%.4f p'' | format(benefit) }} |
 
         {% endif -%}
 

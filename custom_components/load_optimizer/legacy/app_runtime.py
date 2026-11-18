@@ -2036,7 +2036,8 @@ def publish_cost_entities(
                 recommendation.get("program_options", []),
             ),
         }
-        if recommendation_status == "ready" and recommendation_ready and intent == "overnight" and "tariff_evidence" in recommendation:
+        if (recommendation_status == "ready" and recommendation_ready
+                and intent in ("overnight", "negative_price") and "tariff_evidence" in recommendation):
             attributes["tariff_evidence"] = recommendation["tariff_evidence"]
         publish_entity(token, f"{prefix}_{intent}_recommendation", state or "not_ready", attributes)
         if intent in {"overnight", "negative_price"}:

@@ -710,10 +710,16 @@ class NativeOrchestrator:
         if saved is None:
             return {}
         reason = attributes.get("reason")
-        if (include_selection and attributes.get("intent") == "overnight"
+        intent = attributes.get("intent")
+        if (include_selection and intent in ("overnight", "negative_price")
                 and saved == self._recommendation_quote(attributes)):
-            if reason in ("best_overnight", "cheapest_start_in_window_late_finish"):
+            if intent == "overnight" and reason in ("best_overnight", "cheapest_start_in_window_late_finish"):
                 saved["overnight_selection_reason"] = reason
+            benefit = attributes.get("net_benefit_pence")
+            if (intent == "negative_price" and reason == "best_negative_price_net_benefit"
+                    and attributes.get("positive_net_benefit") is True
+                    and type(benefit) in (int, float) and 0 < benefit < float("inf")):
+                saved["estimated_net_benefit_pence"] = benefit
             if rates := self._quote_tariff_evidence(attributes.get("tariff_evidence"), saved):
                 saved["tariff_evidence"] = rates
         evidence = {"recommendation_quote": saved}
@@ -898,6 +904,10 @@ class NativeOrchestrator:
                     "unconfigured_costs": list(recommendation.attributes.get("unconfigured_costs", [])),
                     "planning_coverage": recommendation.attributes.get("overnight_planning_coverage", {}),
                 }
+                if decision["mode"] == "negative_price":
+                    self.state["request"].update(self._recommendation_evidence(
+                        recommendation.attributes, recommendation.attributes,
+                    ))
                 self.state["execution_status"] = "queued"
                 self.state[
                     "last_auto_negative_price_request"

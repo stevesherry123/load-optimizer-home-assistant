@@ -45,8 +45,10 @@ Ordinary status reads and event records do not send routine notifications.
 Cancellation clears pending permission and never stops an active wash.
 
 In the beta dashboard, **Execution record** separates the estimate used to
-choose an overnight wash from the start attempt and reported result. New
-estimates retain their electricity and configured non-electricity costs, plus
+choose an overnight wash or profitable extra wash from the start attempt and
+reported result. The extra-wash record includes the estimated net benefit, even
+when it is smaller than the normal price display precision. New estimates
+retain their electricity and configured non-electricity costs, plus
 up to eight effective rate periods with estimated energy. The table identifies
 contracted rates, free calendar rates and manual price overrides without saving
 calendar names or account details. Longer estimates show how many periods are

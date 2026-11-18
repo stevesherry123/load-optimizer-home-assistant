@@ -968,6 +968,13 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 if self.scheduler.state["last_attempt"] == attempt.isoformat():
                     self.assertEqual(self.scheduler.state["last_result"], "confirmed")
                     program = self.scheduler.state["last_program"]
+                    request = self.scheduler.state["last_start_decision_snapshot"]["request"]
+                    quote = request["recommendation_quote"]
+                    self.assertEqual(request["mode"], "negative_price")
+                    self.assertEqual(quote["program"], program)
+                    self.assertEqual(quote["start"], recommendation["start"])
+                    self.assertEqual(quote["estimated_net_benefit_pence"], recommendation["net_benefit_pence"])
+                    self.assertLess(quote["tariff_evidence"]["energy_cost_pence"], 0)
                     runs.append((attempt, program))
                     model = next(model for model in models if model["program"] == program)
                     Clock.current += timedelta(minutes=model["expected_runtime_minutes"])

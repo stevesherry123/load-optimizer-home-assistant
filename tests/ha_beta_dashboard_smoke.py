@@ -108,6 +108,19 @@ async def main():
             assert "Showing the first 8 of 9 priced periods. The estimate includes all periods." in rendered
             assert "| 0.0000 p/kWh | Free electricity calendar | 0.1000 kWh |" in rendered
             assert "| -5.0000 p/kWh | Manual price override | 0.2000 kWh |" in rendered
+            for benefit, cost, expected in (
+                (0.000001, 0, "Under 0.0001 p"), (2.125, -2.125, "2.1250 p"),
+            ):
+                hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "completed", {
+                    "last_start_decision_snapshot": {"request": {"program": "Quick45", "recommendation_quote": {
+                        "program": "Quick45", "estimated_cost_pence": cost,
+                        "start": "2026-10-27T04:00:00Z", "finish": "2026-10-27T04:30:00Z",
+                        "estimated_net_benefit_pence": benefit,
+                    }}}})
+                rendered = Template(execution["content"], hass).async_render(parse_result=False)
+                assert f"| Estimated net benefit of extra wash | {expected} |" in rendered
+                if cost == 0:
+                    assert "| Recommendation estimate | Under 0.01 p net benefit |" in rendered
             hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "queued", {"request": {
                 "program": "MixedLoad", "start": "2026-10-28T22:00:00Z", "finish": "2026-10-29T00:00:00Z", "cost_pence": 40}})
             card = next(card for card in templates if card["title"] == "Next wash")

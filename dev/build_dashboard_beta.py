@@ -185,6 +185,7 @@ def build():
         {% set quote = request.get('recommendation_quote') if request is mapping else none %}
         {% set alternatives = request.get('recommendation_alternatives') if request is mapping else none %}
         {% set tariff = quote.get('tariff_evidence') if quote is mapping else none %}
+        {% set benefit = quote.get('estimated_net_benefit_pence') if quote is mapping else none %}
         {% macro home_time(value) -%}
         {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'Not recorded' }}
         {%- endmacro %}
@@ -193,7 +194,7 @@ def build():
         | Scheduler | {{ states(native) }} |
         | Last start attempt | {{ home_time(state_attr(native, 'last_attempt')) }} |
         | Attempted programme | {{ (request.program | default('Not recorded', true)) | replace('|', '/') | replace('\\n', ' ') if request is mapping else 'Not recorded' }} |
-        | Recommendation estimate | {{ ('%.2f p' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else 'Not recorded' }} |
+        | Recommendation estimate | {{ 'Under 0.01 p net benefit' if benefit is number and 0 < benefit < 0.005 else (('%.2f p' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else 'Not recorded') }} |
         {% if quote is mapping and quote.estimated_cost_pence is number -%}
         | Estimate window | {{ home_time(quote.start) }} to {{ home_time(quote.finish) }} |
         {% set selection = quote.get('overnight_selection_reason') -%}
@@ -202,6 +203,9 @@ def build():
         {% elif selection == 'cheapest_start_in_window_late_finish' -%}
         | Why this estimate was selected | No eligible plan finished within the window. This was the lowest-cost eligible start, with a later finish. |
         {% endif -%}
+        {% endif -%}
+        {% if benefit is number and benefit > 0 -%}
+        | Estimated net benefit of extra wash | {{ 'Under 0.0001 p' if benefit < 0.0001 else '%.4f p' | format(benefit) }} |
         {% endif -%}
         | Last recorded result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
         | Result programme | {{ (state_attr(native, 'last_program') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |

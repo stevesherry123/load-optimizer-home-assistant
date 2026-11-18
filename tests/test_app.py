@@ -583,7 +583,7 @@ class PublishingTests(unittest.TestCase):
         PUBLISHED_ENTITY_CACHE.clear()
 
     @patch("legacy.app_runtime.api_request")
-    def test_only_ready_overnight_entity_publishes_tariff_evidence(self, api_request):
+    def test_only_ready_automatic_intents_publish_tariff_evidence(self, api_request):
         api_request.return_value = {"state": "ready"}
         start = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
         finish = start + timedelta(minutes=30)
@@ -592,7 +592,8 @@ class PublishingTests(unittest.TestCase):
         quote = {"status": "ready", "program": "Eco", "cost_pence": 5,
                  "start": start.isoformat(), "finish": finish.isoformat(), "tariff_evidence": evidence}
         result = {"status": "ready", "program": "Eco", "start": start, "finish": finish,
-                  "overnight_recommendation": quote, "now_recommendation": quote}
+                  "overnight_recommendation": quote, "negative_price_recommendation": quote,
+                  "now_recommendation": quote}
         for cycle_running, blocked in ((False, False), (True, False), (False, True)):
             with self.subTest(cycle_running=cycle_running, blocked=blocked):
                 api_request.reset_mock()
@@ -601,8 +602,10 @@ class PublishingTests(unittest.TestCase):
                                       {**result, "blocked_window_source_ready": not blocked},
                                       cycle_running=cycle_running, reference_utc=start)
                 attrs = {call.args[1]: call.args[2]["attributes"] for call in api_request.call_args_list}
-                overnight = attrs["/states/sensor.load_optimizer_1_overnight_recommendation"]
-                self.assertEqual(overnight.get("tariff_evidence"), None if cycle_running or blocked else evidence)
+                for intent in ("overnight", "negative_price"):
+                    recommendation = attrs[f"/states/sensor.load_optimizer_1_{intent}_recommendation"]
+                    self.assertEqual(recommendation.get("tariff_evidence"),
+                                     None if cycle_running or blocked else evidence)
                 self.assertNotIn("tariff_evidence", attrs["/states/sensor.load_optimizer_1_now_recommendation"])
 
     @patch("legacy.app_runtime.api_request")

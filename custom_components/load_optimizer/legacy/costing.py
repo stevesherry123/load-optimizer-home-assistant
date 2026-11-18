@@ -755,7 +755,7 @@ def summarize_decision(
         seconds_until_start = max(0, round((start - reference_utc).total_seconds()))
     breakdown = candidate.get("cost_breakdown")
     tariff_evidence = {}
-    if intent == "overnight" and breakdown:
+    if intent in ("overnight", "negative_price") and breakdown:
         tariff_evidence["tariff_evidence"] = {
             "energy_cost_pence": candidate["energy_cost_pence"],
             "non_energy_cost_pence": candidate["non_energy_cost_pence"],
