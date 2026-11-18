@@ -8,6 +8,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "homeassistant/dashboards/beta/load_optimizer_beta.yaml"
+OUTPUT_V2 = OUTPUT.with_name("load_optimizer_beta_v2.yaml")
 
 
 def walk(value):
@@ -39,7 +40,7 @@ def view(title, path, icon, *sections):
             "type": "sections", "max_columns": 3, "sections": list(sections)}
 
 
-def build():
+def build(*, compact=False):
     full = yaml.safe_load((ROOT / "homeassistant/dashboards/full/load_optimizer_dashboard.yaml").read_text())
     learning = yaml.safe_load((ROOT / "homeassistant/dashboards/full/dishwasher_learning_insights.yaml").read_text())
     catalogue = deepcopy(next(card for card in walk(full) if card.get("title") == "Program Catalogue"))
@@ -217,10 +218,15 @@ def build():
             entities("Readiness", 1, [("overnight_readiness", "Overnight"),
                 ("negative_price_readiness", "Free / negative price") ])),
         section(events, span=2), section(capabilities, span=3))
-    return {"title": "Load Optimizer Beta", "views": [overview, dishwasher, learning_view, diagnostics]}
+    if compact:
+        learning_view["sections"] = [learning_view["sections"][2], learning_view["sections"][1]]
+        diagnostics["sections"].pop()
+    title = "Load Optimizer Beta V2" if compact else "Load Optimizer Beta"
+    return {"title": title, "views": [overview, dishwasher, learning_view, diagnostics]}
 
 
 if __name__ == "__main__":
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(yaml.safe_dump(build(), sort_keys=False, allow_unicode=True, width=1000))
-    print(OUTPUT)
+    for path, compact in ((OUTPUT, False), (OUTPUT_V2, True)):
+        path.write_text(yaml.safe_dump(build(compact=compact), sort_keys=False, allow_unicode=True, width=1000))
+        print(path)
