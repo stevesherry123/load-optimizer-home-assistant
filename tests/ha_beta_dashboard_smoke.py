@@ -12,12 +12,21 @@ from homeassistant.util import dt as dt_util
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from dev.build_dashboard_beta import build, walk, OUTPUT
+from dev.build_dashboard_beta import build, walk, OUTPUT, OUTPUT_V2
 
 
 async def main():
     assert yaml.safe_load(OUTPUT.read_text()) == build(), "Regenerate the beta YAML"
     dashboard = build()
+    compact = build(compact=True)
+    assert yaml.safe_load(OUTPUT_V2.read_text()) == compact, "Regenerate the Beta V2 YAML"
+    assert compact["title"] == "Load Optimizer Beta V2"
+    assert compact["views"][:2] == dashboard["views"][:2]
+    original_learning, original_diagnostics = dashboard["views"][2:]
+    compact_learning, compact_diagnostics = compact["views"][2:]
+    assert compact_learning["sections"] == [original_learning["sections"][2], original_learning["sections"][1]]
+    assert compact_learning["sections"][0]["cards"][0]["title"] == "Program Catalogue"
+    assert compact_diagnostics["sections"] == original_diagnostics["sections"][:-1]
     assert [view["path"] for view in dashboard["views"]] == ["overview", "dishwasher", "learning", "diagnostics"]
     actions = [node for node in walk(dashboard) if node.get("action") == "perform-action"]
     assert len(actions) == 4 and all(node.get("confirmation") for node in actions)
