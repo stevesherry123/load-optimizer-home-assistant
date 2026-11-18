@@ -14,6 +14,7 @@ from ha_onboarding_smoke import Clock, ROOT, configure, identities
 from ha_negative_price_smoke import cycle
 from homeassistant import loader
 from homeassistant.bootstrap import async_from_config_dict
+from homeassistant.components.http import HomeAssistantHTTP
 from homeassistant.core import HomeAssistant
 from custom_components.load_optimizer.legacy import app_runtime
 
@@ -63,7 +64,9 @@ async def main():
              patch("custom_components.load_optimizer.orchestration.datetime", Clock), \
              patch("custom_components.load_optimizer.legacy_runtime.datetime", Clock), \
              patch.object(app_runtime, "datetime", Clock), \
-             patch("homeassistant.bootstrap.DEFAULT_INTEGRATIONS", set()), \
+             patch.object(HomeAssistantHTTP, "async_bind", new=AsyncMock(), create=True), \
+             patch.object(HomeAssistantHTTP, "start", new=AsyncMock()), \
+             patch.object(HomeAssistantHTTP, "stop", new=AsyncMock()), \
              patch.object(type(hass.services), "async_call", new=guarded_call):
             try:
                 assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
