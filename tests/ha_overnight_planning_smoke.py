@@ -22,6 +22,7 @@ EXAMPLE = '''- id: "1"
   name: Synthetic overnight dishwasher
   power_sensor: sensor.synthetic_power
   program_sensor: sensor.synthetic_program
+  schedule_latest_finish_entity: input_datetime.synthetic_deadline
   schedule_overnight_start: "20:00"
   schedule_overnight_end: "07:00"
   program_policies:
@@ -71,6 +72,7 @@ async def main():
             try:
                 assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
                 await hass.async_start()
+                hass.states.async_set("input_datetime.synthetic_deadline", "2026-10-13 04:29:00")
                 hass.states.async_set("sensor.synthetic_power", 0)
                 hass.states.async_set("sensor.synthetic_program", "Quick65")
                 hass.states.async_set("sensor.synthetic_rates", "ready", {"rates": rates(7)})
@@ -133,6 +135,19 @@ async def main():
                 assert revised_quote["tariff_evidence"]["periods"][0]["start"] == revised_quote["start"]
                 assert first_quote["program"] == "Eco50"
                 print("Real HA: late full rates select Eco50; price revision replans without consuming another reservation")
+
+                # The real planner and adapter both ignore a deadline predating
+                # this permission. No hardware service is registered or called.
+                request = deepcopy(controller.state["request"])
+                assert await coordinator._async_automatic_start_block(request) is None
+                hass.states.async_set("input_datetime.synthetic_deadline", "unavailable")
+                assert await coordinator._async_automatic_start_block(request) == "normal_wash_schedule_constraint_unavailable"
+                await coordinator.async_refresh()
+                assert hass.states.get("sensor.load_optimizer_1_cost_status").state == "schedule_constraint_unavailable"
+                hass.states.async_set("input_datetime.synthetic_deadline", "2026-10-13 04:29:00")
+                await coordinator.async_refresh()
+                assert not commands
+                print("Real HA: stale travel deadline accepted consistently; unreadable constraint pauses planning and execution")
 
                 # A manual programme and time must survive future planner changes and reload.
                 manual = {**controller.state["request"], "automatic": False, "mode": "overnight"}

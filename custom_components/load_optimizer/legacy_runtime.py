@@ -498,17 +498,16 @@ class LegacyRuntime:
                 price_p_per_kwh=manual["price_p_per_kwh"], label=manual["label"],
             )
 
-        constraints = {}
-        for setting, argument in (("schedule_earliest_start_entity", "earliest_start_utc"),
-                                  ("schedule_latest_finish_entity", "latest_finish_utc")):
-            entity_id = config.get(setting)
-            if entity_id:
-                value = app_runtime.datetime_from_entity_state(
-                    self._source_state(ADAPTER_MARKER, entity_id), naive_timezone=config["tariff_timezone"],
-                )
-                if value is None:
-                    return "negative_price_outside_schedule_constraints"
-                constraints[argument] = value
+        constraint_config = dict(config)
+        if normal:
+            constraint_config.update(schedule_request_created_at=request.get("created_at"),
+                                     schedule_request_latest_finish=request.get("latest_finish_utc"))
+        resolved = app_runtime.schedule_constraints(
+            constraint_config, now, lambda entity: self._source_state(ADAPTER_MARKER, entity))
+        if resolved["unreadable"]:
+            return "negative_price_schedule_constraint_unavailable"
+        constraints = {key: resolved[key] for key in ("earliest_start_utc", "latest_finish_utc")
+                       if resolved[key] is not None}
         if normal:
             finish = now + timedelta(minutes=summary["expected_runtime_minutes"])
             if (constraints.get("earliest_start_utc", now) > now

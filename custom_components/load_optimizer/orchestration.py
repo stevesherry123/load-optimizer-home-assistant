@@ -21,6 +21,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.json import load_json_object
 
 from .const import DOMAIN
+from .legacy.app_runtime import schedule_constraints
 from .legacy.costing import (
     QUOTE_TARIFF_OVERRIDE_SOURCES, QUOTE_TARIFF_PERIOD_LIMIT,
     operational_overnight_window, parse_clock,
@@ -106,6 +107,9 @@ REASON_MESSAGES = {
     "automatic_request_available": "An automatic recommendation is available; a saved request has not yet been created.",
     "awaiting_plan": "One wash is authorised; waiting for an eligible plan inside its start window.",
     "no_eligible_plan_in_window": "No eligible programme can start inside the authorised window. Review programme permissions and available prices.",
+    "normal_wash_outside_schedule_constraints": "The wash cannot finish within its applicable start/finish constraints. Review the travel deadline; the authorised window is retained before any command.",
+    "normal_wash_schedule_constraint_unavailable": "A configured start/finish constraint is unavailable. Restore its source before the authorised window closes.",
+    "normal_wash_deadline_expired": "The finish deadline attached to this wash has passed. A new wash permission is required.",
     "normal_wash_tariff_unavailable": "Required electricity prices are unavailable. Planning will resume automatically if prices return inside the original window.",
     "normal_wash_tariff_invalid": "Electricity prices could not be verified. Restore valid tariff data before this window closes.",
     "normal_wash_cycle_not_fully_priced": "Prices do not cover the complete wash. The request will resume when full coverage returns inside its window.",
@@ -195,7 +199,9 @@ class NativeOrchestrator:
         self.schedule_config = dict(config)
         request = self.state.get("request") or {}
         if request.get("normal_wash"):
-            config.update(schedule_request_window_start=request["window_start"],
+            config.update(schedule_request_created_at=request.get("created_at"),
+                          schedule_request_latest_finish=request.get("latest_finish_utc"),
+                          schedule_request_window_start=request["window_start"],
                           schedule_request_window_end=request["window_end"])
             # Editing defaults affects the next request, not existing authority.
             for key in ("start", "end"):
@@ -218,12 +224,23 @@ class NativeOrchestrator:
             "window_clock_end": end_clock, "timezone": zone,
             "program": None, "start": None, "finish": None,
         }
+        self._capture_request_deadline(self.state["request"], now)
         self.state["execution_status"] = "awaiting_plan"
         self.state["last_message"] = "One wash authorised for the selected overnight window."
         if automatic:
             self.state["last_auto_normal_request"] = now.isoformat()
         self._record_schedule_event("authorised", "one_normal_wash_requested", now=now,
                                     automatic=automatic, window_start=start.isoformat(), window_end=end.isoformat())
+
+    def _capture_request_deadline(self, request: dict, now: datetime) -> datetime | None:
+        config = dict(self.schedule_config,
+                      schedule_request_created_at=request.get("created_at"),
+                      schedule_request_latest_finish=request.get("latest_finish_utc"))
+        resolved = schedule_constraints(config, now, lambda entity: {"state": self._state(entity)})
+        deadline = resolved["latest_finish_utc"]
+        if deadline:
+            request["latest_finish_utc"] = deadline.isoformat()
+        return deadline
 
     async def _async_normal_attention(self, request: dict, reason: str, message: str) -> None:
         """Notify once per unresolved reason, retaining the authorised request."""
@@ -267,12 +284,22 @@ class NativeOrchestrator:
             await self._async_outcome("expired", request["mode"], request.get("program"),
                                       "authorised_window_closed", "The dishwasher start window closed without a confirmed start.")
             return True
+        deadline = self._capture_request_deadline(request, now)
+        if deadline and deadline <= now:
+            await self._async_dismiss_normal_attention(request)
+            self.state["request"] = None
+            await self._async_outcome("expired", request["mode"], request.get("program"),
+                                      "normal_wash_deadline_expired", explain_reason("normal_wash_deadline_expired"))
+            return True
         if request.get("automatic") and not self.state.get("auto_mode_enabled"):
             self.state["execution_status"] = "awaiting_plan"
             request["waiting_reason"] = "automatic_overnight_mode_off"
             return request != before
         door_blocked_start = self._parse_datetime(request.get("door_blocked_start"))
         if door_blocked_start and self._state(self.config.get("bosch_door_sensor")) not in {"off", "closed"}:
+            return False
+        if ("constraint_failure_revision" in request
+                and request["constraint_failure_revision"] == self._overnight_revision()):
             return False
         if ("price_failure_revision" in request
                 and request["price_failure_revision"] == self._overnight_revision()):
@@ -294,6 +321,7 @@ class NativeOrchestrator:
                 "Planning will resume automatically if data returns before the authorised window closes.")
         elif (attributes.get("status") != "ready" or not next_start or not finish
               or not window_start <= next_start < window_end or finish <= next_start
+              or deadline and finish > deadline
               or self._parse_datetime(coverage.get("window_start")) != window_start
               or self._parse_datetime(coverage.get("window_end")) != window_end):
             self.state["execution_status"] = "awaiting_plan"
@@ -347,6 +375,7 @@ class NativeOrchestrator:
                                                     program=plan["program"], start=plan["start"], finish=plan["finish"])
             request.pop("waiting_reason", None)
             request.pop("price_failure_revision", None)
+            request.pop("constraint_failure_revision", None)
             request.pop("door_blocked_start", None)
             await self._async_dismiss_normal_attention(request)
             self.state["execution_status"] = "queued"
@@ -1193,6 +1222,8 @@ class NativeOrchestrator:
         if (self._stopping or self._cancelling or self.hass.is_stopping or not self.state.get("active")
                 or self.state.get("start_recovery_required")):
             return False
+        if request.get("normal_wash"):
+            self._capture_request_deadline(request, datetime.now(timezone.utc))
         mode, program = request.get("mode"), request.get("program")
         automatic = request.get("automatic")
         if not isinstance(automatic, bool):
@@ -1262,6 +1293,18 @@ class NativeOrchestrator:
                     saved["price_failure_revision"] = self._overnight_revision()
                     await self._async_normal_attention(saved, reason,
                         "Dishwasher prices could not be verified before starting. The request will resume inside its original window when prices return.")
+                    await self._async_save()
+                    self._publish()
+                    return False
+            if (request.get("normal_wash") and not recheck and reason in {
+                    "normal_wash_outside_schedule_constraints", "normal_wash_schedule_constraint_unavailable"}):
+                saved = self.state.get("request")
+                if saved and saved.get("created_at") == request.get("created_at"):
+                    self.state["execution_status"] = "awaiting_plan"
+                    saved["constraint_failure_revision"] = self._overnight_revision()
+                    deadline = saved.get("latest_finish_utc") or "not recorded"
+                    await self._async_normal_attention(saved, reason,
+                        f"{explain_reason(reason)} Applicable finish deadline: {deadline}.")
                     await self._async_save()
                     self._publish()
                     return False

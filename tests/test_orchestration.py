@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 SOURCE = Path(__file__).resolve().parents[1] / "custom_components/load_optimizer/orchestration.py"
 sys.path.insert(0, str(SOURCE.parent))
+from legacy.app_runtime import schedule_constraints
 from legacy.costing import (QUOTE_TARIFF_OVERRIDE_SOURCES, QUOTE_TARIFF_PERIOD_LIMIT,
                             recommend_cycle, operational_overnight_window, parse_clock)
 
@@ -26,6 +27,7 @@ namespace = {
     "dt_util": SimpleNamespace(as_local=lambda now: now.astimezone(ZoneInfo("Europe/London"))),
     "Any": object, "Callable": object, "HomeAssistant": object, "ConfigEntry": object,
     "OrchestrationMigration": object, "Event": object, "callback": lambda fn: fn,
+    "schedule_constraints": schedule_constraints,
     "operational_overnight_window": operational_overnight_window, "parse_clock": parse_clock,
     "QUOTE_TARIFF_OVERRIDE_SOURCES": QUOTE_TARIFF_OVERRIDE_SOURCES,
     "QUOTE_TARIFF_PERIOD_LIMIT": QUOTE_TARIFF_PERIOD_LIMIT,
@@ -456,6 +458,60 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.scheduler.state["request"])
         self.assertTrue(all(call.args[0] == "persistent_notification"
                             for call in self.hass.services.async_call.await_args_list))
+
+    async def test_constraint_failure_before_commands_retains_original_permission(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value="normal_wash_schedule_constraint_unavailable"))
+        await self.scheduler._async_execute(request)
+        saved = self.scheduler.state["request"]
+        self.assertEqual(saved["window_end"], request["window_end"])
+        self.assertEqual(saved["created_at"], request["created_at"])
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        self.assertTrue(all(c.args[0] == "persistent_notification" for c in self.hass.services.async_call.await_args_list))
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        # A new planner report can recover within the SAME window.
+        Clock.current += timedelta(minutes=5)
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45", status="ready",
+                 program="Quick45", start=(Clock.current + timedelta(minutes=10)).isoformat(), confidence=88)
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value=None))
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "queued")
+        self.assertEqual(self.scheduler.state["request"]["created_at"], request["created_at"])
+        self.assertEqual(self.scheduler.state["request"]["window_end"], request["window_end"])
+
+    async def test_applicable_deadline_survives_reload_and_expires_permission(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        self.scheduler.schedule_config["schedule_latest_finish_entity"] = "input_datetime.deadline"
+        self.put("input_datetime.deadline", "2026-10-08T23:00:00+00:00")
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        self.assertEqual(request["latest_finish_utc"], "2026-10-08T23:00:00+00:00")
+        await self.scheduler._async_save()
+        persisted = deepcopy(self.scheduler.store.async_save.await_args.args[0])
+        self.scheduler.state["request"] = None
+        # Restore a detached disk payload, rather than a reference to live state.
+        restored = persisted
+        self.scheduler.state.update(restored["state"])
+        self.put("input_datetime.deadline", "2026-10-09T06:00:00+00:00")
+        Clock.current = datetime(2026, 10, 8, 23, tzinfo=timezone.utc)
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_reason"], "normal_wash_deadline_expired")
+        self.assertTrue(all(c.args[0] == "persistent_notification" for c in self.hass.services.async_call.await_args_list))
+
+    async def test_constraint_failure_after_command_cannot_restore_request(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value="normal_wash_outside_schedule_constraints"))
+        self.assertFalse(await self.scheduler._async_start_allowed(request, recheck=True))
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_result"], "blocked")
 
     async def test_price_loss_at_preflight_retains_permission_for_recovery(self):
         self.scheduler.state["auto_mode_enabled"] = False
