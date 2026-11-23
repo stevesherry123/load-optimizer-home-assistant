@@ -501,6 +501,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         await self.scheduler.async_evaluate()
         self.assertIsNone(self.scheduler.state["request"])
         self.assertEqual(self.scheduler.state["last_reason"], "normal_wash_deadline_expired")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
         self.assertTrue(all(c.args[0] == "persistent_notification" for c in self.hass.services.async_call.await_args_list))
 
     async def test_constraint_failure_after_command_cannot_restore_request(self):

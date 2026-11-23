@@ -288,6 +288,7 @@ class NativeOrchestrator:
         if deadline and deadline <= now:
             await self._async_dismiss_normal_attention(request)
             self.state["request"] = None
+            self.state["door_opened_since_last_cycle"] = False
             await self._async_outcome("expired", request["mode"], request.get("program"),
                                       "normal_wash_deadline_expired", explain_reason("normal_wash_deadline_expired"))
             return True
