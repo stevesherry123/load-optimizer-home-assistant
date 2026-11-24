@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.10-beta.2
+
+- Verify the selected dishwasher programme before pressing Start. Stop dispatch if selection fails or the appliance reports a different programme.
+- Limit general EV and appliance status attributes to summary fields to reduce accidental disclosure of household configuration.
+
 ## 1.5.10-beta.1
 
 - Persist and verify a dishwasher start reservation before sending appliance
