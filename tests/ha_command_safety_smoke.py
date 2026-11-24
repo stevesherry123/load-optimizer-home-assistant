@@ -44,7 +44,7 @@ async def main():
                     hass.states.async_set("binary_sensor.synthetic_door", "off")
                     for name in ("connected", "remote_control", "remote_start"):
                         hass.states.async_set("binary_sensor.synthetic_" + name, "on")
-                    hass.states.async_set("select.synthetic_programme", "ready",
+                    hass.states.async_set("select.synthetic_programme", "Dishcare.Dishwasher.Program.MixedLoad",
                                           {"options": ["Dishcare.Dishwasher.Program.MixedLoad"]})
                     request = {"mode": "now", "program": "MixedLoad", "automatic": False,
                                "explicit_program_override": True}

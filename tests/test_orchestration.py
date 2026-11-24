@@ -137,7 +137,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 self.scheduler.state["door_opened_since_last_cycle"] = True
                 self.put("sensor.operation", "BSH.Common.EnumType.OperationState.Ready")
                 self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
-                self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+                self.put("select.programmes", "Dishcare.Dishwasher.Program.MixedLoad", options=["Dishcare.Dishwasher.Program.MixedLoad"])
                 check = AsyncMock(return_value=None)
                 self.scheduler.set_automatic_preflight(check)
 
@@ -153,9 +153,19 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(self.scheduler.state["last_result"], "confirmed")
                 self.assertEqual(check.await_count, count)
 
+    async def test_unconfirmed_programme_blocks_all_start_commands(self):
+        self.put("select.programmes", "previous", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+        with patch.object(asyncio, "sleep", new=AsyncMock()):
+            await self.scheduler._async_execute({"mode": "now", "program": "MixedLoad",
+                                                "automatic": False, "explicit_program_override": True})
+        self.assertEqual(self.scheduler.state["last_reason"], "programme_selection_unconfirmed")
+        self.assertFalse(any(call.args[0] in {"button", "home_connect_alt", "home_connect"}
+                             for call in self.hass.services.async_call.await_args_list))
+
     async def test_no_run_failure_during_power_on_delay_prevents_start_commands(self):
         self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
-        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.MixedLoad", options=["Dishcare.Dishwasher.Program.MixedLoad"])
         check = AsyncMock(side_effect=[None, None, "blocked_window_source_unavailable"])
         self.scheduler.set_automatic_preflight(check)
         request = {"mode": "automatic", "program": "MixedLoad", "start": Clock.current.isoformat()}
@@ -168,7 +178,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(call.args[0] in {"button", "select", "home_connect", "home_connect_alt"} for call in calls))
 
     async def test_failed_reservation_blocks_first_appliance_command(self):
-        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.MixedLoad", options=["Dishcare.Dishwasher.Program.MixedLoad"])
         self.scheduler._async_committed_attempt.side_effect = OSError("synthetic write failure")
         await self.scheduler._async_execute({"mode": "now", "program": "MixedLoad", "automatic": False})
         self.assertEqual(self.scheduler.state["last_reason"], "start_reservation_not_saved")
@@ -176,7 +186,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                             for call in self.hass.services.async_call.await_args_list))
 
     async def test_disabling_mode_during_source_check_prevents_appliance_calls(self):
-        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.MixedLoad", options=["Dishcare.Dishwasher.Program.MixedLoad"])
         for mode, setting in (("automatic", "auto_mode_enabled"), ("negative_price", "auto_negative_price_enabled")):
             with self.subTest(mode=mode):
                 self.scheduler.state[setting] = True
@@ -243,7 +253,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                     self.put("binary_sensor.door", "off")
                     self.scheduler.state["door_opened_since_last_cycle"] = False
                     self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
-                    self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+                    self.put("select.programmes", "Dishcare.Dishwasher.Program.MixedLoad", options=["Dishcare.Dishwasher.Program.MixedLoad"])
                     self.hass.services.async_call.reset_mock()
                     calls_at_change = []
                     sleeps = 0
@@ -270,7 +280,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 with self.subTest(action=action, pause=pause):
                     self.scheduler._stopping = False
                     self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
-                    self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+                    self.put("select.programmes", "Dishcare.Dishwasher.Program.MixedLoad", options=["Dishcare.Dishwasher.Program.MixedLoad"])
                     self.hass.services.async_call.reset_mock()
                     waiting = asyncio.Event()
                     sleeps = 0
@@ -606,7 +616,9 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="dishwasher")
         self.put("select.programmes", "Dishcare.Dishwasher.Program.Eco50",
                  options=["Dishcare.Dishwasher.Program.MixedLoad"])
-        async def command(domain, _service, *_args, **_kwargs):
+        async def command(domain, _service, *args, **_kwargs):
+            if domain == "select":
+                self.put("select.programmes", args[0]["option"], options=[args[0]["option"]])
             if domain == "button":
                 self.put("sensor.operation", namespace["RUNNING_OPERATION"])
 
