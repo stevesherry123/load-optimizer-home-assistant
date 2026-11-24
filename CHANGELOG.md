@@ -8,6 +8,8 @@
   device command; require a fresh plan and never restore uncertain command-stage starts.
 - Add a read-only owner deployment check for the actual Marketplace provider,
   loaded manifest, beta channel, installed version and default update target.
+- Record the running build version with each execution snapshot so physical
+  acceptance can be attributed to the code that attempted the wash.
 - Preserve the trial's saved tariff evidence and existing scheduling/cost work.
   Power-model recalibration is not included in this prerelease candidate.
 

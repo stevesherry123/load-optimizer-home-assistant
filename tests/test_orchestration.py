@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 SOURCE = Path(__file__).resolve().parents[1] / "custom_components/load_optimizer/orchestration.py"
 sys.path.insert(0, str(SOURCE.parent))
-from legacy.app_runtime import schedule_constraints
+from legacy.app_runtime import APP_VERSION, schedule_constraints
 from legacy.costing import (QUOTE_TARIFF_OVERRIDE_SOURCES, QUOTE_TARIFF_PERIOD_LIMIT,
                             recommend_cycle, operational_overnight_window, parse_clock)
 
@@ -27,7 +27,7 @@ namespace = {
     "dt_util": SimpleNamespace(as_local=lambda now: now.astimezone(ZoneInfo("Europe/London"))),
     "Any": object, "Callable": object, "HomeAssistant": object, "ConfigEntry": object,
     "OrchestrationMigration": object, "Event": object, "callback": lambda fn: fn,
-    "schedule_constraints": schedule_constraints,
+    "schedule_constraints": schedule_constraints, "APP_VERSION": APP_VERSION,
     "operational_overnight_window": operational_overnight_window, "parse_clock": parse_clock,
     "QUOTE_TARIFF_OVERRIDE_SOURCES": QUOTE_TARIFF_OVERRIDE_SOURCES,
     "QUOTE_TARIFF_PERIOD_LIMIT": QUOTE_TARIFF_PERIOD_LIMIT,
@@ -562,6 +562,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         await self.scheduler._async_execute(request)
         captured = deepcopy(self.scheduler.state["last_start_decision_snapshot"])
         self.assertEqual(captured["request"], request)
+        self.assertEqual(captured["build_version"], APP_VERSION)
         self.assertEqual(captured["captured_at"], self.scheduler.state["last_attempt"])
         request["planning_coverage"]["complete"] = False
         self.scheduler.state["shadow_decision"] = {"action": "wait", "reason": "appliance_not_idle"}

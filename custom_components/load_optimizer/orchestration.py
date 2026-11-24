@@ -21,7 +21,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.json import load_json_object
 
 from .const import DOMAIN
-from .legacy.app_runtime import schedule_constraints
+from .legacy.app_runtime import APP_VERSION, schedule_constraints
 from .legacy.costing import (
     QUOTE_TARIFF_OVERRIDE_SOURCES, QUOTE_TARIFF_PERIOD_LIMIT,
     operational_overnight_window, parse_clock,
@@ -1098,6 +1098,7 @@ class NativeOrchestrator:
         self.state["last_attempt"] = datetime.now(timezone.utc).isoformat()
         self.state["last_start_decision_snapshot"] = {
             "action": "execute",
+            "build_version": APP_VERSION,
             "captured_at": self.state["last_attempt"],
             "request": deepcopy(request),
         }

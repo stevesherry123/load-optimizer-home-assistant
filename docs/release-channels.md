@@ -74,6 +74,8 @@ For this owner trial:
 6. Repeat readback after the other update work and a Marketplace refresh, then
    correlate the next physical wash with that installed build. Installation,
    continued version retention and physical acceptance are separate evidence.
+   New execution snapshots record `build_version`; old snapshots without it
+   remain readable and must not be retroactively attributed to a newer build.
 
 ```sh
 # Credentials are supplied by the environment; this script never installs,
