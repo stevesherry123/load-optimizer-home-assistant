@@ -1,7 +1,7 @@
 from copy import deepcopy
 import unittest
 
-from dev.check_beta_release import REQUIRED_JOBS, check_versions, check_workflow, check_release_progression
+from dev.check_beta_release import REQUIRED_JOBS, check_versions, check_workflow, check_release_progression, release_order
 
 
 class BetaReleasePreflightTests(unittest.TestCase):
@@ -15,6 +15,11 @@ class BetaReleasePreflightTests(unittest.TestCase):
             values[index] = invalid
             with self.subTest(index=index), self.assertRaises(ValueError):
                 check_versions(*values)
+
+    def test_historical_alpha_and_release_candidate_versions_are_ordered(self):
+        ordered = ['v1.4.0-alpha.1', 'v1.4.0-beta.1', 'v1.4.0-rc.1', 'v1.4.0']
+        self.assertEqual(sorted(ordered, key=release_order), ordered)
+        check_release_progression('v1.7.0-beta.12', [{'tagName': 'v1.4.0-alpha.1'}])
 
     def test_candidate_advances_all_published_release_trains(self):
         releases = [{'tagName': 'v1.7.0-beta.11', 'isDraft': False},

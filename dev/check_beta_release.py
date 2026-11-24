@@ -36,11 +36,12 @@ def check_versions(tag: str, manifest: str, runtime_source: str, changelog: str)
 
 
 def release_order(tag: str) -> tuple[int, ...]:
-    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:-beta\.([1-9]\d*))?", tag)
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.([1-9]\d*))?", tag)
     if match is None:
         raise ValueError("Cannot compare published release version: " + tag)
-    major, minor, patch, beta = match.groups()
-    return (int(major), int(minor), int(patch), int(beta is None), int(beta or 0))
+    major, minor, patch, stage, number = match.groups()
+    rank = {"alpha": 0, "beta": 1, "rc": 2, None: 3}
+    return (int(major), int(minor), int(patch), rank[stage], int(number or 0))
 
 
 def check_release_progression(tag: str, releases: list[dict]) -> None:
