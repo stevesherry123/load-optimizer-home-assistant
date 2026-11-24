@@ -646,10 +646,16 @@ class NativeOrchestrator:
                 "select",
                 "select_option",
                 {"entity_id": select_entity, "option": program_key},
-                ignore_error=True,
             )
             await asyncio.sleep(5)
             if not await self._async_start_allowed(request, recheck=True):
+                return
+            if self._state(select_entity) != program_key:
+                self.state["request"] = None
+                await self._async_outcome(
+                    "blocked", mode, program, "programme_selection_unconfirmed",
+                    "The appliance did not confirm the requested programme. No start command was sent.",
+                )
                 return
             await self._async_call(
                 "button",
