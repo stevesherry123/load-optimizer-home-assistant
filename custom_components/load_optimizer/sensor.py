@@ -173,7 +173,8 @@ class LoadOptimizerSensor(LoadOptimizerEntity, SensorEntity):
         """Expose compact planning detail on the status sensor."""
         if self.entity_description.key != "status":
             return None
-        return self.coordinator.data
+        return {key: self.coordinator.data[key] for key in ("tariff_period_count", "last_updated")
+                if key in self.coordinator.data}
 
 
 class LoadOptimizerRuntimeSensor(LoadOptimizerEntity, SensorEntity):
@@ -191,9 +192,9 @@ class LoadOptimizerRuntimeSensor(LoadOptimizerEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         return {
-            key: value
-            for key, value in self.coordinator.data.items()
-            if key not in {"legacy_entities", "legacy_instances"}
+            key: self.coordinator.data[key]
+            for key in ("mode", "instance_count", "published_entity_count", "last_scan")
+            if key in self.coordinator.data
         }
 
 
