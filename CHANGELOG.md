@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased
+## 1.7.0-beta.12
+
+- Align expired travel-deadline handling between planning and final start checks.
+  Preserve applicable request deadlines through expiry, helper edits and restart.
+- Keep bounded permission after a scheduling-constraint rejection before any
+  device command; require a fresh plan and never restore uncertain command-stage starts.
+- Add a read-only owner deployment check for the actual Marketplace provider,
+  loaded manifest, beta channel, installed version and default update target.
+- Preserve the trial's saved tariff evidence and existing scheduling/cost work.
+  Power-model recalibration is not included in this prerelease candidate.
+
+## Previously unreleased dishwasher work
 
 - Make the full and beta dashboards distinguish wash permission awaiting a plan,
   queued timing, unconfirmed starting and appliance-confirmed washing. Show the

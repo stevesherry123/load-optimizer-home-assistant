@@ -31,12 +31,64 @@ Branch names do not enforce safety. Publishing a full stable release from a
 test branch would still expose it to stable users. Our policy is to develop and
 test separately, then merge approved changes to `main` and publish a stable
 release from the exact green commit, with matching manifest/runtime versions.
-Never move a tag that users have already installed.
+Never move a tag that users have already installed. Public prereleases form one
+update stream: each new beta must advance all published release versions. Do
+not publish a lower-version beta from a parallel branch after a higher-version
+trial. The release preflight rejects this ordering error.
 
 `hide_default_branch: true` keeps `main` out of the normal version picker. It is
 not access control: the repository and beta branches are public, and advanced
 users can explicitly install a public branch or full commit. Development is
 isolated from normal updates, not secret.
+
+## Owner trials through Home Assistant Marketplace
+
+The owner's HA 2026.11 installation uses the built-in **Marketplace** update
+provider. Do not infer HACS from an entity's name or historical installation.
+Read its entity-registry `platform` and config-entry domain before choosing an
+installation procedure. HACS-specific controls do not apply to Marketplace.
+
+Installing a full commit through `update.install` proves only that the files
+were downloaded. A raw commit is not a comparable release version. On the stable
+channel, HA can offer the older stable release as an update; a subsequent
+ordinary install can replace the trial code. The loaded manifest's version alone
+also does not prove which source revision was installed.
+
+For this owner trial:
+
+1. Prepare a numbered beta with matching manifest, runtime version and changelog.
+   Run `dev/check_beta_release.py` against the exact green commit. A draft is not
+   a published release and must not be treated as an available update.
+2. Publish the approved GitHub prerelease, verify the immutable tag's commit and
+   verify the source package against the committed files. Do not move an old tag.
+3. Enable beta releases for this repository through Marketplace's supported
+   repository control. This is one repository's update policy, not an isolated
+   channel for a particular feature branch. Verify the offered version first.
+4. With idle appliances and no pending command, create a recoverable backup,
+   install the exact release tag and check every downloaded component file.
+5. Restart HA and verify entries, entity identities, learned data and controls.
+   Then run the read-only owner channel check below. Require installed version,
+   loaded manifest, repository identity, beta setting and default install target
+   to agree, with no pending restart and no update offered. An off update entity
+   alone is insufficient because a direct generic service call still has a target.
+6. Repeat readback after the other update work and a Marketplace refresh, then
+   correlate the next physical wash with that installed build. Installation,
+   continued version retention and physical acceptance are separate evidence.
+
+```sh
+# Credentials are supplied by the environment; this script never installs,
+# changes channel settings, restarts HA or prints its token.
+python dev/check_owner_channel.py v1.7.0-beta.12 --output .local/owner-channel.json
+```
+
+Use `LOAD_OPTIMIZER_HA_URL` and `LOAD_OPTIMIZER_HA_TOKEN` for authenticated reads,
+or `--snapshot FILE` for offline checks. Keep credentials and household evidence
+out of Git. The redacted output contains release metadata only. File hashes and
+learning preservation still require their separate checks.
+
+Source: [HA 2026.11.2 Marketplace update service](https://github.com/home-assistant/core/blob/2026.11.2/homeassistant/components/marketplace/update.py),
+[repository version/channel implementation](https://github.com/home-assistant/core/blob/2026.11.2/homeassistant/components/marketplace/repositories/base.py),
+and [supported repository WebSocket controls](https://github.com/home-assistant/core/blob/2026.11.2/homeassistant/components/marketplace/websocket/repository.py).
 
 ## Development Branches
 

@@ -1,7 +1,7 @@
 from copy import deepcopy
 import unittest
 
-from dev.check_beta_release import REQUIRED_JOBS, check_versions, check_workflow
+from dev.check_beta_release import REQUIRED_JOBS, check_versions, check_workflow, check_release_progression
 
 
 class BetaReleasePreflightTests(unittest.TestCase):
@@ -15,6 +15,18 @@ class BetaReleasePreflightTests(unittest.TestCase):
             values[index] = invalid
             with self.subTest(index=index), self.assertRaises(ValueError):
                 check_versions(*values)
+
+    def test_candidate_advances_all_published_release_trains(self):
+        releases = [{'tagName': 'v1.7.0-beta.11', 'isDraft': False},
+                    {'tagName': 'v1.5.10-beta.1', 'isDraft': False},
+                    {'tagName': 'v1.5.9', 'isDraft': False}]
+        check_release_progression('v1.7.0-beta.12', releases)
+        for candidate in ['v1.5.10-beta.2', 'v1.7.0-beta.11']:
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                check_release_progression(candidate, releases)
+        with self.assertRaises(ValueError):
+            check_release_progression('v1.7.0-beta.12', releases + [{'tagName': 'v1.7.0'}])
+        check_release_progression('v1.7.0-beta.12', releases + [{'tagName': 'v2.0.0', 'isDraft': True}])
 
     def test_rejects_wrong_commit_or_incomplete_validation(self):
         run = {"name": "Validate", "headSha": "candidate", "status": "completed",

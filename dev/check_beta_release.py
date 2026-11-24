@@ -35,6 +35,25 @@ def check_versions(tag: str, manifest: str, runtime_source: str, changelog: str)
         raise ValueError("The candidate needs a matching changelog heading")
 
 
+def release_order(tag: str) -> tuple[int, ...]:
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:-beta\.([1-9]\d*))?", tag)
+    if match is None:
+        raise ValueError("Cannot compare published release version: " + tag)
+    major, minor, patch, beta = match.groups()
+    return (int(major), int(minor), int(patch), int(beta is None), int(beta or 0))
+
+
+def check_release_progression(tag: str, releases: list[dict]) -> None:
+    """One public beta stream must not advertise older builds after newer ones."""
+    candidate = release_order(tag)
+    for release in releases:
+        if release.get("isDraft"):
+            continue
+        published = release["tagName"]
+        if release_order(published) >= candidate:
+            raise ValueError("Candidate must advance the public release stream beyond " + published)
+
+
 def check_workflow(run: dict, commit: str) -> None:
     if run.get("headSha") != commit:
         raise ValueError("GitHub validation belongs to a different commit")
@@ -71,6 +90,11 @@ def main() -> int:
             "git", "ls-remote", "--refs", "--tags", f"https://github.com/{REPO}.git", ref
         ):
             raise ValueError("The proposed tag already exists")
+        releases = json.loads(command(args.gh, "release", "list", "-R", REPO, "--limit", "1000",
+                                      "--json", "tagName,isDraft,isPrerelease"))
+        if len(releases) >= 1000:
+            raise ValueError("Release inventory may be truncated; paginate it before publication")
+        check_release_progression(args.tag, releases)
         run = json.loads(command(args.gh, "run", "view", str(args.run_id), "-R", REPO, "--json",
                                  "name,headSha,status,conclusion,jobs"))
         check_workflow(run, commit)
