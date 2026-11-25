@@ -6,7 +6,7 @@ import logging
 import yaml
 from pathlib import Path
 import tempfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 from ha_onboarding_smoke import Clock, ROOT, configure, identities
 from homeassistant import loader
@@ -100,8 +100,26 @@ async def main():
                 control = switch_component.get_entity(permission)
                 button_component = hass.data[DATA_INSTANCES]["button"]
                 recovery = button_component.get_entity(reconcile)
+                # A migration hold must reject permission before claiming the
+                # physical switch, even when prices and telemetry are ready.
+                coordinator.ev_adapter._journal_review = {
+                    "reason": "legacy_target_unknown", "original_target": None,
+                    "can_confirm_stopped": False,
+                }
+                try:
+                    await control.async_turn_on()
+                except HomeAssistantError:
+                    pass
+                else:
+                    raise AssertionError("Legacy ownership must block fresh permission")
+                assert not coordinator.ev_control_enabled and not commands
+                assert "switch.synthetic_ev" not in hass.data["load_optimizer_ev_switch_owners"]
+                coordinator.ev_adapter._journal_review = None
                 await control.async_turn_on()
                 assert commands == ["turn_on"]
+                with patch.object(HomeAssistant, "is_stopping", new_callable=PropertyMock, return_value=True):
+                    assert (await coordinator._async_ev_snapshot())["enabled"] is False
+                assert (await coordinator._async_ev_snapshot())["enabled"] is True
                 pinned = coordinator._ev_authorised_deadline
                 assert coordinator.ev_adapter.session.phase == "starting"
                 Clock.current += timedelta(seconds=19)

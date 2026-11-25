@@ -154,7 +154,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 result["plan"] = {"status": "not_ready", "reason": "control_source_unavailable"}
         self._ev_snapshot_reason = result["plan"].get("reason")
         self._ev_latest_plan = result["plan"]
-        return {"enabled": self.ev_control_enabled and not self._ev_closed,
+        return {"enabled": self.ev_control_enabled and not self._ev_closed and not self.hass.is_stopping,
                 "validated_at": now, "plan": result["plan"]}
 
     def _ev_plan_input_versions(self, data: dict) -> dict:
@@ -183,6 +183,8 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if enabled and owners.get(entity) not in (None, self.config_entry.entry_id):
             raise HomeAssistantError("Another EV entry already controls this charger switch")
         if enabled:
+            if await self.ev_adapter.async_migration_block():
+                raise HomeAssistantError(self.ev_adapter.status["summary"])
             if not self.ev_control_enabled:
                 data = {**self.config_entry.data, **self.config_entry.options}
                 self._ev_authorised_deadline = await self.hass.async_add_executor_job(partial(

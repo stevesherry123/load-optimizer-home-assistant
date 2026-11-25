@@ -17,6 +17,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 
 from .ev_control import EVControlSession
+from .ev_journal import FORMAT, legacy_review, switch_target, valid_session
 
 
 class EVSwitchAdapter:
@@ -39,24 +40,56 @@ class EVSwitchAdapter:
         self.status_entity = status_entity
         self.clock = clock
         self.session = EVControlSession(confirmation_seconds=confirmation_seconds)
-        self.store = Store(hass, 1, f"load_optimizer.ev_control.{entry_id}")
+        self.store = Store(hass, 1, f"load_optimizer.ev_switch_control.{entry_id}")
+        self.legacy_store = Store(hass, 1, f"load_optimizer.ev_control.{entry_id}")
+        self._journal_review = None
         self._loaded = False
         self._lock = asyncio.Lock()
         self.reason = "control_disabled"
 
     async def _load(self) -> None:
-        if not self._loaded:
-            saved = await self.store.async_load()
-            if saved is not None:
-                timeout = self.session.confirmation_seconds
-                self.session = EVControlSession.restored(saved if isinstance(saved, dict) else {})
-                self.session.confirmation_seconds = timeout
-            self._loaded = True
+        if self._loaded:
+            return
+        saved = await self.store.async_load()
+        checkpoint = None
+        if saved is not None:
+            if (not isinstance(saved, dict) or type(saved.get("journal_format")) is not int
+                    or saved.get("journal_format") != FORMAT or not switch_target(saved.get("switch_entity"))
+                    or not valid_session(saved.get("session"))):
+                self._journal_review = {"reason": "legacy_journal_unrecognized",
+                                        "original_target": None, "can_confirm_stopped": False}
+            elif saved["switch_entity"] != self.switch_entity:
+                self._journal_review = {"reason": "ownership_target_changed",
+                                        "original_target": saved["switch_entity"], "can_confirm_stopped": False}
+            else:
+                checkpoint = saved["session"]
+        else:
+            legacy = await self.legacy_store.async_load()
+            if legacy is not None:
+                self._journal_review = legacy_review(legacy, self.switch_entity)
+        if checkpoint is not None or self._journal_review:
+            timeout = self.session.confirmation_seconds
+            self.session = EVControlSession.restored(checkpoint or {})
+            self.session.confirmation_seconds = timeout
+            self.reason = self.session.reason
+            if self._journal_review:
+                self.reason = self.session.reason = self._journal_review["reason"]
+        self._loaded = True
+
+    async def async_migration_block(self) -> str | None:
+        """Check durable authority before an enable operation claims this switch."""
+        async with self._lock:
+            await self._load()
+            return self._journal_review["reason"] if self._journal_review else None
 
     @property
     def status(self) -> dict:
         messages = {
             "control_disabled": "Automatic charging is off.",
+            "legacy_journal_requires_review": "Legacy control was found. Verify the original switch is stopped and explicitly confirm before enabling control.",
+            "legacy_target_unknown": "Legacy ownership did not record its switch. Recover and verify the original target before migrating; no commands are permitted.",
+            "legacy_journal_unrecognized": "The ownership record is unsupported or malformed. Preserve it for manual recovery; no commands are permitted.",
+            "ownership_target_changed": "The saved session belongs to a different switch. Restore the original mapping and verify stopped hardware before migration.",
             "following_plan": "The charger is delivering power for this plan.",
             "awaiting_confirmation": "Waiting for the power meter to confirm the command.",
             "outside_active_plan": "No charging interval is active in the current usable plan.",
@@ -77,11 +110,13 @@ class EVSwitchAdapter:
         return {**self.session.checkpoint(), "reason": self.reason,
                 "summary": messages.get(self.reason, "Review the charging state before enabling control."),
                 "confirmation_seconds": self.session.confirmation_seconds,
-                "feedback": "charger_power", "runtime_connected": False}
+                "feedback": "charger_power", "runtime_connected": False,
+                "journal_review": dict(self._journal_review) if self._journal_review else None}
 
     async def _save(self) -> bool:
         try:
-            await self.store.async_save(self.session.checkpoint())
+            await self.store.async_save({"journal_format": FORMAT, "switch_entity": self.switch_entity,
+                                         "session": self.session.checkpoint()})
         except (OSError, HomeAssistantError):
             self.session.phase = "blocked"
             self.reason = self.session.reason = "persistence_failed"
@@ -157,6 +192,9 @@ class EVSwitchAdapter:
                 self.session.phase = "blocked"
                 self.reason = "persistence_failed"
                 return self.status
+            if self._journal_review:
+                self.reason = self._journal_review["reason"]
+                return self.status
             snapshot = await snapshot_provider()
             now = self.clock()
             telemetry = self._telemetry(now)
@@ -221,10 +259,15 @@ class EVSwitchAdapter:
         """Explicit recovery is possible only with fresh switch-off and zero draw."""
         async with self._lock:
             await self._load()
+            if self._journal_review and not self._journal_review["can_confirm_stopped"]:
+                return False
             telemetry = self._telemetry(self.clock())
             if telemetry["switch_on"] or not telemetry["fresh"]:
                 return False
             if not self.session.reconcile_stopped(charging=telemetry["charging"], telemetry_fresh=True):
                 return False
             self.reason = self.session.reason
-            return await self._save()
+            if not await self._save():
+                return False
+            self._journal_review = None
+            return True

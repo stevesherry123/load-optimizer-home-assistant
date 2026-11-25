@@ -41,6 +41,8 @@ async def main():
             item = EVSwitchAdapter(hass, "test", switch_entity="switch.fake_ev",
                                    power_entity="sensor.fake_power", connection_entity="sensor.fake_cable",
                                    status_entity="sensor.fake_status", clock=lambda: now)
+            item.legacy_store = AsyncMock()
+            item.legacy_store.async_load.return_value = None
             item.store = AsyncMock()
             item.store.async_load.return_value = None
 
@@ -59,7 +61,7 @@ async def main():
 
         async def service(call):
             calls.append((call.service, dict(call.data)))
-            phase_during_call.append(saved[-1]["phase"])
+            phase_during_call.append(saved[-1]["session"]["phase"])
             if fail_service:
                 raise HomeAssistantError("Synthetic uncertain service result")
 
@@ -238,6 +240,40 @@ async def main():
             assert not await item.async_reconcile_stopped()
             reading("switch.fake_ev", "off")
             assert await item.async_reconcile_stopped()
+
+            # The old prototype journal is read, never overwritten or adopted.
+            enabled = True
+            reset_readings()
+            item = adapter()
+            item.legacy_store.async_load.return_value = {"owned_target": "switch.fake_ev"}
+            count = len(calls)
+            await item.async_step(snapshot)
+            assert item.reason == "legacy_journal_requires_review" and len(calls) == count
+            reading("switch.fake_ev", "on")
+            assert not await item.async_reconcile_stopped()
+            reading("switch.fake_ev", "off")
+            assert await item.async_reconcile_stopped()
+            assert saved[-1]["switch_entity"] == "switch.fake_ev" and saved[-1]["journal_format"] == 2
+            item.legacy_store.async_save.assert_not_awaited()
+
+            # A changed target or targetless old checkpoint cannot be cleared by
+            # observing an unrelated, stopped switch. Neither can dispatch.
+            for legacy in ({"owned_target": "switch.original_ev"}, item.session.checkpoint(), ["bad"]):
+                blocked = adapter()
+                blocked.legacy_store.async_load.return_value = legacy
+                count = len(calls)
+                await blocked.async_step(snapshot)
+                assert len(calls) == count
+                assert not await blocked.async_reconcile_stopped()
+                blocked.store.async_save.assert_not_awaited()
+            reset_readings()
+            changed = adapter()
+            changed.store.async_load.return_value = {**saved[-1], "switch_entity": "switch.original_ev"}
+            count = len(calls)
+            await changed.async_step(snapshot)
+            assert changed.reason == "ownership_target_changed" and len(calls) == count
+            assert not await changed.async_reconcile_stopped()
+            print("Real HA: legacy journals and original targets preserved; migration needs explicit stopped verification; unknown or changed targets dispatch nothing")
 
             # A remembered charge-now value is insufficient outside a slot.
             enabled = True

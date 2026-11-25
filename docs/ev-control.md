@@ -127,3 +127,29 @@ unconfirmed enabled power, restart quarantine and explicit reconciliation.
 No live charger commands, installed-code changes, HA restarts or release actions
 were performed in this implementation batch. Household-specific entity mapping
 and the read-only live review are recorded separately from this generic guide.
+
+## Ownership journal migration (unreleased controller)
+
+The reconciled controller uses a separate `load_optimizer.ev_switch_control.ENTRY`
+HA storage key. Its format-2 envelope records the original `switch_entity` alongside
+the complete session checkpoint. It does not share writes with the two historical
+format-1 payloads at `load_optimizer.ev_control.ENTRY`. Old records remain untouched.
+
+A recognised prototype `owned_target` is quarantined on import. The enable action
+refuses this hold; the user must verify fresh switch-off and zero measured draw,
+then explicitly confirm stopped hardware. Only the saved original target (or a
+prototype record explicitly reporting no owned target) can be reconciled this way.
+A replacement switch being off cannot clear ownership of the old one.
+
+Targetless checkpoints, malformed/unknown records and target changes remain
+blocked without dispatch or overwrite. Recover the original mapping and evidence
+manually; do not infer a target from current configuration or delete the journal
+to bypass the hold. Even a valid new-format checkpoint never replays its command
+after restart. Use paired source/data backups for rollback; running an old controller
+against an unrelated new journal is not a supported rollback procedure.
+
+Before any physical trial, restore reliable switch/meter/cable telemetry and audit
+existing automations or other integrations controlling that same switch. Establish
+one owner before enabling this controller. Synthetic acceptance is not evidence
+that an unavailable Zigbee device can be controlled safely. Public main remains
+advisory until controller migration and supervised hardware gates are accepted.
