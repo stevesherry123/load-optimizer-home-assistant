@@ -1,4 +1,4 @@
-"""Real minimum-HA safety acceptance with synthetic data and no device I/O."""
+"""Real Home Assistant safety acceptance with synthetic data and no device I/O."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, patch
 from ha_onboarding_smoke import Clock, CONTROL, ROOT, configure, identities
 from homeassistant import loader
 from homeassistant.bootstrap import async_from_config_dict
-from homeassistant.components.http import HomeAssistantHTTP
 from homeassistant.core import HomeAssistant, SupportsResponse
 from custom_components.load_optimizer.legacy import app_runtime
 
@@ -70,8 +69,7 @@ async def main():
              patch("custom_components.load_optimizer.legacy_runtime.datetime", Clock), \
              patch("custom_components.load_optimizer.orchestration.datetime", Clock), \
              patch.object(app_runtime, "datetime", Clock), \
-             patch.object(HomeAssistantHTTP, "start", new=AsyncMock()), \
-             patch.object(HomeAssistantHTTP, "stop", new=AsyncMock()), \
+             patch("homeassistant.bootstrap.DEFAULT_INTEGRATIONS", set()), \
              patch.object(type(hass.services), "async_call", new=guarded_call):
             try:
                 assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
