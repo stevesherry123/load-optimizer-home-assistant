@@ -1,34 +1,33 @@
-# Dashboard Layout Trial
+# Load Optimizer Beta Dashboards
 
-This optional dashboard trial lives on `beta/dashboard-layout`; it is not a HACS
-prerelease or an integration upgrade. It uses existing integration entities.
-Create a separate storage-mode dashboard named **Load Optimizer Beta** at
-`load-optimizer-beta` and paste `load_optimizer_beta.yaml` into its raw editor.
-Do not replace an existing dashboard or change the default dashboard.
+These optional, shareable layouts are storage-mode Home Assistant dashboards.
+They are not HACS releases or integration upgrades.
 
-The Overview combines the tariff-day chart, current price/Ofgem tiles, actual
-queue and latest learned wash. Dishwasher separates safety/readiness, candidate
-recommendations and explicit manual controls. Learning contains programme tables;
-Diagnostics uses the native execution record and keeps Automation Capabilities
-at the bottom. The charging link opens the existing separate test bench.
+| Layout | Template | Suggested dashboard URL |
+| --- | --- | --- |
+| **Beta V2 (recommended)** | [`load_optimizer_beta_v2.yaml`](load_optimizer_beta_v2.yaml) | `load-optimizer-beta-v2` |
+| **Original Beta (V1)** | [`load_optimizer_beta.yaml`](load_optimizer_beta.yaml) | `load-optimizer-beta` |
 
-Assumptions: appliance IDs 1, 2 and 3, existing native dishwasher controls,
-`apexcharts-card` and optional `card-mod`. Adapt entity IDs before installing on
-another system. The charts use published source data; the dashboard does not
-change tariff prices or scheduler decisions. It does not fix runtime bugs in an
-older installed integration. Missing sources are not displayed as a queued wash.
+V2 puts **Program Catalogue** first on Learning, followed by the washing machine
+and robot vacuum. It omits the duplicate **Dishwasher learning** and
+**Automation Capabilities** cards. V1 is retained for reference or restoration.
+Both layouts keep the same Overview and Dishwasher views. Diagnostics includes
+the execution record, sources, readiness and recent decisions.
 
-Start and cancellation buttons require confirmation. Reviewing the dashboard
-must not involve confirming either command or toggling automatic modes. Reload
-and inspect all four tabs on desktop/mobile without operating physical loads.
+Create a separate dashboard and paste your chosen template into its raw
+configuration editor. Existing Home Assistant dashboards are independent saved
+copies. Upgrading the integration does not overwrite them, and removing one
+does not remove the integration, learning data or appliance controls.
 
-Regenerate after editing the builder or shared charts:
+The templates assume appliance IDs 1, 2 and 3, existing native dishwasher
+controls, `apexcharts-card` and optional `card-mod`. Adapt entity references
+for another installation. The optional charging link opens a separate test
+bench only where one exists. Start and cancellation actions require confirmation;
+review all four tabs without confirming a command or toggling automatic modes.
+
+Regenerate both templates after editing the builder or shared chart sources:
 
 ```sh
 python dev/build_dashboard_beta.py
 python tests/ha_beta_dashboard_smoke.py
 ```
-
-The checked-in YAML must match the builder. Dashboard copies installed in Home
-Assistant are independent: switching branches or upgrading HACS does not update
-them. Removing the trial dashboard does not remove entities, learning or controls.
