@@ -234,8 +234,26 @@ class LoadOptimizerSensor(LoadOptimizerEntity, SensorEntity):
         """Expose compact planning detail on the status sensor."""
         if self.entity_description.key != "status":
             return None
-        return {key: self.coordinator.data[key] for key in ("tariff_period_count", "last_updated")
-                if key in self.coordinator.data}
+        attributes = {key: self.coordinator.data[key] for key in ("tariff_period_count", "last_updated")
+                      if key in self.coordinator.data}
+        # Publish the advisory result, never the coordinator's configuration or history.
+        plan = self.coordinator.data.get("plan")
+        if isinstance(plan, dict):
+            fields = (
+                "status", "reason", "summary", "charging_mode", "advisory_only", "cost_basis",
+                "maximum_price_p_per_kwh", "ready_to_charge", "charge_now", "target_reachable",
+                "battery_percent", "target_percent", "projected_battery_percent", "needed_battery_kwh",
+                "wall_energy_kwh", "planned_wall_energy_kwh", "planned_battery_kwh", "shortfall_battery_kwh",
+                "slot_energy_kwh", "slots_needed", "slots_available", "published_slots_available",
+                "estimated_cost_pence", "estimated_profit_pence", "estimated_electricity_credit_pence",
+                "next_slot_start", "next_slot_end", "deadline",
+            )
+            public = {key: plan[key] for key in fields if key in plan}
+            slot_fields = ("start", "end", "price_p_per_kwh", "energy_kwh", "cost_pence")
+            public["selected_slots"] = [{key: slot[key] for key in slot_fields if key in slot}
+                                        for slot in plan.get("selected_slots", []) if isinstance(slot, dict)]
+            attributes["plan"] = public
+        return attributes
 
 
 class LoadOptimizerRuntimeSensor(LoadOptimizerEntity, SensorEntity):

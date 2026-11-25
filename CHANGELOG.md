@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.8.0
+
+- Publish shareable original and compact V2 dashboard templates with current
+  saved decision prices, generator parity and restore instructions. Existing
+  household dashboards are independent saved copies and are not overwritten.
+- Add advisory required/opportunistic EV modes. Required plans recommend useful
+  available charging and show shortfall; opportunistic plans obey an inclusive
+  price ceiling (default 0 p/kWh). No charger commands or control entities are added.
+- Expose the advisory result through an explicit status-field allowlist, preserving
+  restrictions on private coordinator data and nested source metadata.
+- Ready to Charge now includes useful partial plans; use target_reachable to
+  check whether the target is expected to be reached. Review external automations
+  relying on the former complete-plan signal before upgrading.
+
+
 ## 1.7.0
 
 - Publish the consolidated dishwasher scheduling and costs feature from main.

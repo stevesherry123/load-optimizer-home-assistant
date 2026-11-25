@@ -1,3 +1,8 @@
+> Current status (25 November 2026): main includes the dishwasher release and
+> the 1.8.0 EV advisory extraction plus shareable Dashboard V2. Historical batch
+> records below describe earlier checkpoints. New automatic EV control and
+> owner-trial journal migration remain outside the released advisory scope.
+
 # Load Optimizer: architecture and delivery plan
 
 Planning baseline: 3 November 2026. This records the architecture review and user decisions; it does not claim that proposed behaviour has been implemented or deployed.

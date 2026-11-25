@@ -1,3 +1,27 @@
+# 1.8.0 advisory EV and dashboard release
+
+This main-branch release adds the independent required/opportunistic advisory
+planner from PR #26 and the shareable Dashboard V2 branch. No charger adapter,
+control service, switch/button entity or owner-trial journal migration is added.
+Existing EV entries default to required mode and retain their entry/entity IDs.
+
+Required partial plans now activate advisory charging signals when useful slots
+are available. Consumers requiring a complete target must check `target_reachable`.
+This is an intentional signal change and must be disclosed in the release notes.
+The status sensor exposes a bounded set of named plan fields and named slot
+fields; the private coordinator data allowlist remains intact.
+
+Release checks include the full unit suite, both complete isolated HA suites,
+real-HA mode edits, missing/stale source recovery, identity-preserving reload,
+rendered plan cards and an explicit ban on device-service calls in EV acceptance.
+Dashboard generation must reproduce both templates, including current saved
+quote evidence. The downloaded public source must match the validated Git tree.
+The owner installation is not updated by publication, and no real-vehicle
+commissioning or automatic-control acceptance is claimed.
+
+The 1.7.0 dishwasher evidence and its remaining estimation/coverage follow-up
+below remain applicable. Version 1.7.0 and all older tags are immutable.
+
 # 1.7.0 public release record
 
 Development is consolidated on `main`. The public feature scope is dependable

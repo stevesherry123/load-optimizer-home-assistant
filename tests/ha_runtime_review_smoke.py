@@ -46,6 +46,13 @@ async def main():
                 "tariff_period_count": 48, "last_updated": "fixture-time"}
             assert LoadOptimizerRuntimeSensor.extra_state_attributes.fget(sensor) == {
                 key: data[key] for key in ("mode", "instance_count", "published_entity_count", "last_scan")}
+            data["plan"] = {"status": "partial", "shortfall_battery_kwh": 2,
+                            "private_config": "private-fixture", "selected_slots": [
+                                {"start": "fixture-time", "energy_kwh": 1, "private_source": "private-fixture"}]}
+            public = LoadOptimizerSensor.extra_state_attributes.fget(sensor)
+            assert public["plan"] == {"status": "partial", "shortfall_battery_kwh": 2,
+                                      "selected_slots": [{"start": "fixture-time", "energy_kwh": 1}]}
+            assert "private-fixture" not in str(public)
             print("General status exposes only allowed summary fields, including with future private data")
             notifications = []
 

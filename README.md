@@ -4,11 +4,11 @@ Plan appliance cycles and EV charging around your electricity tariff using
 existing Home Assistant entities. Learn when an appliance uses energy during a
 cycle, compare running costs, and find suitable low-cost or negative-price windows.
 
-Version **1.7.0** delivers bounded overnight dishwasher scheduling, configured
+Version **1.8.0** adds required/opportunistic EV advisory plans and a shareable
+compact dashboard. It retains the 1.7.0 dishwasher release, which delivers bounded overnight dishwasher scheduling, configured
 operating costs and clearer controls, with consistent deadline and start safety
 checks. Development is consolidated on **main**; published stable releases are
-the normal update channel. New EV planning modes and automatic charger control
-remain separate work. See the [release record](docs/release-readiness.md).
+the normal update channel. Automatic charger control remains separate work. See the [release record](docs/release-readiness.md).
 
 ## Stable Features
 
@@ -23,8 +23,9 @@ remain separate work. See the [release record](docs/release-readiness.md).
 - **Optional dishwasher controls:** opt into Home Connect / Bosch-style controls
   with connection, door and already-running safety checks. Manual programme
   requests bypass automatic cooldowns, not physical safety checks.
-- **EV charging plans:** use battery percentage, usable capacity, target, charge
-  power and efficiency to select charging windows and estimate cost or profit.
+- **EV advisory plans:** choose required charging with visible target shortfalls
+  or opportunistic charging under a price ceiling. These plans do not control a charger.
+  Review [charging signal semantics](docs/ev-charging.md) before upgrading external automations.
 - **Ofgem comparison:** choose a GB electricity region and payment method for a
   daily cached, effective-dated default-tariff unit-rate benchmark.
 - **Optional dashboards:** a standard-card template, plus a richer chart example
