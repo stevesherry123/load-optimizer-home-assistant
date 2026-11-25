@@ -22,6 +22,27 @@ class BetaReleasePreflightTests(unittest.TestCase):
             with self.subTest(index=index), self.assertRaises(ValueError):
                 check_versions(*values)
 
+    def test_stable_version_requires_explicit_channel_and_matching_metadata(self):
+        valid = ("v1.7.0", "1.7.0", 'APP_VERSION = "1.7.0"', "## 1.7.0")
+        check_versions(*valid, stable=True)
+        with self.assertRaises(ValueError):
+            check_versions(*valid)
+        with self.assertRaises(ValueError):
+            check_versions("v1.7.0-beta.13", "1.7.0-beta.13",
+                           'APP_VERSION = "1.7.0-beta.13"', "## 1.7.0-beta.13", stable=True)
+        with self.assertRaises(ValueError):
+            check_versions("v1.7.0", "1.7.0-beta.13", valid[2], valid[3], stable=True)
+        check_release_progression("v1.7.0", [{"tagName": "v1.7.0-beta.12"}])
+
+    def test_stable_audit_rejects_draft_prerelease_or_wrong_tag_commit(self):
+        release = {"tagName": "v1.7.0", "isDraft": False, "isPrerelease": False}
+        check_publication(release, "v1.7.0", "candidate", "candidate", stable=True)
+        for key, value in (("isDraft", True), ("isPrerelease", True), ("tagName", "other")):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                check_publication({**release, key: value}, "v1.7.0", "candidate", "candidate", stable=True)
+        with self.assertRaises(ValueError):
+            check_publication(release, "v1.7.0", "other", "candidate", stable=True)
+
     def test_historical_alpha_and_release_candidate_versions_are_ordered(self):
         ordered = ['v1.4.0-alpha.1', 'v1.4.0-beta.1', 'v1.4.0-rc.1', 'v1.4.0']
         self.assertEqual(sorted(ordered, key=release_order), ordered)

@@ -1,11 +1,26 @@
 # Changelog
 
-## 1.7.0-beta.13
+## 1.7.0
 
-- Consolidate the tested dishwasher release with main-branch programme-selection
-  confirmation and restricted status attributes. Preserve durable start reservations,
-  bounded wash permission, deadline recovery and saved tariff evidence.
-- This candidate is not published; beta.12 remains the installed owner release.
+- Publish the consolidated dishwasher scheduling and costs feature from main.
+- Authorise one overnight wash within a saved start window, retain permission
+  through missing prices, and notify when planning needs attention. Prefer a
+  complete fit; if none fits, choose the cheapest eligible in-window start and
+  clearly report its later finish. Existing windows and opt-ins are preserved.
+- Apply travel deadlines consistently in planning and execution. Preserve
+  applicable deadlines across reloads and require fresh permission after expiry.
+- Confirm programme selection before Start, retain durable command reservations,
+  and prevent cancellation, shutdown or uncertain restart from causing duplicates.
+- Rank optional extra runs by strictly positive net benefit per run, including
+  configured operating costs. Normal requested washes remain eligible at a cost.
+- Show readable controls, readiness, saved recommendation prices and bounded
+  tariff evidence; record the executing build and restrict general status details.
+- Combine package/publication verification and complete isolated acceptance on
+  HA 2026.10.2 and 2026.11.1. Minimum supported HA is 2026.10.2.
+- Estimates remain learned predictions, not billed costs or guaranteed finish
+  times. Recent observed cycles have exceeded their forecasts; recalibration is
+  separate work. Tariff analysis/import and manual AI summaries remain optional
+  experimental features. New automatic EV charging control is not included.
 
 ## 1.7.0-beta.12
 

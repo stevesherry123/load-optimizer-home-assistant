@@ -185,3 +185,17 @@ integration does not enable or change it.
 - [GitHub traffic](https://docs.github.com/en/repositories/viewing-activity-and-data-for-your-repository/viewing-traffic-to-a-repository)
 - [GitHub release-asset counters](https://docs.github.com/en/rest/releases/assets)
 - [Home Assistant opt-in analytics](https://www.home-assistant.io/integrations/analytics/)
+
+## Main-first development and stable publication
+
+`main` is the canonical integration branch. Keep short-lived review branches only
+when needed, and retain the unfinished EV controller separately. Normal public
+users consume full GitHub releases; merging main alone does not create an update.
+
+The release preflight supports stable publication with `--stable` (its historical
+filename remains `dev/check_beta_release.py`). Stable candidates must be the
+current remote main commit with matching stable versions and changelog, forward
+version ordering and six successful exact-commit validation jobs. After publishing,
+use `--stable --published` to verify the real remote tag and full-release flag.
+Existing beta tags are immutable. Experimental optional analysis remains clearly
+labelled in the main documentation and is not a prerequisite for dishwasher use.

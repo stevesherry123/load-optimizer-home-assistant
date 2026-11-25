@@ -4,19 +4,22 @@ Plan appliance cycles and EV charging around your electricity tariff using
 existing Home Assistant entities. Learn when an appliance uses energy during a
 cycle, compare running costs, and find suitable low-cost or negative-price windows.
 
-This branch is the **dishwasher feature release candidate**, not a published
-update. It adds bounded overnight requests, total operating costs and clearer
-controls. New EV planning modes and automatic charger control are outside this
-candidate. See the [acceptance walkthrough](docs/dishwasher-acceptance.md) and
-[release record](docs/release-readiness.md) for its remaining gates. Use the
-documentation for your installed release when configuring a household system.
+Version **1.7.0** delivers bounded overnight dishwasher scheduling, configured
+operating costs and clearer controls, with consistent deadline and start safety
+checks. Development is consolidated on **main**; published stable releases are
+the normal update channel. New EV planning modes and automatic charger control
+remain separate work. See the [release record](docs/release-readiness.md).
 
 ## Stable Features
 
 - **Appliance learning:** capture completed cycles from power and energy sensors,
   retain learned programme profiles, and estimate costs across tariff periods.
+- **Overnight dishwasher scheduling:** save one-wash permission, use configurable
+  start windows, recover when prices return and consistently enforce travel deadlines.
 - **Scheduling recommendations:** compare programmes and start windows using
   configured deadlines, programme policies and automatic cooldowns.
+- **Operating costs:** include configured electricity, consumables, water and wear
+  costs; rank optional profitable extra runs by net benefit per run.
 - **Optional dishwasher controls:** opt into Home Connect / Bosch-style controls
   with connection, door and already-running safety checks. Manual programme
   requests bypass automatic cooldowns, not physical safety checks.
@@ -112,9 +115,9 @@ user action unless they have configured their own automatic-update automation;
 integration code changes require a Home Assistant restart to take effect.
 
 Tariff history, historical analysis, portable history import and optional AI
-summaries remain **experimental beta features**, not stable functionality.
-Public development branches can be inspected by anyone, even though they are not
-offered as normal stable updates. Do not enable beta updates on an installation
+summaries are included as **optional experimental features**. They are not
+required for dishwasher scheduling, and AI generation remains manually requested.
+The new automatic EV controller remains outside the public stable package. Do not enable beta updates on an installation
 that must remain on stable.
 
 See [release channels and publication](docs/release-channels.md) for the exact

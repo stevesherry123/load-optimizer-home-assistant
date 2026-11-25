@@ -1,4 +1,4 @@
-"""Check a proposed or already published Load Optimizer prerelease, without writes."""
+"""Check a proposed or published Load Optimizer release, without writes."""
 
 import argparse
 import ast
@@ -21,9 +21,10 @@ def command(*args: str) -> str:
                           text=True, timeout=30).stdout.strip()
 
 
-def check_versions(tag: str, manifest: str, runtime_source: str, changelog: str) -> None:
-    if not re.fullmatch(r"v\d+\.\d+\.\d+-beta\.[1-9]\d*", tag):
-        raise ValueError("Only new vX.Y.Z-beta.N tags are supported")
+def check_versions(tag: str, manifest: str, runtime_source: str, changelog: str, *, stable: bool = False) -> None:
+    pattern = r"v\d+\.\d+\.\d+" if stable else r"v\d+\.\d+\.\d+-beta\.[1-9]\d*"
+    if not re.fullmatch(pattern, tag):
+        raise ValueError("Expected vX.Y.Z for stable or vX.Y.Z-beta.N for beta, matching the selected channel")
     versions = [
         ast.literal_eval(node.value)
         for node in ast.parse(runtime_source).body
@@ -91,12 +92,13 @@ def tag_commit(ref: str, results: str) -> str | None:
     return targets.get(ref + "^{}", targets.get(ref))
 
 
-def check_publication(release: dict, tag: str, target: str | None, commit: str) -> None:
+def check_publication(release: dict, tag: str, target: str | None, commit: str, *, stable: bool = False) -> None:
     if target != commit:
         raise ValueError("The published tag does not point to the validated commit")
     if (release.get("tagName") != tag or release.get("isDraft") is not False
-            or release.get("isPrerelease") is not True):
-        raise ValueError("Expected a published GitHub prerelease, not a draft or stable release")
+            or release.get("isPrerelease") is not (not stable)):
+        channel = "stable release" if stable else "prerelease"
+        raise ValueError("Expected a published GitHub " + channel + " matching the selected channel")
 
 
 def main() -> int:
@@ -105,6 +107,7 @@ def main() -> int:
     parser.add_argument("run_id", type=int)
     parser.add_argument("--gh", default="gh", help="Path to the GitHub CLI")
     parser.add_argument("--commit", default="HEAD", help="Local Git ref to the exact candidate")
+    parser.add_argument("--stable", action="store_true", help="Validate a stable version and require current main for a new release")
     parser.add_argument("--published", action="store_true", help="Verify an existing release and its remote tag")
     args = parser.parse_args()
     try:
@@ -117,7 +120,7 @@ def main() -> int:
             args.tag,
             json.loads(command("git", "show", integration + "manifest.json"))["version"],
             command("git", "show", integration + "legacy/app_runtime.py"),
-            command("git", "show", f"{commit}:CHANGELOG.md"),
+            command("git", "show", f"{commit}:CHANGELOG.md"), stable=args.stable,
         )
         ref = f"refs/tags/{args.tag}"
         target = tag_commit(ref, command("git", "ls-remote", "--tags", f"https://github.com/{REPO}.git",
@@ -125,9 +128,13 @@ def main() -> int:
         if args.published:
             release = json.loads(command(args.gh, "release", "view", args.tag, "-R", REPO,
                                          "--json", "tagName,isDraft,isPrerelease"))
-            check_publication(release, args.tag, target, commit)
+            check_publication(release, args.tag, target, commit, stable=args.stable)
         elif target or command("git", "tag", "--list", args.tag):
             raise ValueError("The proposed tag already exists")
+        if args.stable and not args.published:
+            remote = command("git", "ls-remote", "--refs", f"https://github.com/{REPO}.git", "refs/heads/main")
+            if remote != commit + "\trefs/heads/main":
+                raise ValueError("A new stable release must use the current main commit")
         if not args.published:
             releases = json.loads(command(args.gh, "release", "list", "-R", REPO, "--limit", "1000",
                                           "--json", "tagName,isDraft,isPrerelease"))
@@ -142,7 +149,8 @@ def main() -> int:
             raise ValueError("The candidate changed during preflight")
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.exit(1, f"Preflight failed: {error}\n")
-    state = "verified published prerelease" if args.published else "unused proposed prerelease tag"
+    channel = "stable release" if args.stable else "prerelease"
+    state = "verified published " + channel if args.published else "unused proposed " + channel + " tag"
     print(f"{args.tag}: {state} for {commit}, matching metadata and six passing jobs.")
     print("No tag or release created. Confirm candidate scope and safe owner upgrade separately.")
     return 0
