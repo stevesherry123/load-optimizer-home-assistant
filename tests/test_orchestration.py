@@ -533,7 +533,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.scheduler.state["auto_mode_enabled"] = False
         await self.scheduler.async_request("overnight")
         self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
-        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.Quick45"])
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.Quick45", options=["Dishcare.Dishwasher.Program.Quick45"])
         request = deepcopy(self.scheduler.state["request"])
         self.assertEqual(request["program"], "Quick45")
         Clock.current = datetime.fromisoformat(request["start"])
@@ -1033,6 +1033,9 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                  options=["Dishcare.Dishwasher.Program." + model["program"] for model in models])
 
         async def appliance(domain, service, *_args, **_kwargs):
+            if domain == "select":
+                self.put("select.programmes", _args[0]["option"],
+                         **self.values["select.programmes"].attributes)
             if (domain, service) == ("button", "press"):
                 self.put("sensor.operation", namespace["RUNNING_OPERATION"])
                 self.put("sensor.load_optimizer_1_cycle_state", "running")
@@ -1130,7 +1133,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                   "allow_negative_price_run": True, "maximum_runs_per_window": 1,
                   "preference_rank": 50}
         self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
-        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.Quick45"])
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.Quick45", options=["Dishcare.Dishwasher.Program.Quick45"])
         self.put("sensor.load_optimizer_1_negative_price_recommendation", "MachineCare", status="ready",
                  program="MachineCare", power_hungry_window_fits_negative_price=True)
         for slack, allowed_domains, attempts in (
@@ -1198,6 +1201,20 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                     await self.scheduler._async_execute(request)
                 self.assertEqual(self.scheduler.state["last_result"], "confirmed")
                 self.assertEqual(check.await_count, count)
+
+    async def test_failed_programme_selection_blocks_all_start_commands(self):
+        self.put("select.programmes", "previous", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+        async def fail_selection(domain, service, *args, **kwargs):
+            if domain == "select":
+                raise RuntimeError("synthetic selection failure")
+        self.hass.services.async_call.side_effect = fail_selection
+        with patch.object(asyncio, "sleep", new=AsyncMock()):
+            await self.scheduler._async_execute({"mode": "now", "program": "MixedLoad",
+                                                "automatic": False, "explicit_program_override": True})
+        self.assertEqual(self.scheduler.state["last_reason"], "command_error")
+        self.assertFalse(any(call.args[0] in {"button", "home_connect_alt", "home_connect"}
+                             for call in self.hass.services.async_call.await_args_list))
 
     async def test_unconfirmed_programme_blocks_all_start_commands(self):
         self.put("select.programmes", "previous", options=["Dishcare.Dishwasher.Program.MixedLoad"])
@@ -1652,6 +1669,9 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                  options=["Dishcare.Dishwasher.Program." + m["program"] for m in models])
 
         async def mock_appliance(domain, service, data, **kwargs):
+            if domain == "select":
+                self.put("select.programmes", data["option"],
+                         **self.values["select.programmes"].attributes)
             if domain == "button" and service == "press":
                 self.put("sensor.operation", namespace["RUNNING_OPERATION"])
                 self.put("sensor.load_optimizer_1_cycle_state", "running")

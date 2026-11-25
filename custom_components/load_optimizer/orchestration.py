@@ -1577,20 +1577,6 @@ class NativeOrchestrator:
         state = self.hass.states.get(entity_id) if entity_id else None
         return state.state if state else "unavailable"
 
-    async def _async_committed_attempt(self) -> str | None:
-        # Store.async_load can return a queued write rather than the disk contents.
-        return await self.hass.async_add_executor_job(self._read_committed_attempt)
-
-    def _read_committed_attempt(self) -> str | None:
-        stored = json.loads(Path(self.store.path).read_bytes())
-        if not isinstance(stored, dict) or stored.get("version") != STORE_VERSION:
-            return None
-        data = stored.get("data")
-        state = data.get("state") if isinstance(data, dict) else None
-        if isinstance(state, dict) and stored.get("key") == self.store.key and state.get("execution_status") == "commanding":
-            return state.get("last_attempt")
-        return None
-
     async def _async_save(self) -> None:
         await self.store.async_save(
             {

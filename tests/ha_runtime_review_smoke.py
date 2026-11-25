@@ -22,6 +22,7 @@ from custom_components.load_optimizer.const import DOMAIN
 from custom_components.load_optimizer.legacy import app_runtime
 from custom_components.load_optimizer.legacy_runtime import LegacyRuntime
 from custom_components.load_optimizer.orchestration import NativeOrchestrator
+from custom_components.load_optimizer.sensor import LoadOptimizerSensor, LoadOptimizerRuntimeSensor
 
 
 async def main():
@@ -33,6 +34,19 @@ async def main():
             # The registry test needs Core bootstrap, not discovery or external integrations.
             with patch("homeassistant.bootstrap.DEFAULT_INTEGRATIONS", set()):
                 assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
+            # General status must not publish new coordinator fields by default.
+            private = {"orchestration": {"household_mapping": "private-fixture"},
+                       "legacy_entities": {"fixture": "private"}, "future_private_field": "private-fixture"}
+            data = {**private, "mode": "learned_appliance", "instance_count": 1,
+                    "published_entity_count": 10, "last_scan": "fixture-time",
+                    "tariff_period_count": 48, "last_updated": "fixture-time"}
+            sensor = SimpleNamespace(coordinator=SimpleNamespace(data=data),
+                                     entity_description=SimpleNamespace(key="status"))
+            assert LoadOptimizerSensor.extra_state_attributes.fget(sensor) == {
+                "tariff_period_count": 48, "last_updated": "fixture-time"}
+            assert LoadOptimizerRuntimeSensor.extra_state_attributes.fget(sensor) == {
+                key: data[key] for key in ("mode", "instance_count", "published_entity_count", "last_scan")}
+            print("General status exposes only allowed summary fields, including with future private data")
             notifications = []
 
             @callback
