@@ -23,7 +23,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import TariffDataUnavailable, non_energy_cost_breakdown, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.7.0-beta.9"
+APP_VERSION = "1.8.0"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -222,6 +222,31 @@ def datetime_from_entity_state(
             tzinfo=configured_timezone(naive_timezone) if isinstance(naive_timezone, str) else naive_timezone
         )
     return parsed.astimezone(timezone.utc)
+
+
+def schedule_constraints(config: dict, now: datetime, state_reader) -> dict:
+    """Resolve live constraints identically for planning and command checks.
+
+    A deadline predating a request is stale. Once applicable to that request,
+    it remains binding even after time advances or its helper is cleared.
+    """
+    reference = datetime_from_entity_state({"state": config.get("schedule_request_created_at")}) or now
+    result = {"earliest_start_utc": None, "latest_finish_utc": None, "unreadable": []}
+    for setting, argument in (("schedule_earliest_start_entity", "earliest_start_utc"),
+                              ("schedule_latest_finish_entity", "latest_finish_utc")):
+        entity = config.get(setting)
+        if not entity:
+            continue
+        value = datetime_from_entity_state(state_reader(entity),
+                                           naive_timezone=config.get("tariff_timezone", "Europe/London"))
+        if value is None:
+            result["unreadable"].append(entity)
+        elif value > (reference if argument == "latest_finish_utc" else now):
+            result[argument] = value
+    pinned = datetime_from_entity_state({"state": config.get("schedule_request_latest_finish")})
+    if pinned:
+        result["latest_finish_utc"] = min(pinned, result["latest_finish_utc"] or pinned)
+    return result
 
 
 def datetime_from_value(
@@ -2036,6 +2061,9 @@ def publish_cost_entities(
                 recommendation.get("program_options", []),
             ),
         }
+        if (recommendation_status == "ready" and recommendation_ready
+                and intent in ("overnight", "negative_price") and "tariff_evidence" in recommendation):
+            attributes["tariff_evidence"] = recommendation["tariff_evidence"]
         publish_entity(token, f"{prefix}_{intent}_recommendation", state or "not_ready", attributes)
         if intent in {"overnight", "negative_price"}:
             publish_entity(
@@ -2640,18 +2668,9 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         earliest_start_entity = config.get("schedule_earliest_start_entity")
         latest_finish_entity = config.get("schedule_latest_finish_entity")
         schedule_timezone = config.get("tariff_timezone", "Europe/London")
-        earliest_start_utc = (
-            datetime_from_entity_state(source_state(token, earliest_start_entity), naive_timezone=schedule_timezone)
-            if earliest_start_entity else None
-        )
-        latest_finish_utc = (
-            datetime_from_entity_state(source_state(token, latest_finish_entity), naive_timezone=schedule_timezone)
-            if latest_finish_entity else None
-        )
-        if earliest_start_utc and earliest_start_utc <= now.astimezone(timezone.utc):
-            earliest_start_utc = None
-        if latest_finish_utc and latest_finish_utc <= now.astimezone(timezone.utc):
-            latest_finish_utc = None
+        constraint_values = schedule_constraints(config, now, lambda entity: source_state(token, entity))
+        earliest_start_utc = constraint_values["earliest_start_utc"]
+        latest_finish_utc = constraint_values["latest_finish_utc"]
         tariff_states = []
         missing_entities = []
         for entity_id in tariff_entities:
@@ -2660,7 +2679,13 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 missing_entities.append(entity_id)
             else:
                 tariff_states.append(tariff_state)
-        if missing_entities:
+        if constraint_values["unreadable"]:
+            cost_result = {
+                "status": "schedule_constraint_unavailable",
+                "reason": "A configured start/finish constraint could not be read.",
+                "unreadable_constraints": constraint_values["unreadable"],
+            }
+        elif missing_entities:
             cost_result = {
                 "status": "tariff_unavailable",
                 "tariff_entity": ", ".join(tariff_entities),

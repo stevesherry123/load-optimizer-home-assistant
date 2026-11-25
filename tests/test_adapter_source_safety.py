@@ -120,6 +120,29 @@ class AdapterSourceSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.options["instances_yaml"] = self.options["instances_yaml"].replace("allow_normal_recommendation: true", "allow_normal_recommendation: false")
         self.assertEqual(await self.negative_check(), "normal_wash_program_not_permitted")
 
+    async def test_normal_deadline_regression_and_live_constraint_failures(self):
+        self.normal_fixture()
+        self.request["created_at"] = (self.now - timedelta(hours=7)).isoformat()
+        self.options["instances_yaml"] += "\n  schedule_latest_finish_entity: input_datetime.deadline\n"
+        self.put("input_datetime.deadline", (self.now - timedelta(hours=18)).isoformat())
+        self.assertIsNone(await self.negative_check())
+        self.put("input_datetime.deadline", (self.now + timedelta(minutes=29)).isoformat())
+        self.assertEqual(await self.negative_check(), "normal_wash_outside_schedule_constraints")
+        self.put("input_datetime.deadline", (self.now + timedelta(minutes=30)).isoformat())
+        self.assertIsNone(await self.negative_check())
+        self.put("input_datetime.deadline", "unavailable")
+        self.assertEqual(await self.negative_check(), "normal_wash_schedule_constraint_unavailable")
+
+    async def test_request_deadline_still_blocks_after_expiry_or_helper_change(self):
+        self.normal_fixture()
+        self.request.update(created_at=(self.now - timedelta(hours=3)).isoformat(),
+                            latest_finish_utc=(self.now - timedelta(minutes=1)).isoformat())
+        self.assertEqual(await self.negative_check(), "normal_wash_outside_schedule_constraints")
+        self.request.pop("latest_finish_utc")
+        self.options["instances_yaml"] += "\n  schedule_latest_finish_entity: input_datetime.deadline\n"
+        self.put("input_datetime.deadline", (self.now - timedelta(minutes=1)).isoformat())
+        self.assertEqual(await self.negative_check(), "normal_wash_outside_schedule_constraints")
+
     async def test_negative_preflight_rechecks_live_operating_costs_before_command(self):
         self.negative_fixture()
         self.assertIsNone(await self.negative_check())

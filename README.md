@@ -4,17 +4,28 @@ Plan appliance cycles and EV charging around your electricity tariff using
 existing Home Assistant entities. Learn when an appliance uses energy during a
 cycle, compare running costs, and find suitable low-cost or negative-price windows.
 
+Version **1.8.0** adds required/opportunistic EV advisory plans and a shareable
+compact dashboard. It retains the 1.7.0 dishwasher release, which delivers bounded overnight dishwasher scheduling, configured
+operating costs and clearer controls, with consistent deadline and start safety
+checks. Development is consolidated on **main**; published stable releases are
+the normal update channel. Automatic charger control remains separate work. See the [release record](docs/release-readiness.md).
+
 ## Stable Features
 
 - **Appliance learning:** capture completed cycles from power and energy sensors,
   retain learned programme profiles, and estimate costs across tariff periods.
+- **Overnight dishwasher scheduling:** save one-wash permission, use configurable
+  start windows, recover when prices return and consistently enforce travel deadlines.
 - **Scheduling recommendations:** compare programmes and start windows using
   configured deadlines, programme policies and automatic cooldowns.
+- **Operating costs:** include configured electricity, consumables, water and wear
+  costs; rank optional profitable extra runs by net benefit per run.
 - **Optional dishwasher controls:** opt into Home Connect / Bosch-style controls
   with connection, door and already-running safety checks. Manual programme
   requests bypass automatic cooldowns, not physical safety checks.
-- **EV charging plans:** use battery percentage, usable capacity, target, charge
-  power and efficiency to select charging windows and estimate cost or profit.
+- **EV advisory plans:** choose required charging with visible target shortfalls
+  or opportunistic charging under a price ceiling. These plans do not control a charger.
+  Review [charging signal semantics](docs/ev-charging.md) before upgrading external automations.
 - **Ofgem comparison:** choose a GB electricity region and payment method for a
   daily cached, effective-dated default-tariff unit-rate benchmark.
 - **Optional dashboards:** a standard-card template, plus a richer chart example
@@ -39,20 +50,26 @@ for the development scope, remaining physical tests and publication boundary.
 
 ## HACS Installation
 
-Until this repository is included as a default HACS repository, add it as a
-custom repository:
+Load Optimizer is included in the default HACS catalogue.
+
+1. Open **HACS** in Home Assistant and search for **Load Optimizer**.
+2. Download the integration, choosing the latest **stable GitHub release**.
+3. Restart Home Assistant.
+4. Go to **Settings > Devices & services > Add integration**, then search for
+   **Load Optimizer** to configure it.
+
+If it does not appear in your HACS catalogue, use **Custom repositories** as a
+fallback. Add the following URL with category **Integration**, then download
+**Load Optimizer** and follow the restart and configuration steps above:
 
 ```text
 https://github.com/stevesherry123/load-optimizer-home-assistant
 ```
 
-Choose category **Integration**, install **Load Optimizer**, restart Home
-Assistant, then add **Load Optimizer** from Settings > Devices & services.
-
-Choose the latest **stable GitHub release**, not a development branch. The
-HACS catalogue request is [#11744](https://github.com/hacs/default/pull/11744);
-submission is not acceptance. Once accepted and scanned, users can find the
-integration directly in HACS without adding a custom repository.
+Do not choose a development branch for a normal installation. Catalogue
+inclusion was [approved and merged](https://github.com/hacs/default/pull/11744)
+on 2 November 2026. Existing custom-repository installations do not need to be
+removed or recreated; keep your configured integration and its learning data.
 
 Home Assistant **2026.10.2 or later** is required. When using BottlecapDave's
 Octopus Energy sources, version **19.2.1 or later** is required. Other tariff
@@ -112,9 +129,9 @@ user action unless they have configured their own automatic-update automation;
 integration code changes require a Home Assistant restart to take effect.
 
 Tariff history, historical analysis, portable history import and optional AI
-summaries remain **experimental beta features**, not stable functionality.
-Public development branches can be inspected by anyone, even though they are not
-offered as normal stable updates. Do not enable beta updates on an installation
+summaries are included as **optional experimental features**. They are not
+required for dishwasher scheduling, and AI generation remains manually requested.
+The new automatic EV controller remains outside the public stable package. Do not enable beta updates on an installation
 that must remain on stable.
 
 See [release channels and publication](docs/release-channels.md) for the exact

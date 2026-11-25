@@ -1,3 +1,8 @@
+> Current status (25 November 2026): main includes the dishwasher release and
+> the 1.8.0 EV advisory extraction plus shareable Dashboard V2. Historical batch
+> records below describe earlier checkpoints. New automatic EV control and
+> owner-trial journal migration remain outside the released advisory scope.
+
 # Load Optimizer: architecture and delivery plan
 
 Planning baseline: 3 November 2026. This records the architecture review and user decisions; it does not claim that proposed behaviour has been implemented or deployed.
@@ -39,7 +44,7 @@ Use observed device consumption and tariff analysis to automate useful appliance
 
 - Required mode aims to reach a configured target by a deadline and may use paid electricity. If the target cannot be reached, recommend the available charging and show the projected battery level and shortfall.
 - Opportunistic mode charges within a configured price ceiling without promising a target by a deadline.
-- EV planning and EV control are separate delivery milestones. Advisory planning remains the default; optional switch control requires separate explicit session permission.
+- EV planning and EV control are separate delivery milestones. Current repository documentation describes advisory EV planning.
 - Keep device plans independent in the present scope.
 
 ## Architecture
@@ -90,32 +95,6 @@ Missing tariff coverage is a data failure, not a reason to invoke the window fal
 
 Milestones 1–4 form the first complete delivery: dependable dishwasher optimisation. Documentation and onboarding should improve throughout; milestone 7 verifies the complete installation journey. These are outcome gates, not estimated dates or new release commitments.
 
-## Current delivery position — 6 November 2026
-
-| Milestone | Implementation and evidence | Remaining acceptance |
-| --- | --- | --- |
-| 1. Behaviour and baseline | Agreed policy and architecture mapped to development. | Reconcile the separate EV prototype before promotion. |
-| 2. Dishwasher scheduling | Implemented; synthetic window, restart, cancellation and price-recovery checks pass. | Supervised physical scheduling and restart acceptance. |
-| 3. Total-benefit decisions | Implemented; cost precision, break-even and priority checks pass. | Verify installation-specific cost assumptions. |
-| 4. Controls and explanations | Implemented; dashboard templates and action wiring pass. | Unfamiliar-user walkthrough and desktop/mobile inspection. |
-| 5. EV planning | Implemented; required/optional modes and shortfall checks pass. | Verify live forecasts, connection, capacity and power assumptions. |
-| 6. Optional EV control | Implemented; command, persistence and feedback checks pass. | Prototype journal migration, reporting cadence and supervised physical start/stop/recovery. |
-| 7. Installation and release | Executable examples, guides and full two-version validation implemented. | Fresh-install walkthrough, rollback acceptance, final scope/version and promotion. |
-
-Development commit `3e75912` passed 570 unit tests, Bandit and all 24 standard HA
-acceptance checks locally in each pinned environment (2026.10.2 and 2026.10.4).
-All six GitHub jobs passed in
-[run 42194714493](https://github.com/stevesherry123/load-optimizer-home-assistant/actions/runs/42194714493).
-These results establish implementation confidence, not physical acceptance.
-
-The first four milestones are the proposed first feature scope: reliable
-scheduled dishwasher washing with explicit costs and understandable controls.
-Advisory EV planning can be considered separately. Automatic EV control has
-additional migration and hardware gates. This is a recommendation, not a final
-scope decision; the current draft PR includes all implementation work. A smaller
-release requires a deliberately prepared and tested candidate, not merely leaving
-EV permission off. See [release readiness](release-readiness.md).
-
 ## Implementation sequence
 
 1. Map current scheduling, costing, persistence and control code to the agreed behaviour; inspect installed and branch versions separately.
@@ -153,7 +132,7 @@ At the initial review, the dishwasher script guide required a ready recommendati
 
 Development has started in the isolated `load-optimizer` checkout in this workspace, on `feat/overnight-scheduling-milestones`, based on shared-beta commit `3184482`. The first batch implements durable normal-wash requests, native window controls, late-finish fallback, price-recovery notifications, normal-run priority and command-time revalidation. Existing door-based automatic mode remains an opt-in that is off by default.
 
-No deployment or release has been performed. Installed-version verification and supervised physical-appliance acceptance remain outstanding. The second batch implements and validates total-cost precision, explicit consumables costs, unconfigured-cost disclosure, strictly positive extra-run eligibility and ranking by net benefit per run. Financial breakdown cards are included in both dashboard templates. The third batch delivers the initial scheduling controls and explanations: shared Next wash cards, explicit schedule/start/cancel controls, window settings, optional-mode labels, readable blockers and event descriptions, and distinct waiting, starting, washing and terminal states. EV planning and optional switch control are implemented in development; supervised physical charger acceptance remains outstanding. Physical-appliance and desktop/mobile visual acceptance remain outstanding.
+No deployment or release has been performed. Installed-version verification and supervised physical-appliance acceptance remain outstanding. The second batch implements and validates total-cost precision, explicit consumables costs, unconfigured-cost disclosure, strictly positive extra-run eligibility and ranking by net benefit per run. Financial breakdown cards are included in both dashboard templates. The third batch delivers the initial scheduling controls and explanations: shared Next wash cards, explicit schedule/start/cancel controls, window settings, optional-mode labels, readable blockers and event descriptions, and distinct waiting, starting, washing and terminal states. The EV planning milestone is now implemented in development; optional charger control remains separate delivery work. Physical-appliance and desktop/mobile visual acceptance remain outstanding.
 
 Local validation for this batch passed 513 unit tests, Bandit and all 20 isolated Home Assistant acceptance checks against Python 3.14.2 and Home Assistant 2026.10.2. The checks include price recovery, native time controls, one confirmed synthetic start, cancellation, restart persistence and a command sequence blocked when the start window closes. This is synthetic acceptance, not proof from a physical dishwasher.
 
@@ -169,41 +148,19 @@ The third batch passed 533 unit tests, Bandit and all 20 isolated Home Assistant
 
 The EV planning batch passed 550 unit tests, Bandit and all 21 isolated Home Assistant acceptance checks. Required mode recommends useful partial charging and reports the shortfall; opportunistic mode applies an inclusive price ceiling, defaulting to free or negative electricity. Checks cover mode changes, active partial intervals, deadlines and daylight-saving transitions, target changes, missing prices and connection inputs, reloads, stable entity identities and the optional EV plan card. The existing ready-to-charge indication now includes useful partial plans; consumers that require a complete target must also check target_reachable. Recommendations remain advisory and electricity-cost based. No vehicle or charger was operated, and no installation or release was changed. See docs/ev-charging.md in the development checkout.
 
-## EV control foundation (milestone 6 in progress)
-
-The first control batch implemented the charger-independent command lifecycle and covered it with synthetic tests. It separates explicit permission, a reserved command and physical confirmation; prevents duplicate pending commands; blocks automatic retries on ambiguity or unexpected external stops; and quarantines restored authority until reconciliation. At that foundation stage it was not wired to runtime services, persistence or household controls; the following batch supplies that wiring. The user identified sensor.volvo_xc60_battery and switch.volvo_charger (off cuts power to the car). The later read-only review identified dedicated cable connection and charger-meter feedback; physical availability and reporting cadence still need verification. See docs/ev-control.md in the development checkout for the flow and remaining implementation steps. Validation passed 562 unit tests, Bandit and all 21 isolated Home Assistant acceptance checks; the final lifecycle refinements also passed the full unit and security suites. No hardware was operated. Milestone 6 remains incomplete.
-
-## Optional EV switch-control implementation acceptance
-
-The next control batch wires a switch adapter into the coordinator behind a separate Automatic Charging switch, off by default and reset off after reload. Configured entries gain a Confirm Charging Stopped recovery button; existing advisory IDs are retained. Commands are reserved and saved before dispatch, revalidated after saving, and confirmed using both switch state and a newer charger-meter reading. Owned power stops on target completion, tariff loss, revoked permission or ended intervals when the switch is available. Unexpected delivery loss cuts owned power and requires review; uncertain commands never retry blindly. Interval/deadline timers, source listeners and periodic checks are wired. A session deadline cannot roll into tomorrow, and two enabled entries cannot claim one switch.
-
-EV configuration can combine the Octopus current-day and next-day forecast events. Empty tomorrow data preserves today's known slots without inventing prices. The read-only household review identified a current-price-only EV tariff selection, unavailable charger hardware, zero-only car numeric-power history and slower car status than the charger meter. No live settings, code, charger state or installed version were changed. Validation passed 567 unit tests, Bandit and all 23 isolated Home Assistant acceptance checks. Final fault-handling and unload refinements also passed the full unit/security suites and both EV adapter/runtime acceptance checks. The remaining gate is restoring charger availability, verifying actual reporting freshness and capacity/power assumptions, then supervised hardware acceptance. The public-installation/release milestone remains separate. See docs/ev-control.md for the architecture flow and step-by-step configuration and recovery guide.
-
-## Installation and release-readiness implementation
-
-The installation checklist now connects appliance learning, scheduling acceptance, EV planning, optional control, updates and rollback. The README, compatibility, setup and troubleshooting guides distinguish published scope from this development branch. Generic EV planning/control form examples are consumed by the real Home Assistant runtime acceptance, including advisory-only setup without charger entities and mapped setup with permission off.
-
-Validation reports record the source commit, branch, working-tree state, selected suites and a source fingerprint, comparing source identity before and after the run. A mismatch fails an otherwise green run. Revision-unverified runs are labelled, and dirty runs are distinguished from evidence for a clean release commit. The development checks passed 569 unit tests, Bandit and all 23 isolated Home Assistant checks. A clean-commit rerun is the final local confirmation. This implements the documentation and repeatability portion of milestone 7; unfamiliar-user onboarding, physical acceptance, GitHub release checks, deployment and publication remain outstanding. No release version was assigned and no live installation was changed. See docs/installation-checklist.md and docs/release-readiness.md.
-
-## EV preflight source-consistency follow-up
-
-The final control snapshot now compares the planning source State objects, effective settings and pinned deadline across each asynchronous calculation. Source changes trigger bounded recalculation rather than allowing an earlier plan to pass only because the replacement reading is numeric and fresh. Repeated changes after three attempts report control_inputs_changing and cannot supply an active control plan.
-
-The new real Home Assistant acceptance injects battery-target completion, target-sensor changes, primary and additional tariff ceiling changes at the final pre-dispatch calculation, capacity changes and continuous source churn. No start command is dispatched from those invalidated final plans. A negative-control run using the earlier snapshot method fails this regression as expected. Local development validation passed 569 unit tests, Bandit and all 24 Home Assistant checks. The fix remains on the separate development branch and does not constitute live hardware acceptance or a release.
-
 ## Confirmed window and price recovery
 
 The household's default overnight window begins at 21:00 and ends at 07:00. Missing prices trigger a notification. Complete prices returning in time allow automatic resumption inside the original window under the existing permission; they do not revive cancelled or expired requests.
 
-## Complete pinned compatibility coverage
+## Selected first release scope — 6 November 2026
 
-The next validation milestone extends the pinned HA 2026.10.4 job from imports
-and appliance interlocks to every standard HA acceptance check. Its independent
-requirements match HA frontend and authentication bootstrap pins, verified before
-tests. Both HA jobs retain full summaries and failure logs. This closes the remote
-EV coverage gap without claiming physical acceptance or automatic latest-version
-tracking. Development commit 8e6e00e passed all six GitHub jobs before this change.
+The user selected dishwasher scheduling and costs for the first release. This
+candidate is based on `4606832`, containing milestones 1–4 and excluding the
+later EV planning and automatic-control commits. Existing baseline advisory EV
+behaviour remains; no new EV mode or control adapter is included.
 
-Local validation passed 570 unit tests, Bandit and all 24 HA acceptance checks
-in each pinned environment (2026.10.2 and 2026.10.4). These are synthetic checks;
-no live installation or hardware was changed.
+The candidate adds complete two-version validation and source identity reports.
+Physical dishwasher acceptance, desktop/mobile and unfamiliar-user walkthrough,
+fresh installation and rollback remain required before publication. No version
+was assigned, installation changed or release published. The broader development
+branch and draft PR #26 retain the EV work independently.

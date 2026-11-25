@@ -22,6 +22,7 @@ EXAMPLE = '''- id: "1"
   name: Synthetic overnight dishwasher
   power_sensor: sensor.synthetic_power
   program_sensor: sensor.synthetic_program
+  schedule_latest_finish_entity: input_datetime.synthetic_deadline
   schedule_overnight_start: "20:00"
   schedule_overnight_end: "07:00"
   program_policies:
@@ -64,12 +65,14 @@ async def main():
              patch("custom_components.load_optimizer.orchestration.datetime", Clock), \
              patch("custom_components.load_optimizer.legacy_runtime.datetime", Clock), \
              patch.object(app_runtime, "datetime", Clock), \
+             patch.object(HomeAssistantHTTP, "async_bind", new=AsyncMock(), create=True), \
              patch.object(HomeAssistantHTTP, "start", new=AsyncMock()), \
              patch.object(HomeAssistantHTTP, "stop", new=AsyncMock()), \
              patch.object(type(hass.services), "async_call", new=guarded_call):
             try:
                 assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
                 await hass.async_start()
+                hass.states.async_set("input_datetime.synthetic_deadline", "2026-10-13 04:29:00")
                 hass.states.async_set("sensor.synthetic_power", 0)
                 hass.states.async_set("sensor.synthetic_program", "Quick65")
                 hass.states.async_set("sensor.synthetic_rates", "ready", {"rates": rates(7)})
@@ -102,6 +105,7 @@ async def main():
                 assert controller.state["request"]["normal_wash"]
                 assert controller.state["execution_status"] == "awaiting_plan"
                 assert controller.automation_explanation["reason_code"] == "overnight_tariff_coverage_incomplete"
+                assert "recommendation_quote" not in controller.state["request"]
                 print("Real HA: partial prices retain wash permission, notify, and cannot start a wash")
 
                 Clock.current += timedelta(minutes=2)
@@ -109,6 +113,10 @@ async def main():
                 await coordinator.async_refresh()
                 await controller.async_evaluate()
                 assert controller.state["request"]["program"] == "Eco50"
+                first_quote = deepcopy(controller.state["request"]["recommendation_quote"])
+                assert first_quote["overnight_selection_reason"] == "best_overnight"
+                assert first_quote["tariff_evidence"]["period_count"] >= 8
+                assert first_quote["tariff_evidence"]["periods"][0]["rate_source"] == "contracted"
                 original_created = controller.state["request"]["created_at"]
                 original_reserved = controller.state["last_auto_normal_request"]
                 Clock.current += timedelta(minutes=2)
@@ -119,7 +127,27 @@ async def main():
                 assert controller.state["request"]["created_at"] == original_created
                 assert controller.state["last_auto_normal_request"] == original_reserved
                 assert any(e["event"] == "replanned" for e in controller.state["schedule_events"])
+                revised_quote = controller.state["request"]["recommendation_quote"]
+                recommendation = hass.states.get("sensor.load_optimizer_1_overnight_recommendation")
+                assert revised_quote["program"] == recommendation.state == "Quick65"
+                assert revised_quote["estimated_cost_pence"] == recommendation.attributes["cost_pence"]
+                assert revised_quote["tariff_evidence"]["energy_cost_pence"] == recommendation.attributes["tariff_evidence"]["energy_cost_pence"]
+                assert revised_quote["tariff_evidence"]["periods"][0]["start"] == revised_quote["start"]
+                assert first_quote["program"] == "Eco50"
                 print("Real HA: late full rates select Eco50; price revision replans without consuming another reservation")
+
+                # The real planner and adapter both ignore a deadline predating
+                # this permission. No hardware service is registered or called.
+                request = deepcopy(controller.state["request"])
+                assert await coordinator._async_automatic_start_block(request) is None
+                hass.states.async_set("input_datetime.synthetic_deadline", "unavailable")
+                assert await coordinator._async_automatic_start_block(request) == "normal_wash_schedule_constraint_unavailable"
+                await coordinator.async_refresh()
+                assert hass.states.get("sensor.load_optimizer_1_cost_status").state == "schedule_constraint_unavailable"
+                hass.states.async_set("input_datetime.synthetic_deadline", "2026-10-13 04:29:00")
+                await coordinator.async_refresh()
+                assert not commands
+                print("Real HA: stale travel deadline accepted consistently; unreadable constraint pauses planning and execution")
 
                 # A manual programme and time must survive future planner changes and reload.
                 manual = {**controller.state["request"], "automatic": False, "mode": "overnight"}

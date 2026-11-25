@@ -2,6 +2,7 @@
   "domain": "load_optimizer",
   "name": "Load Optimizer",
   "after_dependencies": [],
+  "categories": ["energy"],
   "codeowners": ["@stevesherry123"],
   "config_flow": true,
   "documentation": "https://github.com/stevesherry123/load-optimizer-home-assistant",
@@ -9,5 +10,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/stevesherry123/load-optimizer-home-assistant/issues",
   "requirements": [],
-  "version": "1.7.0-beta.9"
+  "version": "1.8.0"
 }

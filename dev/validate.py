@@ -67,7 +67,7 @@ def checks(suites: list[str]) -> list[tuple[str, list[str]]]:
     if "unit" in suites:
         result.append(("unit", [sys.executable, "-m", "unittest", "discover", "-s", "tests"]))
     if "security" in suites:
-        result.append(("bandit", [sys.executable, "-m", "bandit", "-r", "custom_components/load_optimizer"]))
+        result.append(("bandit", [sys.executable, "dev/check_bandit.py"]))
     if "ha" in suites:
         scripts = sorted((ROOT / "tests").glob("ha_*_smoke.py"),
                          key=lambda p: (p.name != "ha_import_smoke.py", p.name))

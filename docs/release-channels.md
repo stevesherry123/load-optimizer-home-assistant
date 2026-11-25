@@ -31,12 +31,66 @@ Branch names do not enforce safety. Publishing a full stable release from a
 test branch would still expose it to stable users. Our policy is to develop and
 test separately, then merge approved changes to `main` and publish a stable
 release from the exact green commit, with matching manifest/runtime versions.
-Never move a tag that users have already installed.
+Never move a tag that users have already installed. Public prereleases form one
+update stream: each new beta must advance all published release versions. Do
+not publish a lower-version beta from a parallel branch after a higher-version
+trial. The release preflight rejects this ordering error.
 
 `hide_default_branch: true` keeps `main` out of the normal version picker. It is
 not access control: the repository and beta branches are public, and advanced
 users can explicitly install a public branch or full commit. Development is
 isolated from normal updates, not secret.
+
+## Owner trials through Home Assistant Marketplace
+
+The owner's HA 2026.11 installation uses the built-in **Marketplace** update
+provider. Do not infer HACS from an entity's name or historical installation.
+Read its entity-registry `platform` and config-entry domain before choosing an
+installation procedure. HACS-specific controls do not apply to Marketplace.
+
+Installing a full commit through `update.install` proves only that the files
+were downloaded. A raw commit is not a comparable release version. On the stable
+channel, HA can offer the older stable release as an update; a subsequent
+ordinary install can replace the trial code. The loaded manifest's version alone
+also does not prove which source revision was installed.
+
+For this owner trial:
+
+1. Prepare a numbered beta with matching manifest, runtime version and changelog.
+   Run `dev/check_beta_release.py` against the exact green commit. A draft is not
+   a published release and must not be treated as an available update.
+2. Publish the approved GitHub prerelease, verify the immutable tag's commit and
+   verify the source package against the committed files. Do not move an old tag.
+3. Enable beta releases for this repository through Marketplace's supported
+   repository control. This is one repository's update policy, not an isolated
+   channel for a particular feature branch. Verify the offered version first.
+4. With idle appliances and no pending command, create a recoverable backup,
+   install the exact release tag and check every downloaded component file.
+5. Restart HA and verify entries, entity identities, learned data and controls.
+   Then run the read-only owner channel check below. Require installed version,
+   loaded manifest, repository identity, beta setting and default install target
+   to agree, with no pending restart and no update offered. An off update entity
+   alone is insufficient because a direct generic service call still has a target.
+6. Repeat readback after the other update work and a Marketplace refresh, then
+   correlate the next physical wash with that installed build. Installation,
+   continued version retention and physical acceptance are separate evidence.
+   New execution snapshots record `build_version`; old snapshots without it
+   remain readable and must not be retroactively attributed to a newer build.
+
+```sh
+# Credentials are supplied by the environment; this script never installs,
+# changes channel settings, restarts HA or prints its token.
+python dev/check_owner_channel.py v1.7.0-beta.12 --output .local/owner-channel.json
+```
+
+Use `LOAD_OPTIMIZER_HA_URL` and `LOAD_OPTIMIZER_HA_TOKEN` for authenticated reads,
+or `--snapshot FILE` for offline checks. Keep credentials and household evidence
+out of Git. The redacted output contains release metadata only. File hashes and
+learning preservation still require their separate checks.
+
+Source: [HA 2026.11.2 Marketplace update service](https://github.com/home-assistant/core/blob/2026.11.2/homeassistant/components/marketplace/update.py),
+[repository version/channel implementation](https://github.com/home-assistant/core/blob/2026.11.2/homeassistant/components/marketplace/repositories/base.py),
+and [supported repository WebSocket controls](https://github.com/home-assistant/core/blob/2026.11.2/homeassistant/components/marketplace/websocket/repository.py).
 
 ## Development Branches
 
@@ -49,6 +103,22 @@ checks. The record does not itself publish a release or grant control permission
 own acceptance gates; their names are not release metadata or a promise of safe
 side-by-side installation. Use published tags and release notes to identify the
 supported installed scope, not a historical branch-cleanup inventory.
+
+## Maintainer Verification
+
+Use `python dev/check_beta_release.py TAG RUN_ID --commit SHA` before tagging a
+beta. It checks version parity, an unused tag and six passing jobs on the exact
+commit; a pull request's merge-test run does not replace that check. Add
+`--published` to audit an existing prerelease and its actual remote tag target.
+The script makes no changes on GitHub.
+
+Use `python dev/fingerprint_install.py --git-ref SHA` to identify that commit's
+package. The same digest and file count should match `--release-archive PATH`
+for the downloaded GitHub source tarball and `--installed PATH` for the
+integration directory on the HA host. Pass `--expect-sha256 DIGEST` to fail if
+the files don't match the expected package. A matching manifest version alone cannot
+detect a locally changed file. Only the integration source is read; this does
+not verify the saved learning or prove a backup can be restored.
 
 ## What Users Read
 
@@ -65,10 +135,15 @@ replace an existing tag merely to update its documentation.
 
 ## Catalogue Acceptance
 
-The request is [hacs/default#11744](https://github.com/hacs/default/pull/11744).
-Use that page for current reviews and status rather than a dated work diary.
-A merged request is the acceptance signal. The
-listing follows a scheduled catalogue scan, so it is not instantaneous.
+Load Optimizer was approved and added to the default HACS catalogue on
+2 November 2026 through
+[hacs/default#11744](https://github.com/hacs/default/pull/11744).
+New users should search for **Load Optimizer** in HACS; custom-repository setup
+is a fallback if their catalogue has not refreshed. Existing custom-repository
+users do not need to remove their configured integration or re-import learning.
+
+A merged request is the acceptance signal. Catalogue distribution follows a
+scheduled scan, so inclusion is not instantaneous after a merge.
 
 GitHub can notify subscribers through its inbox, mobile app or email according to
 their account settings. The request page remains
@@ -115,3 +190,17 @@ integration does not enable or change it.
 - [GitHub traffic](https://docs.github.com/en/repositories/viewing-activity-and-data-for-your-repository/viewing-traffic-to-a-repository)
 - [GitHub release-asset counters](https://docs.github.com/en/rest/releases/assets)
 - [Home Assistant opt-in analytics](https://www.home-assistant.io/integrations/analytics/)
+
+## Main-first development and stable publication
+
+`main` is the canonical integration branch. Keep short-lived review branches only
+when needed, and retain the unfinished EV controller separately. Normal public
+users consume full GitHub releases; merging main alone does not create an update.
+
+The release preflight supports stable publication with `--stable` (its historical
+filename remains `dev/check_beta_release.py`). Stable candidates must be the
+current remote main commit with matching stable versions and changelog, forward
+version ordering and six successful exact-commit validation jobs. After publishing,
+use `--stable --published` to verify the real remote tag and full-release flag.
+Existing beta tags are immutable. Experimental optional analysis remains clearly
+labelled in the main documentation and is not a prerequisite for dishwasher use.

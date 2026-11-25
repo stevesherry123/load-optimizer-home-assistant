@@ -47,6 +47,7 @@ async def main():
         with patch("custom_components.load_optimizer.price_cap.PriceCapManager.async_status",
                    new=AsyncMock(return_value={"status": "not_configured"})), \
              patch("custom_components.load_optimizer.coordinator.datetime", Clock), \
+             patch.object(HomeAssistantHTTP, "async_bind", new=AsyncMock(), create=True), \
              patch.object(HomeAssistantHTTP, "start", new=AsyncMock()), \
              patch.object(HomeAssistantHTTP, "stop", new=AsyncMock()), \
              patch.object(type(hass.services), "async_call", new=guarded_call):

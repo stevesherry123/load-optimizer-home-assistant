@@ -2,12 +2,17 @@ import unittest
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from random import Random
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 INTEGRATION_ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "load_optimizer"
 sys.path.insert(0, str(INTEGRATION_ROOT))
 
 from legacy.costing import (
+    QUOTE_TARIFF_PERIOD_LIMIT,
     _negative_power_window_fit,
+    _ordered_tariff_bounds,
     estimate_cycle_cost,
     normalize_tariff_periods,
     operational_overnight_window,
@@ -17,6 +22,7 @@ from legacy.costing import (
     recommend_cycle,
     tariff_periods_from_entity,
 )
+from legacy.app_runtime import overlay_free_windows
 
 
 class NegativePriceSchedulingTests(unittest.TestCase):
@@ -564,6 +570,49 @@ class CostEstimationTests(unittest.TestCase):
             },
         ])
 
+    def test_overnight_tariff_evidence_records_effective_rates_without_provider_metadata(self):
+        start = self.start
+        free_end = start + timedelta(minutes=15)
+        manual_end = start + timedelta(minutes=30)
+        periods = overlay_free_windows([self.period(0, 60, 12)], [
+            {"start": start, "end": free_end, "entity_id": "calendar.private_fixture"},
+        ])
+        periods = overlay_price_window(periods, start=free_end, end=manual_end,
+                                       price_p_per_kwh=-4, label="Private label fixture")
+        model = {**self.model, "program": "Test", "expected_runtime_minutes": 60,
+                 "expected_energy_kwh": 1, "representative_profile_w": [500, 500], "confidence": 90}
+        policy = {"program": "Test", "enabled": True, "allow_normal_recommendation": True,
+                  "allow_negative_price_run": False, "preference_rank": 50, "fixed_cost_pence": 2}
+
+        result = recommend_cycle([model], [policy], periods, reference_utc=start,
+                                 search_hours=1, candidate_interval_minutes=15,
+                                 overnight_start="00:00", overnight_end="07:00", schedule_timezone="UTC",
+                                 forecast_hours=0)
+
+        overnight = result["overnight_recommendation"]
+        self.assertEqual(overnight["cost_pence"], 7)
+        evidence = overnight["tariff_evidence"]
+        self.assertEqual(evidence["energy_cost_pence"], 5)
+        self.assertEqual(evidence["non_energy_cost_pence"], 2)
+        self.assertEqual(evidence["period_count"], 3)
+        self.assertEqual([row.get("rate_source", "contracted") for row in evidence["periods"]],
+                         ["free_electricity_calendar", "manual_special_price_window", "contracted"])
+        self.assertEqual([row["energy_kwh"] for row in evidence["periods"]], [0.25, 0.25, 0.5])
+        self.assertEqual([row["energy_cost_pence"] for row in evidence["periods"]], [0, -1, 6])
+        self.assertNotIn("fixture", repr(evidence).lower())
+        self.assertNotIn("tariff_evidence", result["now_recommendation"])
+
+        model["expected_runtime_minutes"] = 180
+        short_periods = [self.period(first, first + 15, 20) for first in range(0, 180, 15)]
+        result = recommend_cycle([model], [policy], short_periods, reference_utc=start,
+                                 search_hours=1, candidate_interval_minutes=15,
+                                 overnight_start="00:00", overnight_end="07:00", schedule_timezone="UTC",
+                                 forecast_hours=0)
+        evidence = result["overnight_recommendation"]["tariff_evidence"]
+        self.assertEqual(evidence["period_count"], 12)
+        self.assertEqual(len(evidence["periods"]), QUOTE_TARIFF_PERIOD_LIMIT)
+        self.assertEqual(evidence["energy_cost_pence"], 20)
+
     def test_tariff_gap_rejects_cost(self):
         with self.assertRaisesRegex(ValueError, "fully cover"):
             estimate_cycle_cost(
@@ -571,6 +620,63 @@ class CostEstimationTests(unittest.TestCase):
                 self.model,
                 [self.period(0, 30, 10)],
             )
+
+    def test_indexed_costs_match_full_range_across_partial_slots_and_gaps(self):
+        rng = Random(42)
+        periods = [self.period(first, first + 15, rng.randint(-20, 60)) for first in range(0, 240, 15)]
+        periods[3]["source"] = "free_electricity_calendar"
+        periods[3]["price_p_per_kwh"] = 0
+        periods[5]["source"] = "manual_special_price_window"
+        for priced in (periods, periods[:6] + periods[7:]):
+            bounds = _ordered_tariff_bounds(priced)
+            self.assertIsNotNone(bounds)
+            for minute in (0, 15, 29.5, 60, 90, 110.5, 175, 210):
+                for runtime in (30, 43.57, 60):
+                    with self.subTest(periods=len(priced), minute=minute, runtime=runtime):
+                        start = self.start + timedelta(minutes=minute)
+                        model = {**self.model, "expected_runtime_minutes": runtime,
+                                 "representative_profile_w": [0, 50, 600, 1200, 350, 50, 0]}
+                        try:
+                            expected = estimate_cycle_cost(start, model, priced)
+                        except ValueError as error:
+                            self.assertEqual(str(error), "Tariff does not fully cover the cycle")
+                            with self.assertRaisesRegex(ValueError, "fully cover"):
+                                estimate_cycle_cost(start, model, priced, _tariff_bounds=bounds)
+                        else:
+                            self.assertEqual(estimate_cycle_cost(start, model, priced, _tariff_bounds=bounds), expected)
+
+    def test_tariff_index_rejects_noncanonical_ranges_for_fallback(self):
+        period = self.period(0, 30, 10)
+        local = ZoneInfo("Europe/London")
+        for periods in (
+            [self.period(30, 60, 10), period],
+            [period, self.period(29, 60, 10)],
+            [period, period],
+            [self.period(30, 30, 10)],
+            [{"start": period["start"]}],
+            [{**period, "start": period["start"].astimezone(local)}],
+        ):
+            with self.subTest(periods=periods):
+                self.assertIsNone(_ordered_tariff_bounds(periods))
+
+    def test_indexed_recommendation_preserves_full_result(self):
+        periods = [self.period(first, first + 15, -5 if first < 45 else 10)
+                   for first in range(0, 180, 15) if first != 90]
+        model = {**self.model, "program": "Test", "expected_runtime_minutes": 40,
+                 "expected_energy_kwh": 1, "representative_profile_w": [400, 3000, 1000, 50]}
+        policy = {"program": "Test", "enabled": True, "allow_normal_recommendation": True,
+                  "allow_negative_price_run": True, "preference_rank": 50}
+        options = {"reference_utc": self.start, "search_hours": 2, "forecast_hours": 2,
+                   "schedule_timezone": "UTC", "candidate_interval_minutes": 5,
+                   "forecast_interval_minutes": 15,
+                   "blocked_windows": [{"start": self.start + timedelta(minutes=70),
+                                        "end": self.start + timedelta(minutes=80)}]}
+        optimized = recommend_cycle([model], [policy], periods, **options)
+        with patch("legacy.costing._ordered_tariff_bounds", return_value=None):
+            old_scan = recommend_cycle([model], [policy], periods, **options)
+        self.assertEqual(optimized, old_scan)
+        self.assertEqual(optimized["status"], "ready")
+        self.assertTrue(optimized["cost_forecast"])
 
     def test_recommendation_finds_cheapest_start(self):
         policy = {

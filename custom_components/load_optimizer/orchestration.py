@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+import json
 import logging
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from homeassistant.config_entries import ConfigEntry
@@ -18,9 +20,14 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
+from homeassistant.util.json import load_json_object
 
 from .const import DOMAIN
-from .legacy.costing import operational_overnight_window, parse_clock
+from .legacy.app_runtime import APP_VERSION, schedule_constraints
+from .legacy.costing import (
+    QUOTE_TARIFF_OVERRIDE_SOURCES, QUOTE_TARIFF_PERIOD_LIMIT,
+    operational_overnight_window, parse_clock,
+)
 from .orchestration_migration import LEGACY_AUTOMATION_IDS, OrchestrationMigration
 
 LOGGER = logging.getLogger(__name__)
@@ -37,6 +44,7 @@ CONTROL_DEFAULTS: dict[str, Any] = {
     "auto_negative_price_enabled": False,
     "door_opened_since_last_cycle": False,
     "door_open_minimum_minutes": 2.0,
+    "start_recovery_required": False,
     "overnight_start": None,
     "overnight_end": None,
     "override_program": "engine",
@@ -56,6 +64,7 @@ CONTROL_DEFAULTS: dict[str, Any] = {
     "last_start_decision_snapshot": None,
     "last_auto_negative_price_request": None,
     "last_auto_normal_request": None,
+    "last_completed_capture_start": None,
     "run_history": [],
     "schedule_events": [],
     "shadow_decision": None,
@@ -80,6 +89,9 @@ REASON_MESSAGES = {
     "power_source_unavailable": "Automatic starts are paused until valid appliance power readings return.",
     "blocked_window_source_unavailable": "Automatic starts are paused because a configured no-run source cannot be read. Restore the source or explicitly remove it from the configuration.",
     "automatic_overnight_mode_off": "Automatic overnight mode is off.",
+    "automatic_negative_price_mode_off": "Automatic free or negative-price mode is off.",
+    "start_confirmation_interrupted": "A restart interrupted start confirmation. Check the dishwasher, then use Cancel Schedule to clear the recovery hold.",
+    "start_reservation_not_saved": "The start could not be saved safely. Check Home Assistant storage before requesting another wash.",
     "door_not_opened_since_last_cycle": "Waiting for the dishwasher to be loaded: the door has not opened since the last wash.",
     "overnight_recommendation_not_ready": "Waiting for a fully priced, eligible overnight programme.",
     "overnight_tariff_coverage_incomplete": "Waiting for prices covering the whole overnight search and possible cycle finishes before choosing a start time.",
@@ -97,6 +109,9 @@ REASON_MESSAGES = {
     "automatic_request_available": "An automatic recommendation is available; a saved request has not yet been created.",
     "awaiting_plan": "One wash is authorised; waiting for an eligible plan inside its start window.",
     "no_eligible_plan_in_window": "No eligible programme can start inside the authorised window. Review programme permissions and available prices.",
+    "normal_wash_outside_schedule_constraints": "The wash cannot finish within its applicable start/finish constraints. Review the travel deadline; the authorised window is retained before any command.",
+    "normal_wash_schedule_constraint_unavailable": "A configured start/finish constraint is unavailable. Restore its source before the authorised window closes.",
+    "normal_wash_deadline_expired": "The finish deadline attached to this wash has passed. A new wash permission is required.",
     "normal_wash_tariff_unavailable": "Required electricity prices are unavailable. Planning will resume automatically if prices return inside the original window.",
     "normal_wash_tariff_invalid": "Electricity prices could not be verified. Restore valid tariff data before this window closes.",
     "normal_wash_cycle_not_fully_priced": "Prices do not cover the complete wash. The request will resume when full coverage returns inside its window.",
@@ -119,7 +134,8 @@ REASON_MESSAGES = {
     "authorised_window_closed": "The authorised start window closed without a confirmed start. Request another wash if needed.",
     "cancelled_by_user": "The pending schedule was cancelled. An active wash is not stopped.",
     "one_normal_wash_requested": "One normal wash was authorised for the selected overnight window.",
-    "normal_wash_plan_updated": "The pending wash programme or start time was updated.",
+    "normal_wash_plan_updated": "A programme and timing were recorded for the pending wash.",
+    "normal_wash_estimate_revised": "The estimate changed; the pending wash timings did not.",
     "user_request_queued": "The requested wash was scheduled for a start-time safety check.",
     "automatic_request_queued": "An authorised automatic wash was scheduled.",
     "overnight_recommendation_updated": "The overnight plan was updated after a new recommendation.",
@@ -156,6 +172,7 @@ class NativeOrchestrator:
             hass,
             STORE_VERSION,
             f"{DOMAIN}.native_orchestration.{entry.entry_id}",
+            atomic_writes=True,
         )
         self.state: dict[str, Any] = dict(CONTROL_DEFAULTS)
         self.config: dict[str, str] = {}
@@ -184,7 +201,9 @@ class NativeOrchestrator:
         self.schedule_config = dict(config)
         request = self.state.get("request") or {}
         if request.get("normal_wash"):
-            config.update(schedule_request_window_start=request["window_start"],
+            config.update(schedule_request_created_at=request.get("created_at"),
+                          schedule_request_latest_finish=request.get("latest_finish_utc"),
+                          schedule_request_window_start=request["window_start"],
                           schedule_request_window_end=request["window_end"])
             # Editing defaults affects the next request, not existing authority.
             for key in ("start", "end"):
@@ -207,12 +226,23 @@ class NativeOrchestrator:
             "window_clock_end": end_clock, "timezone": zone,
             "program": None, "start": None, "finish": None,
         }
+        self._capture_request_deadline(self.state["request"], now)
         self.state["execution_status"] = "awaiting_plan"
         self.state["last_message"] = "One wash authorised for the selected overnight window."
         if automatic:
             self.state["last_auto_normal_request"] = now.isoformat()
         self._record_schedule_event("authorised", "one_normal_wash_requested", now=now,
                                     automatic=automatic, window_start=start.isoformat(), window_end=end.isoformat())
+
+    def _capture_request_deadline(self, request: dict, now: datetime) -> datetime | None:
+        config = dict(self.schedule_config,
+                      schedule_request_created_at=request.get("created_at"),
+                      schedule_request_latest_finish=request.get("latest_finish_utc"))
+        resolved = schedule_constraints(config, now, lambda entity: {"state": self._state(entity)})
+        deadline = resolved["latest_finish_utc"]
+        if deadline:
+            request["latest_finish_utc"] = deadline.isoformat()
+        return deadline
 
     async def _async_normal_attention(self, request: dict, reason: str, message: str) -> None:
         """Notify once per unresolved reason, retaining the authorised request."""
@@ -256,10 +286,24 @@ class NativeOrchestrator:
             await self._async_outcome("expired", request["mode"], request.get("program"),
                                       "authorised_window_closed", "The dishwasher start window closed without a confirmed start.")
             return True
+        deadline = self._capture_request_deadline(request, now)
+        if deadline and deadline <= now:
+            await self._async_dismiss_normal_attention(request)
+            self.state["request"] = None
+            self.state["door_opened_since_last_cycle"] = False
+            await self._async_outcome("expired", request["mode"], request.get("program"),
+                                      "normal_wash_deadline_expired", explain_reason("normal_wash_deadline_expired"))
+            return True
         if request.get("automatic") and not self.state.get("auto_mode_enabled"):
             self.state["execution_status"] = "awaiting_plan"
             request["waiting_reason"] = "automatic_overnight_mode_off"
             return request != before
+        door_blocked_start = self._parse_datetime(request.get("door_blocked_start"))
+        if door_blocked_start and self._state(self.config.get("bosch_door_sensor")) not in {"off", "closed"}:
+            return False
+        if ("constraint_failure_revision" in request
+                and request["constraint_failure_revision"] == self._overnight_revision()):
+            return False
         if ("price_failure_revision" in request
                 and request["price_failure_revision"] == self._overnight_revision()):
             # A command-time price failure needs a new planner report. Polling
@@ -270,6 +314,8 @@ class NativeOrchestrator:
         coverage = attributes.get("overnight_planning_coverage", {})
         next_start = self._parse_datetime(attributes.get("start"))
         finish = self._parse_datetime(attributes.get("finish"))
+        if door_blocked_start and (not next_start or next_start <= door_blocked_start or next_start < now):
+            return False
         reason = self._overnight_planning_block(recommendation)
         if reason:
             self.state["execution_status"] = "awaiting_plan"
@@ -278,6 +324,7 @@ class NativeOrchestrator:
                 "Planning will resume automatically if data returns before the authorised window closes.")
         elif (attributes.get("status") != "ready" or not next_start or not finish
               or not window_start <= next_start < window_end or finish <= next_start
+              or deadline and finish > deadline
               or self._parse_datetime(coverage.get("window_start")) != window_start
               or self._parse_datetime(coverage.get("window_end")) != window_end):
             self.state["execution_status"] = "awaiting_plan"
@@ -301,15 +348,38 @@ class NativeOrchestrator:
                         "plan_reason": attributes.get("reason"),
                         "net_benefit_pence": attributes.get("net_benefit_pence"),
                         "operating_cost_breakdown": deepcopy(attributes.get("operating_cost_breakdown")),
-                        "unconfigured_costs": list(attributes.get("unconfigured_costs", []))}
-                if any(request.get(key) != value for key, value in plan.items()):
+                        "unconfigured_costs": list(attributes.get("unconfigured_costs", [])),
+                        **self._recommendation_evidence(attributes, attributes)}
+                quote_keys = ("recommendation_quote", "recommendation_alternatives")
+                # Keep coverage from the plan's selection, not the moving live
+                # search cursor. Live coverage still gates readiness and starts.
+                changed_keys = {key for key, value in plan.items()
+                                if key != "planning_coverage" and request.get(key) != value}
+                changed_keys.update(key for key in quote_keys if key in request and key not in plan)
+                if changed_keys or "planning_coverage" not in request:
                     previous_program, previous_start = request.get("program"), request.get("start")
-                    request.update(plan, replanned_at=now.isoformat())
-                    self._record_schedule_event("replanned" if previous_start else "queued", "normal_wash_plan_updated", now=now,
-                                                previous_program=previous_program, previous_start=previous_start,
-                                                program=plan["program"], start=plan["start"], finish=plan["finish"])
+                    schedule_changed = bool(changed_keys & {"program", "start", "finish"})
+                    estimate_changed = bool(changed_keys & {"recommendation_quote", "cost_pence", "net_benefit_pence",
+                                                           "operating_cost_breakdown", "unconfigured_costs", "plan_reason"})
+                    for key in quote_keys:
+                        if key not in plan:
+                            request.pop(key, None)
+                    request.update(plan)
+                    if schedule_changed:
+                        request["replanned_at"] = now.isoformat()
+                        self._record_schedule_event(
+                            "replanned" if previous_start else "queued",
+                            "normal_wash_plan_updated", now=now,
+                            previous_program=previous_program, previous_start=previous_start,
+                            program=plan["program"], start=plan["start"], finish=plan["finish"],
+                        )
+                    elif estimate_changed:
+                        self._record_schedule_event("estimate_updated", "normal_wash_estimate_revised", now=now,
+                                                    program=plan["program"], start=plan["start"], finish=plan["finish"])
             request.pop("waiting_reason", None)
             request.pop("price_failure_revision", None)
+            request.pop("constraint_failure_revision", None)
+            request.pop("door_blocked_start", None)
             await self._async_dismiss_normal_attention(request)
             self.state["execution_status"] = "queued"
         return request != before
@@ -341,6 +411,14 @@ class NativeOrchestrator:
         for key in LEGACY_CONFIG_HELPERS:
             if configured.get(key):
                 self.config[key] = str(configured[key])
+        if self.state.get("execution_status") == "commanding":
+            request = self.state.get("request") or {}
+            self.state["request"] = None
+            self.state["door_opened_since_last_cycle"] = False
+            self.state["start_recovery_required"] = True
+            reason = "start_confirmation_interrupted"
+            await self._async_outcome("blocked", request.get("mode"), request.get("program"),
+                                      reason, explain_reason(reason))
         if self._refresh_program_options():
             await self._async_save()
         self._loaded = True
@@ -571,7 +649,9 @@ class NativeOrchestrator:
 
     async def async_request(self, mode: str, *, override: bool = False) -> None:
         """Capture a user request from a native button."""
-        if self._stopping or self._cancelling:
+        if self.state.get("start_recovery_required"):
+            raise HomeAssistantError(explain_reason("start_confirmation_interrupted"))
+        if self._stopping or self._cancelling or self.hass.is_stopping:
             raise HomeAssistantError("Appliance control is stopping; retry after it finishes")
         if self._execution_task and not self._execution_task.done():
             raise HomeAssistantError("Cancel the current start request before replacing it")
@@ -647,12 +727,102 @@ class NativeOrchestrator:
             "automatic": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        quote = option or (attributes if attributes.get("program") == program else {})
+        # Start Now can move the actual request outside the quoted interval.
+        self.state["request"].update(self._recommendation_evidence(
+            attributes, quote, include_selection=not override,
+        ))
         self.state["execution_status"] = "queued"
         self.state["last_message"] = f"Queued {program} for {start}."
         self._record_schedule_event("queued", "user_request_queued", program=program, start=start)
         await self._async_save()
         self._publish()
         await self.async_evaluate()
+
+    def _recommendation_quote(self, option: dict[str, Any]) -> dict[str, Any] | None:
+        program = option.get("program")
+        cost = option.get("cost_pence")
+        start = self._parse_datetime(option.get("start"))
+        finish = self._parse_datetime(option.get("finish"))
+        if (
+            isinstance(program, str) and 0 < len(program) <= 100
+            and type(cost) in (int, float) and -float("inf") < cost < float("inf")
+            and start and finish and finish > start
+        ):
+            return {"program": program, "start": start.isoformat(),
+                    "finish": finish.isoformat(), "estimated_cost_pence": cost}
+        return None
+
+    def _recommendation_evidence(self, attributes: dict, quote: dict, *, include_selection: bool = True) -> dict:
+        saved = self._recommendation_quote(quote) if attributes.get("status") == "ready" else None
+        if saved is None:
+            return {}
+        reason = attributes.get("reason")
+        intent = attributes.get("intent")
+        if (include_selection and intent in ("overnight", "negative_price")
+                and saved == self._recommendation_quote(attributes)):
+            if intent == "overnight" and reason in ("best_overnight", "cheapest_start_in_window_late_finish"):
+                saved["overnight_selection_reason"] = reason
+            benefit = attributes.get("net_benefit_pence")
+            if (intent == "negative_price" and reason == "best_negative_price_net_benefit"
+                    and attributes.get("positive_net_benefit") is True
+                    and type(benefit) in (int, float) and 0 < benefit < float("inf")):
+                saved["estimated_net_benefit_pence"] = benefit
+            if rates := self._quote_tariff_evidence(attributes.get("tariff_evidence"), saved):
+                saved["tariff_evidence"] = rates
+        evidence = {"recommendation_quote": saved}
+        alternatives = []
+        seen = {saved["program"]}
+        for candidate in attributes.get("program_options") or ():
+            if not isinstance(candidate, dict):
+                continue
+            alternative = self._recommendation_quote(candidate)
+            if alternative is None or alternative["program"] in seen:
+                continue
+            alternatives.append(alternative)
+            seen.add(alternative["program"])
+            if len(alternatives) == 3:
+                break
+        if alternatives:
+            evidence["recommendation_alternatives"] = alternatives
+        return evidence
+
+    def _quote_tariff_evidence(self, evidence: object, quote: dict) -> dict | None:
+        """Keep a bounded, detached breakdown, never provider or event metadata."""
+        if not isinstance(evidence, dict):
+            return None
+        count, periods = evidence.get("period_count"), evidence.get("periods")
+        if (type(count) is not int or count < 1 or not isinstance(periods, list)
+                or len(periods) != min(count, QUOTE_TARIFF_PERIOD_LIMIT)):
+            return None
+
+        def finite(value):
+            return type(value) in (int, float) and -float("inf") < value < float("inf")
+
+        cost_keys = ("energy_cost_pence", "non_energy_cost_pence")
+        if not all(finite(evidence.get(key)) for key in cost_keys):
+            return None
+        start, finish = datetime.fromisoformat(quote["start"]), datetime.fromisoformat(quote["finish"])
+        rows = []
+        previous_end = start
+        for period in periods:
+            if not isinstance(period, dict):
+                return None
+            values = {key: period.get(key) for key in ("price_p_per_kwh", "energy_kwh", "energy_cost_pence")}
+            source = period.get("rate_source", "contracted")
+            if (not all(finite(value) for value in values.values()) or values["energy_kwh"] < 0
+                    or source not in ("contracted", *QUOTE_TARIFF_OVERRIDE_SOURCES)):
+                return None
+            first = self._parse_datetime(period.get("start"))
+            last = self._parse_datetime(period.get("end"))
+            if not first or not last:
+                return None
+            first, last = max(start, first), min(finish, last)
+            if first < previous_end or last <= first:
+                return None
+            rows.append({"start": first.isoformat(), "end": last.isoformat(), "rate_source": source, **values})
+            previous_end = last
+        return {"period_count": count, "periods": rows, **{key: evidence[key] for key in cost_keys}}
 
     async def async_cancel(self) -> None:
         """Cancel a pending native request."""
@@ -663,6 +833,7 @@ class NativeOrchestrator:
             await self._async_dismiss_normal_attention(request)
             self.state["request"] = None
             self.state["door_opened_since_last_cycle"] = False
+            self.state["start_recovery_required"] = False
             await self._async_outcome(
                 "cancelled",
                 request.get("mode"),
@@ -736,12 +907,13 @@ class NativeOrchestrator:
 
     async def async_evaluate(self, now: datetime | None = None) -> None:
         """Evaluate shadow or active scheduling decisions."""
-        if self._stopping or self._cancelling:
+        if self._stopping or self._cancelling or self.hass.is_stopping:
             return
         now = now or datetime.now(timezone.utc)
         options_changed = self._refresh_program_options()
         normal_created = False
         if (self.state.get("active") and self.state.get("request") is None
+                and not self.state.get("start_recovery_required")
                 and self.state.get("auto_mode_enabled") and self.state.get("door_opened_since_last_cycle")
                 and self._state("sensor.load_optimizer_1_cycle_state") == "idle" and not self._is_running()
                 and not self._automatic_source_block() and self._overnight_window_unused(now)):
@@ -780,6 +952,10 @@ class NativeOrchestrator:
                     "unconfigured_costs": list(recommendation.attributes.get("unconfigured_costs", [])),
                     "planning_coverage": recommendation.attributes.get("overnight_planning_coverage", {}),
                 }
+                if decision["mode"] == "negative_price":
+                    self.state["request"].update(self._recommendation_evidence(
+                        recommendation.attributes, recommendation.attributes,
+                    ))
                 self.state["execution_status"] = "queued"
                 self.state[
                     "last_auto_negative_price_request"
@@ -853,6 +1029,8 @@ class NativeOrchestrator:
         return True
 
     def _automatic_decision(self, now: datetime) -> dict[str, Any]:
+        if self.state.get("start_recovery_required"):
+            return {"action": "wait", "reason": "start_confirmation_interrupted"}
         if self.state.get("request") is not None:
             return {"action": "wait", "reason": "request_already_pending"}
         if self._state("sensor.load_optimizer_1_cycle_state") != "idle":
@@ -922,6 +1100,7 @@ class NativeOrchestrator:
         self.state["last_attempt"] = datetime.now(timezone.utc).isoformat()
         self.state["last_start_decision_snapshot"] = {
             "action": "execute",
+            "build_version": APP_VERSION,
             "captured_at": self.state["last_attempt"],
             "request": deepcopy(request),
         }
@@ -942,6 +1121,24 @@ class NativeOrchestrator:
                 f"{program_key} is not available on the Bosch program selector.",
             )
             return
+        snapshot = self.state["last_start_decision_snapshot"]
+        try:
+            await self._async_save()
+            stored_state = await self._async_committed_start_state()
+        except (OSError, HomeAssistantError, ValueError):
+            stored_state = None
+        if self._stopping or self._cancelling or self.hass.is_stopping or not self.state.get("active"):
+            return
+        if (not isinstance(stored_state, dict) or stored_state.get("execution_status") != "commanding"
+                or stored_state.get("last_start_decision_snapshot") != snapshot):
+            self.state["request"] = None
+            self.state["door_opened_since_last_cycle"] = False
+            reason = "start_reservation_not_saved"
+            await self._async_outcome("blocked", mode, program, reason, explain_reason(reason))
+            return
+        # A disk read can yield to door, mode and other source changes.
+        if not await self._async_start_allowed(request):
+            return
         try:
             await self._async_call(
                 "switch",
@@ -956,10 +1153,16 @@ class NativeOrchestrator:
                 "select",
                 "select_option",
                 {"entity_id": select_entity, "option": program_key},
-                ignore_error=True,
             )
             await asyncio.sleep(5)
             if not await self._async_start_allowed(request, recheck=True):
+                return
+            if self._state(select_entity) != program_key:
+                self.state["request"] = None
+                await self._async_outcome(
+                    "blocked", mode, program, "programme_selection_unconfirmed",
+                    "The appliance did not confirm the requested programme. No start command was sent.",
+                )
                 return
             await self._async_call(
                 "button",
@@ -1026,15 +1229,25 @@ class NativeOrchestrator:
             )
 
     async def _async_start_allowed(self, request: dict[str, Any], *, recheck: bool = False) -> bool:
-        if self._stopping or self._cancelling or not self.state.get("active"):
+        if (self._stopping or self._cancelling or self.hass.is_stopping or not self.state.get("active")
+                or self.state.get("start_recovery_required")):
             return False
+        if request.get("normal_wash"):
+            self._capture_request_deadline(request, datetime.now(timezone.utc))
         mode, program = request.get("mode"), request.get("program")
         automatic = request.get("automatic")
         if not isinstance(automatic, bool):
             # Persisted pre-upgrade negative-price requests did not record origin.
             automatic = mode in {"automatic", "negative_price"}
+        def paused_reason() -> str | None:
+            if not automatic:
+                return None
+            if mode == "negative_price":
+                return None if self.state.get("auto_negative_price_enabled") else "automatic_negative_price_mode_off"
+            return None if self.state.get("auto_mode_enabled") else "automatic_overnight_mode_off"
+
         # Automatic preflight prices this request; a published fit may describe another programme.
-        reason = self._safety_block(
+        reason = paused_reason() or self._safety_block(
             mode, program, explicit_override=bool(request.get("explicit_program_override")),
             check_negative_fit=not automatic, require_door_permission=bool(automatic),
         )
@@ -1042,9 +1255,7 @@ class NativeOrchestrator:
             now = datetime.now(timezone.utc)
             if not self._request_due(request, now):
                 reason = "outside_authorised_start_window"
-            elif automatic and not self.state.get("auto_mode_enabled"):
-                reason = "automatic_overnight_mode_off"
-            elif self._overnight_planning_block(self._recommendation("overnight")):
+            elif not reason and self._overnight_planning_block(self._recommendation("overnight")):
                 reason = "overnight_tariff_coverage_incomplete"
         if not reason and (automatic or request.get("normal_wash")):
             reason = self._automatic_source_block()
@@ -1057,19 +1268,53 @@ class NativeOrchestrator:
                     except Exception as error:
                         LOGGER.warning("Automatic source preflight failed (%s)", type(error).__name__)
                         reason = "automatic_preflight_unavailable"
+            if self._stopping or self._cancelling or self.hass.is_stopping or not self.state.get("active"):
+                return False
             if not reason:
-                reason = self._safety_block(mode, program, explicit_override=False, check_negative_fit=False,
+                reason = paused_reason() or self._safety_block(mode, program, explicit_override=False, check_negative_fit=False,
                                             require_door_permission=bool(automatic))
             if not reason and request.get("normal_wash") and not self._request_due(request, datetime.now(timezone.utc)):
                 reason = "outside_authorised_start_window"
         if reason:
-            if request.get("normal_wash") and ("tariff" in reason or "fully_priced" in reason):
+            if request.get("normal_wash") and not recheck and reason in {"door_open", "door_state_unavailable"}:
+                saved = self.state.get("request")
+                if saved and saved.get("created_at") == request.get("created_at"):
+                    self.state["execution_status"] = "awaiting_plan"
+                    saved["door_blocked_start"] = request.get("start")
+                    await self._async_normal_attention(saved, reason,
+                        f"{explain_reason(reason)} Planning can resume inside the original start window.")
+                    await self._async_save()
+                    self._publish()
+                    return False
+            if (request.get("normal_wash") and not recheck
+                    and reason == "automatic_overnight_mode_off"):
+                saved = self.state.get("request")
+                if saved and saved.get("created_at") == request.get("created_at"):
+                    self.state["execution_status"] = "awaiting_plan"
+                    saved["waiting_reason"] = reason
+                    await self._async_save()
+                    self._publish()
+                    return False
+            if (request.get("normal_wash") and not recheck
+                    and ("tariff" in reason or "fully_priced" in reason)):
                 saved = self.state.get("request")
                 if saved and saved.get("created_at") == request.get("created_at"):
                     self.state["execution_status"] = "awaiting_plan"
                     saved["price_failure_revision"] = self._overnight_revision()
                     await self._async_normal_attention(saved, reason,
                         "Dishwasher prices could not be verified before starting. The request will resume inside its original window when prices return.")
+                    await self._async_save()
+                    self._publish()
+                    return False
+            if (request.get("normal_wash") and not recheck and reason in {
+                    "normal_wash_outside_schedule_constraints", "normal_wash_schedule_constraint_unavailable"}):
+                saved = self.state.get("request")
+                if saved and saved.get("created_at") == request.get("created_at"):
+                    self.state["execution_status"] = "awaiting_plan"
+                    saved["constraint_failure_revision"] = self._overnight_revision()
+                    deadline = saved.get("latest_finish_utc") or "not recorded"
+                    await self._async_normal_attention(saved, reason,
+                        f"{explain_reason(reason)} Applicable finish deadline: {deadline}.")
                     await self._async_save()
                     self._publish()
                     return False
@@ -1140,6 +1385,9 @@ class NativeOrchestrator:
         return None
 
     async def _async_record_cycle_end(self, capture_started_at: datetime) -> None:
+        last_capture = self._parse_datetime(self.state.get("last_completed_capture_start"))
+        if last_capture is not None and capture_started_at <= last_capture:
+            return
         operation = self._state(self.config.get("bosch_operation_state_sensor"))
         now = datetime.now(timezone.utc)
         learned_finish = self._parse_datetime(self._state("sensor.load_optimizer_1_last_finish"))
@@ -1172,6 +1420,7 @@ class NativeOrchestrator:
                     f"operation={operation}."
                 ),
                 "last_cycle_completed_at": now.isoformat(),
+                "last_completed_capture_start": capture_started_at.isoformat(),
                 "last_cycle_operation_state": operation,
                 "last_outcome_at": now.isoformat(),
                 "door_opened_since_last_cycle": False,
@@ -1279,24 +1528,24 @@ class NativeOrchestrator:
             return 20.0
         return threshold if 0 <= threshold <= 100 else 20.0
 
-    def _cooldown_elapsed(self, key: str, minutes: int, now: datetime) -> bool:
-        previous = self._parse_datetime(self.state.get(key))
-        return previous is None or now >= previous + timedelta(minutes=minutes)
-
     def _negative_retry_after(self, now: datetime) -> datetime | None:
         previous = self._parse_datetime(self.state.get("last_auto_negative_price_request"))
         eligible = previous + timedelta(minutes=30) if previous else None
         return eligible if eligible and now < eligible else None
 
-    def _overnight_window_unused(self, now: datetime) -> bool:
+    def _overnight_eligible_after(self) -> datetime | None:
         previous = self._parse_datetime(self.state.get("last_auto_normal_request"))
-        local_now = dt_util.as_local(now)
-        cutoff = local_now.replace(hour=16, minute=0, second=0, microsecond=0)
-        if local_now < cutoff:
-            cutoff -= timedelta(days=1)
-        return (
-            previous is None or previous < cutoff.astimezone(timezone.utc)
-        ) and self._cooldown_elapsed("last_auto_normal_request", 720, now)
+        if previous is None:
+            return None
+        local_previous = dt_util.as_local(previous)
+        cutoff = local_previous.replace(hour=16, minute=0, second=0, microsecond=0)
+        if local_previous >= cutoff:
+            cutoff += timedelta(days=1)
+        return max(cutoff.astimezone(timezone.utc), previous + timedelta(hours=12))
+
+    def _overnight_window_unused(self, now: datetime) -> bool:
+        eligible = self._overnight_eligible_after()
+        return eligible is None or now >= eligible
 
     def _request_due(self, request: dict[str, Any], now: datetime) -> bool:
         start = self._parse_datetime(request.get("start"))
@@ -1331,11 +1580,19 @@ class NativeOrchestrator:
     async def _async_save(self) -> None:
         await self.store.async_save(
             {
-                "state": self.state,
-                "config": self.config,
-                "program_options": self.program_options,
+                "state": deepcopy(self.state),
+                "config": dict(self.config),
+                "program_options": list(self.program_options),
             }
         )
+
+    async def _async_committed_start_state(self) -> dict | None:
+        # Store.async_load can return a pending write before it reaches disk.
+        stored = await self.hass.async_add_executor_job(load_json_object, self.store.path)
+        if stored.get("version") != STORE_VERSION or stored.get("key") != self.store.key:
+            return None
+        data = stored.get("data")
+        return data.get("state") if isinstance(data, dict) else None
 
     def _record_schedule_event(self, event: str, reason: str, *, now=None, **detail) -> None:
         item = {"timestamp": (now or datetime.now(timezone.utc)).isoformat(),
@@ -1393,6 +1650,8 @@ class NativeOrchestrator:
         explicit_permission = mode == "overnight" and request.get("normal_wash") and request.get("automatic") is False
         blockers: list[str] = []
         warnings: list[str] = []
+        if self.state.get("start_recovery_required"):
+            blockers.append("start_confirmation_interrupted")
         if reason := self._automatic_source_block():
             blockers.append(reason)
         if self._state("sensor.load_optimizer_1_status") != "ready":
@@ -1498,6 +1757,10 @@ class NativeOrchestrator:
             summary = "The dishwasher has confirmed it is washing. Cancelling a pending schedule will not stop this wash."
             if request:
                 summary += " A separate wash request is still waiting."
+        elif self.state.get("start_recovery_required"):
+            state, reason = "attention_required", "start_confirmation_interrupted"
+            summary = messages[reason]
+            action_required = "Check the dishwasher, then press Cancel Schedule to clear the recovery hold."
         elif request and request.get("normal_wash") and self.state.get("execution_status") == "awaiting_plan":
             state, reason = "waiting", request.get("waiting_reason", "awaiting_plan")
             summary = messages.get(reason, "One wash is authorised; waiting for an eligible plan inside its start window.")
@@ -1533,12 +1796,8 @@ class NativeOrchestrator:
         last_request_key = "last_auto_negative_price_request" if mode == "negative_price" else "last_auto_normal_request"
         previous = self._parse_datetime(self.state.get(last_request_key))
         eligible_after = readiness.get("retry_eligible_after")
-        if mode == "overnight" and previous and not self._overnight_window_unused(now):
-            local_now = dt_util.as_local(now)
-            cutoff = local_now.replace(hour=16, minute=0, second=0, microsecond=0)
-            if local_now >= cutoff:
-                cutoff += timedelta(days=1)
-            eligible_after = max(cutoff.astimezone(timezone.utc), previous + timedelta(hours=12)).isoformat()
+        if mode == "overnight" and (eligible := self._overnight_eligible_after()) and now < eligible:
+            eligible_after = eligible.isoformat()
         return {
             "state": state, "mode": mode, "reason_code": reason, "summary": summary,
             "action_required": action_required,

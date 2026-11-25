@@ -1,29 +1,57 @@
 # Changelog
 
-## Unreleased
+## 1.8.0
 
-- Recalculate EV control plans when source readings, settings or the authorised
-  deadline change during asynchronous planning. Bound recalculation to three
-  attempts and refuse inconsistent final preflight plans before dispatch.
+- Publish shareable original and compact V2 dashboard templates with current
+  saved decision prices, generator parity and restore instructions. Existing
+  household dashboards are independent saved copies and are not overwritten.
+- Add advisory required/opportunistic EV modes. Required plans recommend useful
+  available charging and show shortfall; opportunistic plans obey an inclusive
+  price ceiling (default 0 p/kWh). No charger commands or control entities are added.
+- Expose the advisory result through an explicit status-field allowlist, preserving
+  restrictions on private coordinator data and nested source metadata.
+- Ready to Charge now includes useful partial plans; use target_reachable to
+  check whether the target is expected to be reached. Review external automations
+  relying on the former complete-plan signal before upgrading.
 
-- Add executable EV setup examples and installation/release acceptance guides.
-  Distinguish published scope, local implementation and remaining physical tests.
-- Record source revision, dirty state, selected suites and source fingerprints in
-  validation reports. Source changes between validation snapshots invalidate an
-  otherwise passing run; unverified revisions are identified explicitly.
 
-- Add optional EV switch control with explicit Automatic Charging permission,
-  metered confirmation, persisted command reservations, fresh preflight checks,
-  interval timers and attention notifications. Permission resets off on reload;
-  saved sessions require explicit stopped-state reconciliation. No live hardware
-  acceptance or deployment is implied.
-- Combine additional EV future-rate entities, including separate Octopus today
-  and tomorrow events. Keep available published slots when tomorrow is empty;
-  reject conflicting forecasts and never fill missing prices with zero.
+## 1.7.0
 
-- Add an isolated EV command-lifecycle foundation with command reservations,
-  physical-confirmation gates, timeout/restart quarantine and external-stop
-  handling. This is not wired to services and does not enable charger control.
+- Publish the consolidated dishwasher scheduling and costs feature from main.
+- Authorise one overnight wash within a saved start window, retain permission
+  through missing prices, and notify when planning needs attention. Prefer a
+  complete fit; if none fits, choose the cheapest eligible in-window start and
+  clearly report its later finish. Existing windows and opt-ins are preserved.
+- Apply travel deadlines consistently in planning and execution. Preserve
+  applicable deadlines across reloads and require fresh permission after expiry.
+- Confirm programme selection before Start, retain durable command reservations,
+  and prevent cancellation, shutdown or uncertain restart from causing duplicates.
+- Rank optional extra runs by strictly positive net benefit per run, including
+  configured operating costs. Normal requested washes remain eligible at a cost.
+- Show readable controls, readiness, saved recommendation prices and bounded
+  tariff evidence; record the executing build and restrict general status details.
+- Combine package/publication verification and complete isolated acceptance on
+  HA 2026.10.2 and 2026.11.1. Minimum supported HA is 2026.10.2.
+- Estimates remain learned predictions, not billed costs or guaranteed finish
+  times. Recent observed cycles have exceeded their forecasts; recalibration is
+  separate work. Tariff analysis/import and manual AI summaries remain optional
+  experimental features. New automatic EV charging control is not included.
+
+## 1.7.0-beta.12
+
+- Align expired travel-deadline handling between planning and final start checks.
+  Preserve applicable request deadlines through expiry, helper edits and restart.
+- Keep bounded permission after a scheduling-constraint rejection before any
+  device command; require a fresh plan and never restore uncertain command-stage starts.
+- Add a read-only owner deployment check for the actual Marketplace provider,
+  loaded manifest, beta channel, installed version and default update target.
+- Record the running build version with each execution snapshot so physical
+  acceptance can be attributed to the code that attempted the wash.
+- Preserve the trial's saved tariff evidence and existing scheduling/cost work.
+  Power-model recalibration is not included in this prerelease candidate.
+
+## Previously unreleased dishwasher work
+
 - Add required and opportunistic advisory EV modes. Existing entries default to
   required; opportunistic charging stays at or below a configurable p/kWh ceiling.
 - Recommend useful partial required charging with explicit projected SOC and
@@ -56,6 +84,24 @@
 - Keep normal washing ahead of opportunistic runs, permit explicit scheduling
   without door-based authorisation, and recheck full-cycle prices and window bounds
   before sending start commands. Cancellation and expiry prevent request revival.
+
+## 1.7.0-beta.11
+
+- Retain up to three distinct alternative programme estimates from the manual
+  dishwasher request's scheduling mode. Show their original price windows in
+  the optional beta dashboard without changing how programmes are selected.
+
+## 1.7.0-beta.10
+
+- Require one qualifying dishwasher door opening before normal automatic
+  scheduling. Make the minimum duration configurable and clear readiness
+  when cancelling a schedule.
+- Provide optional Home Assistant scripts for scheduling, starting and
+  cancelling dishwasher requests.
+- Preserve the selected dishwasher programme's available cost estimate and
+  original price window for manual requests. Show both in the beta dashboard's
+  execution record without treating the estimate as a measured cost.
+
 - Use one version-checked local/CI acceptance runner, report all independent
   failures in one run, and remove duplicate beta push/PR validation runs.
 - Carry multiline appliance editing, visible optimisation values and migrated
@@ -245,6 +291,16 @@
   remains explicitly waiting rather than producing a definitive classification.
 - Recalculate on rate publication as well as the normal coordinator interval.
 - Appliance profile costing and learning data are unchanged.
+
+## 1.5.10-beta.2
+
+- Verify the selected dishwasher programme before Start and limit general status
+  attributes to summary fields. These fixes are retained in the consolidated beta.
+
+## 1.5.10-beta.1
+
+- Persist start reservations and prevent restart or late completion from dispatching
+  duplicate starts. These safeguards are retained in the consolidated beta.
 
 ## 1.5.9
 

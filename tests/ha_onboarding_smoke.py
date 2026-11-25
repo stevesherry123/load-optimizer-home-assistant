@@ -348,18 +348,23 @@ async def session(config_dir, example_name, snapshot=None):
             raise AssertionError("Unexpected device command during read-only onboarding")
         return await original_call(registry, domain, service, service_data, *args, **kwargs)
 
+    # Newer HA binds during setup rather than at start. Test both lifecycles without opening a socket.
     with patch("custom_components.load_optimizer.price_cap.PriceCapManager.async_status",
                new=AsyncMock(return_value={"status": "not_configured", "source": "test"})), \
          patch("custom_components.load_optimizer.legacy_runtime.datetime", Clock), \
          patch.object(app_runtime, "datetime", Clock), \
+         patch("homeassistant.bootstrap.DEFAULT_INTEGRATIONS", set()), \
+         patch.object(HomeAssistantHTTP, "async_bind", new=AsyncMock(), create=True), \
          patch.object(HomeAssistantHTTP, "start", new=AsyncMock()), \
          patch.object(HomeAssistantHTTP, "stop", new=AsyncMock()), \
          patch.object(type(hass.services), "async_call", new=guarded_call):
         try:
             assert await async_from_config_dict({
                 "homeassistant": {"name": "Synthetic onboarding", "time_zone": "Europe/London"},
+                "http": {},
                 "template": template_config,
             }, hass) is hass
+            assert "http" in hass.config.components and "template" in hass.config.components
             await hass.async_start()
             await hass.async_block_till_done()
             capacity = hass.states.get("sensor.ev_usable_battery_capacity")

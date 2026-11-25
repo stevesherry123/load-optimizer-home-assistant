@@ -8,6 +8,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "homeassistant/dashboards/beta/load_optimizer_beta.yaml"
+OUTPUT_V2 = OUTPUT.with_name("load_optimizer_beta_v2.yaml")
 
 
 def walk(value):
@@ -39,7 +40,7 @@ def view(title, path, icon, *sections):
             "type": "sections", "max_columns": 3, "sections": list(sections)}
 
 
-def build():
+def build(*, compact=False):
     full = yaml.safe_load((ROOT / "homeassistant/dashboards/full/load_optimizer_dashboard.yaml").read_text())
     learning = yaml.safe_load((ROOT / "homeassistant/dashboards/full/dishwasher_learning_insights.yaml").read_text())
     catalogue = deepcopy(next(card for card in walk(full) if card.get("title") == "Program Catalogue"))
@@ -180,16 +181,62 @@ def build():
     """)
     native = markdown("Execution record", """
         {% set native = 'sensor.load_optimizer_1_orchestration_status' %}
+        {% set snapshot = state_attr(native, 'last_start_decision_snapshot') %}
+        {% set request = snapshot.get('request') if snapshot is mapping else none %}
+        {% set quote = request.get('recommendation_quote') if request is mapping else none %}
+        {% set alternatives = request.get('recommendation_alternatives') if request is mapping else none %}
+        {% set tariff = quote.get('tariff_evidence') if quote is mapping else none %}
+        {% set benefit = quote.get('estimated_net_benefit_pence') if quote is mapping else none %}
         {% macro home_time(value) -%}
         {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'Not recorded' }}
         {%- endmacro %}
         | Record | Value |
         |---|---|
         | Scheduler | {{ states(native) }} |
-        | Last start | {{ home_time(state_attr(native, 'last_attempt')) }} |
-        | Programme | {{ state_attr(native, 'last_program') or 'Not recorded' }} |
-        | Result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
+        | Last start attempt | {{ home_time(state_attr(native, 'last_attempt')) }} |
+        | Attempted programme | {{ (request.program | default('Not recorded', true)) | replace('|', '/') | replace('\\n', ' ') if request is mapping else 'Not recorded' }} |
+        | Recommendation estimate | {{ 'Under 0.01 p net benefit' if benefit is number and 0 < benefit < 0.005 else (('%.2f p' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else 'Not recorded') }} |
+        {% if quote is mapping and quote.estimated_cost_pence is number -%}
+        | Estimate window | {{ home_time(quote.start) }} to {{ home_time(quote.finish) }} |
+        {% set selection = quote.get('overnight_selection_reason') -%}
+        {% if selection == 'best_overnight' -%}
+        | Why this estimate was selected | Lowest estimated total cost among eligible plans that finish within the overnight window. |
+        {% elif selection == 'cheapest_start_in_window_late_finish' -%}
+        | Why this estimate was selected | No eligible plan finished within the window. This was the lowest-cost eligible start, with a later finish. |
+        {% endif -%}
+        {% endif -%}
+        {% if benefit is number and benefit > 0 -%}
+        | Estimated net benefit of extra wash | {{ 'Under 0.0001 p' if benefit < 0.0001 else '%.4f p' | format(benefit) }} |
+        {% endif -%}
+        | Last recorded result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
+        | Result programme | {{ (state_attr(native, 'last_program') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |
         | Detail | {{ (state_attr(native, 'last_message') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |
+        {% if tariff is mapping and tariff.periods is sequence and tariff.period_count is number and tariff.energy_cost_pence is number and tariff.non_energy_cost_pence is number %}
+
+        **Rates used in this estimate**
+
+        Estimated electricity: {{ '%.4f p' | format(tariff.energy_cost_pence) }}. Configured non-electricity costs: {{ '%.4f p' | format(tariff.non_energy_cost_pence) }}.
+        {% set sources = {'contracted': 'Contracted rate', 'free_electricity_calendar': 'Free electricity calendar', 'manual_special_price_window': 'Manual price override'} -%}
+        {% if tariff.period_count > tariff.periods | count %}
+        Showing the first {{ tariff.periods | count }} of {{ tariff.period_count }} priced periods. The estimate includes all periods.
+        {% endif %}
+
+        | Estimate window | Rate | Source | Estimated energy |
+        |---|---|---|---|
+        {% for row in tariff.periods[:8] if row is mapping and row.price_p_per_kwh is number and row.energy_kwh is number -%}
+        | {{ home_time(row.start) }} to {{ home_time(row.end) }} | {{ '%.4f p/kWh' | format(row.price_p_per_kwh) }} | {{ sources.get(row.rate_source, 'Unknown source') }} | {{ '%.4f kWh' | format(row.energy_kwh) }} |
+        {% endfor -%}
+        {% endif %}
+        {% if alternatives is sequence and alternatives is not string and alternatives is not mapping and alternatives %}
+
+        **Other programme estimates for this request**
+
+        | Programme | Estimated cost | Estimate window |
+        |---|---|---|
+        {% for option in alternatives[:3] if option is mapping and option.estimated_cost_pence is number -%}
+        | {{ option.program | replace('|', '/') | replace('\\n', ' ') }} | {{ '%.2f p' | format(option.estimated_cost_pence) }} | {{ home_time(option.start) }} to {{ home_time(option.finish) }} |
+        {% endfor -%}
+        {% endif %}
     """)
     capabilities["grid_options"] = {"columns": "full"}
     diagnostics = view("Diagnostics", "diagnostics", "stethoscope",
@@ -198,10 +245,15 @@ def build():
             entities("Readiness", 1, [("overnight_readiness", "Overnight"),
                 ("negative_price_readiness", "Free / negative price") ])),
         section(events, span=2), section(capabilities, span=3))
-    return {"title": "Load Optimizer Beta", "views": [overview, dishwasher, learning_view, diagnostics]}
+    if compact:
+        learning_view["sections"] = [learning_view["sections"][2], learning_view["sections"][1]]
+        diagnostics["sections"].pop()
+    title = "Load Optimizer Beta V2" if compact else "Load Optimizer Beta"
+    return {"title": title, "views": [overview, dishwasher, learning_view, diagnostics]}
 
 
 if __name__ == "__main__":
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(yaml.safe_dump(build(), sort_keys=False, allow_unicode=True, width=1000))
-    print(OUTPUT)
+    for path, compact in ((OUTPUT, False), (OUTPUT_V2, True)):
+        path.write_text(yaml.safe_dump(build(compact=compact), sort_keys=False, allow_unicode=True, width=1000))
+        print(path)

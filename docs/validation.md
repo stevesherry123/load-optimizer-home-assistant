@@ -30,6 +30,8 @@ The runner executes unit, Bandit and every `tests/ha_*_smoke.py` acceptance chec
 in separate processes. Independent checks keep running after a failure; any
 failure or timeout makes the final exit status nonzero. No check is ignored.
 Each check has a five-minute timeout, configurable with `--timeout`.
+Bandit must report scanned source and no skipped files, in addition to
+returning success with no findings.
 
 Reports record the Git commit/branch, dirty working-tree flag, selected suites and
 a SHA-256 fingerprint of tracked and unignored source files, including symlinks
@@ -58,7 +60,7 @@ shipped chart JavaScript across browser timezones and profile preferences.
 
 ## Pinned compatibility environment
 
-The second GitHub HA job tests **2026.10.4**, using
+The second GitHub HA job tests **2026.11.0**, using
 `dev/requirements-validation-compatibility.txt`. This is a pinned compatibility
 check, not a claim to track the latest release automatically. It runs every
 standard HA acceptance check, including EV control and source-consistency cases,

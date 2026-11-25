@@ -1,6 +1,8 @@
 """Exercise command cancellation and safety on real HA, with synthetic devices."""
 
 import asyncio
+import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -9,9 +11,10 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CoreState, HomeAssistant
 
 from custom_components.load_optimizer.orchestration import NativeOrchestrator
+from custom_components.load_optimizer.legacy.costing import QUOTE_TARIFF_PERIOD_LIMIT
 
 
 async def main():
@@ -25,8 +28,8 @@ async def main():
         try:
             for action in ("async_cancel", "async_stop"):
                 for pause in range(5):
-                    scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id="synthetic"), None)
-                    scheduler.store = SimpleNamespace(async_save=AsyncMock())
+                    entry = SimpleNamespace(entry_id=f"{action}_{pause}", data={}, options={})
+                    scheduler = NativeOrchestrator(hass, entry, None)
                     scheduler.state.update(active=True, auto_mode_enabled=False,
                                            auto_negative_price_enabled=False)
                     scheduler.config = {
@@ -45,7 +48,7 @@ async def main():
                     hass.states.async_set("binary_sensor.synthetic_door", "off")
                     for name in ("connected", "remote_control", "remote_start"):
                         hass.states.async_set("binary_sensor.synthetic_" + name, "on")
-                    hass.states.async_set("select.synthetic_programme", "ready",
+                    hass.states.async_set("select.synthetic_programme", "Dishcare.Dishwasher.Program.MixedLoad",
                                           {"options": ["Dishcare.Dishwasher.Program.MixedLoad"]})
                     request = {"mode": "now", "program": "MixedLoad", "automatic": False,
                                "explicit_program_override": True}
@@ -74,6 +77,18 @@ async def main():
                         assert calls.await_args_list == before, (action, pause)
                     assert scheduler.state["request"] == (request if action == "async_stop" else None)
                     await scheduler.async_stop()
+                    if action == "async_stop":
+                        recovered = NativeOrchestrator(hass, entry, None)
+                        await recovered.async_load()
+                        assert recovered.state["start_recovery_required"]
+                        assert not recovered.state["request"]
+                        await recovered.async_evaluate()
+                        assert recovered.state["shadow_decision"]["reason"] == "start_confirmation_interrupted"
+                        assert recovered._execution_task is None
+                        assert not await recovered._async_start_allowed(request)
+                        assert recovered.automation_explanation["state"] == "attention_required"
+                        await recovered.async_cancel()
+                        assert not recovered.state["start_recovery_required"]
 
             # A manual convenience override never exempts physical interlocks.
             scheduler._stopping = False
@@ -84,6 +99,45 @@ async def main():
                 assert not await scheduler._async_start_allowed(request, recheck=True), name
             await scheduler.async_stop()
             print("Real-HA cancellation/unload at all five delays and manual physical interlocks passed")
+
+            scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id="committed"), None)
+            scheduler.state["execution_status"] = "queued"
+            await scheduler._async_save()
+            hass.set_state(CoreState.stopping)
+            try:
+                scheduler.state["execution_status"] = "commanding"
+                await scheduler._async_save()
+                assert (await scheduler.store.async_load())["state"]["execution_status"] == "commanding"
+                assert (await scheduler._async_committed_start_state())["execution_status"] == "queued"
+                assert not await scheduler._async_start_allowed(request)
+            finally:
+                hass.set_state(CoreState.running)
+            print("Real-HA deferred shutdown write is not treated as a committed command reservation")
+
+            entry = SimpleNamespace(entry_id="estimate_record", data={}, options={})
+            recorder = NativeOrchestrator(hass, entry, None)
+            start = datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc)
+            finish = start + timedelta(hours=2, minutes=15)
+            rates = [{"start": (start + timedelta(minutes=15 * index)).isoformat(),
+                      "end": (start + timedelta(minutes=15 * (index + 1))).isoformat(),
+                      "price_p_per_kwh": 10, "energy_kwh": 0.1, "energy_cost_pence": 1,
+                      "event_title": "Private test fixture"} for index in range(QUOTE_TARIFF_PERIOD_LIMIT)]
+            recommendation = {"status": "ready", "intent": "overnight", "reason": "best_overnight",
+                              "program": "MixedLoad", "start": start.isoformat(), "finish": finish.isoformat(),
+                              "cost_pence": 10, "tariff_evidence": {"period_count": 9, "periods": rates,
+                              "energy_cost_pence": 9, "non_energy_cost_pence": 1}}
+            record = recorder._recommendation_evidence(recommendation, recommendation)
+            recorder.state["last_start_decision_snapshot"] = {"request": record}
+            await recorder._async_save()
+            rates[0]["price_p_per_kwh"] = 999
+            restored = NativeOrchestrator(hass, entry, None)
+            await restored.async_load()
+            stored = restored.status["last_start_decision_snapshot"]["request"]["recommendation_quote"]
+            assert stored == record["recommendation_quote"]
+            assert stored["tariff_evidence"]["periods"][0]["price_p_per_kwh"] == 10
+            assert "fixture" not in json.dumps(stored).lower()
+            assert len(json.dumps(stored)) < 2000
+            print("Real-HA store retained a detached, bounded tariff estimate through reload without source labels")
         finally:
             await hass.async_stop(force=True)
 
