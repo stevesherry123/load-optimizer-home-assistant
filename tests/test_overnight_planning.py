@@ -46,6 +46,17 @@ class OvernightPlanningTests(unittest.TestCase):
                        periods[:20] + [{**periods[20], "price_p_per_kwh": float("nan")}] + periods[21:]):
             self.assertFalse(self.check(broken)["complete"])
 
+    def test_failed_coverage_identifies_first_gap_and_missing_tail(self):
+        periods = self.periods(self.now, self.now + timedelta(hours=24))
+        gap = self.check(periods[:20] + periods[21:])
+        self.assertEqual(gap["coverage_issue"], "gap")
+        self.assertEqual(gap["covered_until"], periods[20]["start"].isoformat())
+        self.assertEqual(gap["next_priced_start"], periods[21]["start"].isoformat())
+        tail = self.check(periods[:30])
+        self.assertEqual(tail["coverage_issue"], "rates_end_before_required_finish")
+        self.assertEqual(tail["covered_until"], periods[29]["end"].isoformat())
+        self.assertNotIn("coverage_issue", self.check(periods))
+
     def test_deadline_clips_tail_and_short_search_is_explained(self):
         deadline = datetime(2026, 10, 14, 6, tzinfo=timezone.utc)
         self.assertTrue(self.check(self.periods(self.now, deadline), latest=deadline)["complete"])

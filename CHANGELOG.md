@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.8.1
+
+- Identify the first unpriced point, next priced interval, overlapping/invalid
+  intervals and missing cycle tails in overnight coverage diagnostics. Preserve
+  a detached, bounded coverage record with each notified scheduling wait.
+- Keep eligibility, deadline handling, price checks and retry limits unchanged;
+  these records explain a future interruption rather than reconstructing old data.
+- Add read-only chronological estimation replay and timezone-aware holdout tests.
+  No live estimator recalibration or learning-history rewrite is included.
+
+
 ## 1.8.0
 
 - Publish shareable original and compact V2 dashboard templates with current
