@@ -4,11 +4,13 @@ import io
 from hashlib import sha256
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tarfile
 from tempfile import TemporaryDirectory
 import unittest
 
-from dev.fingerprint_install import PACKAGE, archive_files, fingerprint, installed_files
+from dev.fingerprint_install import PACKAGE, archive_files, fingerprint, installed_files, release_archive_files
 
 
 FILES = {
@@ -78,3 +80,34 @@ class InstallFingerprintTests(unittest.TestCase):
             archive.addfile(entry)
         with self.assertRaisesRegex(ValueError, "Unexpected archive entry"):
             list(archive_files(buffer.getvalue()))
+
+    def test_github_archive_matches_only_its_integration_files(self):
+        wrapper = Path("repository-1.5.9")
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "beta.tar.gz"
+            files = {f"{wrapper}/{PACKAGE}/{name}": content for name, content in FILES.items()}
+            files[f"{wrapper}/README.md"] = b"Not an installed file"
+            with tarfile.open(path, mode="w:gz") as archive:
+                for name, content in files.items():
+                    entry = tarfile.TarInfo(name)
+                    entry.size = len(content)
+                    archive.addfile(entry, io.BytesIO(content))
+            self.assertEqual(fingerprint(release_archive_files(path)), fingerprint(FILES.items()))
+
+            tool = Path(__file__).resolve().parents[1] / "dev" / "fingerprint_install.py"
+            command = [sys.executable, "-B", str(tool), "--release-archive", str(path), "--expect-sha256"]
+            expected = fingerprint(FILES.items())
+            matched = subprocess.run([*command, expected["sha256"]], capture_output=True, check=True, text=True)
+            self.assertEqual(json.loads(matched.stdout), expected)
+            mismatch = subprocess.run([*command, "0" * 64], capture_output=True, check=False, text=True)
+            self.assertEqual(mismatch.returncode, 1)
+            self.assertIn("does not match", mismatch.stderr)
+
+    def test_github_archive_rejects_multiple_package_roots(self):
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "beta.tar.gz"
+            with tarfile.open(path, mode="w:gz") as archive:
+                for root in ("first", "second"):
+                    archive.addfile(tarfile.TarInfo(f"{root}/{PACKAGE}/__init__.py"))
+            with self.assertRaisesRegex(ValueError, "Unexpected release archive root"):
+                list(release_archive_files(path))

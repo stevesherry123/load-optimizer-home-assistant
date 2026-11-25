@@ -12,6 +12,7 @@ import tarfile
 
 PACKAGE = PurePosixPath("custom_components/load_optimizer")
 REQUIRED = {"manifest.json", "__init__.py", "legacy/app_runtime.py"}
+MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 
 
 def installed_files(root: Path):
@@ -33,14 +34,42 @@ def installed_files(root: Path):
 
 def archive_files(archive: bytes):
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as package:
-        for entry in package:
-            if entry.isdir():
+        yield from package_members(package, wrapped=False)
+
+
+def package_members(archive: tarfile.TarFile, *, wrapped: bool):
+    root = None
+    total_size = 0
+    for entry in archive:
+        if entry.isdir():
+            continue
+        path = PurePosixPath(entry.name)
+        if wrapped:
+            if path.parts[1:3] != PACKAGE.parts:
                 continue
-            relative = PurePosixPath(entry.name).relative_to(PACKAGE)
-            if not entry.isfile() or ".." in relative.parts:
-                raise ValueError("Unexpected archive entry inside the package")
-            with package.extractfile(entry) as content:
-                yield relative.as_posix(), content.read()
+            outer, *parts = path.parts
+            if (outer == ".." or not re.fullmatch(r"[A-Za-z0-9._-]+", outer)
+                    or root not in {None, outer}):
+                raise ValueError("Unexpected release archive root")
+            root = outer
+            path = PurePosixPath(*parts)
+        relative = path.relative_to(PACKAGE)
+        if not entry.isfile() or ".." in relative.parts:
+            raise ValueError("Unexpected archive entry inside the package")
+        total_size += entry.size
+        if total_size > MAX_ARCHIVE_BYTES:
+            raise ValueError("Package files exceed the size limit")
+        with archive.extractfile(entry) as content:
+            yield relative.as_posix(), content.read()
+
+
+def release_archive_files(path: Path):
+    if path.stat().st_size > MAX_ARCHIVE_BYTES:
+        raise ValueError("Release archive exceeds the size limit")
+    # GitHub's source tarballs wrap the repository in one top-level directory.
+    # Inspect only integration regular files; never extract archive paths to disk.
+    with tarfile.open(path, mode="r:gz") as archive:
+        yield from package_members(archive, wrapped=True)
 
 
 def fingerprint(files) -> dict:
@@ -86,15 +115,23 @@ def main() -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--installed", type=Path, help="Path to custom_components/load_optimizer")
     source.add_argument("--git-ref", help="Commit or tag in the local repository")
+    source.add_argument("--release-archive", type=Path, help="Downloaded GitHub source tar.gz")
+    parser.add_argument("--expect-sha256", help="Fail unless the package has this SHA-256 digest")
     args = parser.parse_args()
+    if args.expect_sha256 is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", args.expect_sha256):
+        parser.error("--expect-sha256 must be a 64-digit SHA-256 digest")
     try:
         if args.installed is not None:
             result = fingerprint(installed_files(args.installed))
+        elif args.release_archive is not None:
+            result = fingerprint(release_archive_files(args.release_archive))
         else:
             commit, archive = archived_package(args.git_ref)
             result = {**fingerprint(archive_files(archive)), "commit": commit}
     except (OSError, ValueError, tarfile.TarError, subprocess.SubprocessError) as error:
         parser.exit(1, f"Cannot identify package ({type(error).__name__}).\n")
+    if args.expect_sha256 is not None and result["sha256"] != args.expect_sha256.lower():
+        parser.exit(1, "Package digest does not match the expected SHA-256.\n")
     print(json.dumps(result, sort_keys=True))
     return 0
 
