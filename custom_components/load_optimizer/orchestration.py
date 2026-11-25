@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+import json
 import logging
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from homeassistant.config_entries import ConfigEntry
@@ -649,7 +651,7 @@ class NativeOrchestrator:
         """Capture a user request from a native button."""
         if self.state.get("start_recovery_required"):
             raise HomeAssistantError(explain_reason("start_confirmation_interrupted"))
-        if self._stopping or self._cancelling:
+        if self._stopping or self._cancelling or self.hass.is_stopping:
             raise HomeAssistantError("Appliance control is stopping; retry after it finishes")
         if self._execution_task and not self._execution_task.done():
             raise HomeAssistantError("Cancel the current start request before replacing it")
@@ -1151,10 +1153,16 @@ class NativeOrchestrator:
                 "select",
                 "select_option",
                 {"entity_id": select_entity, "option": program_key},
-                ignore_error=True,
             )
             await asyncio.sleep(5)
             if not await self._async_start_allowed(request, recheck=True):
+                return
+            if self._state(select_entity) != program_key:
+                self.state["request"] = None
+                await self._async_outcome(
+                    "blocked", mode, program, "programme_selection_unconfirmed",
+                    "The appliance did not confirm the requested programme. No start command was sent.",
+                )
                 return
             await self._async_call(
                 "button",
@@ -1569,12 +1577,26 @@ class NativeOrchestrator:
         state = self.hass.states.get(entity_id) if entity_id else None
         return state.state if state else "unavailable"
 
+    async def _async_committed_attempt(self) -> str | None:
+        # Store.async_load can return a queued write rather than the disk contents.
+        return await self.hass.async_add_executor_job(self._read_committed_attempt)
+
+    def _read_committed_attempt(self) -> str | None:
+        stored = json.loads(Path(self.store.path).read_bytes())
+        if not isinstance(stored, dict) or stored.get("version") != STORE_VERSION:
+            return None
+        data = stored.get("data")
+        state = data.get("state") if isinstance(data, dict) else None
+        if isinstance(state, dict) and stored.get("key") == self.store.key and state.get("execution_status") == "commanding":
+            return state.get("last_attempt")
+        return None
+
     async def _async_save(self) -> None:
         await self.store.async_save(
             {
-                "state": self.state,
-                "config": self.config,
-                "program_options": self.program_options,
+                "state": deepcopy(self.state),
+                "config": dict(self.config),
+                "program_options": list(self.program_options),
             }
         )
 

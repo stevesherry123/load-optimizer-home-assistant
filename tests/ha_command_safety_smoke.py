@@ -28,7 +28,8 @@ async def main():
         try:
             for action in ("async_cancel", "async_stop"):
                 for pause in range(5):
-                    scheduler = NativeOrchestrator(hass, SimpleNamespace(entry_id=f"{action}_{pause}"), None)
+                    entry = SimpleNamespace(entry_id=f"{action}_{pause}", data={}, options={})
+                    scheduler = NativeOrchestrator(hass, entry, None)
                     scheduler.state.update(active=True, auto_mode_enabled=False,
                                            auto_negative_price_enabled=False)
                     scheduler.config = {
@@ -47,7 +48,7 @@ async def main():
                     hass.states.async_set("binary_sensor.synthetic_door", "off")
                     for name in ("connected", "remote_control", "remote_start"):
                         hass.states.async_set("binary_sensor.synthetic_" + name, "on")
-                    hass.states.async_set("select.synthetic_programme", "ready",
+                    hass.states.async_set("select.synthetic_programme", "Dishcare.Dishwasher.Program.MixedLoad",
                                           {"options": ["Dishcare.Dishwasher.Program.MixedLoad"]})
                     request = {"mode": "now", "program": "MixedLoad", "automatic": False,
                                "explicit_program_override": True}
@@ -76,6 +77,18 @@ async def main():
                         assert calls.await_args_list == before, (action, pause)
                     assert scheduler.state["request"] == (request if action == "async_stop" else None)
                     await scheduler.async_stop()
+                    if action == "async_stop":
+                        recovered = NativeOrchestrator(hass, entry, None)
+                        await recovered.async_load()
+                        assert recovered.state["start_recovery_required"]
+                        assert not recovered.state["request"]
+                        await recovered.async_evaluate()
+                        assert recovered.state["shadow_decision"]["reason"] == "start_confirmation_interrupted"
+                        assert recovered._execution_task is None
+                        assert not await recovered._async_start_allowed(request)
+                        assert recovered.automation_explanation["state"] == "attention_required"
+                        await recovered.async_cancel()
+                        assert not recovered.state["start_recovery_required"]
 
             # A manual convenience override never exempts physical interlocks.
             scheduler._stopping = False

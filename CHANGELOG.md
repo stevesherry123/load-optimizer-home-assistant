@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.0-beta.13
+
+- Consolidate the tested dishwasher release with main-branch programme-selection
+  confirmation and restricted status attributes. Preserve durable start reservations,
+  bounded wash permission, deadline recovery and saved tariff evidence.
+- This candidate is not published; beta.12 remains the installed owner release.
+
 ## 1.7.0-beta.12
 
 - Align expired travel-deadline handling between planning and final start checks.
@@ -246,6 +253,16 @@
   remains explicitly waiting rather than producing a definitive classification.
 - Recalculate on rate publication as well as the normal coordinator interval.
 - Appliance profile costing and learning data are unchanged.
+
+## 1.5.10-beta.2
+
+- Verify the selected dishwasher programme before Start and limit general status
+  attributes to summary fields. These fixes are retained in the consolidated beta.
+
+## 1.5.10-beta.1
+
+- Persist start reservations and prevent restart or late completion from dispatching
+  duplicate starts. These safeguards are retained in the consolidated beta.
 
 ## 1.5.9
 
