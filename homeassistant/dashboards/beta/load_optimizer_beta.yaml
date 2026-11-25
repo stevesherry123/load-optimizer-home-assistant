@@ -96,8 +96,8 @@ views:
         unit: p/kWh
         float_precision: 2
       series: &id008
-      - entity: sensor.load_optimizer_status
-        name: Import price
+      - entity: sensor.load_optimizer_1_current_energy_price
+        name: Effective import price
         stroke_width: 2
         show:
           in_header: false
@@ -116,9 +116,10 @@ views:
         - value: 50
           color: '#c00000'
         data_generator: "const sourceState = hass.states['sensor.load_optimizer_1_cost_status'];\nwindow.loadOptimizerTariffTimezone = sourceState?.attributes?.tariff_timezone\n  || hass.config.time_zone\n  || 'Europe/London';\nconst partsAt = (timestamp, zone) => Object.fromEntries(\n  new Intl.DateTimeFormat('en-GB', {\n    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',\n    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'\n  }).formatToParts(new Date(timestamp)).map((part) => [part.type, Number(part.value)])\n);\nconst now = Date.now();\nconst local = partsAt(now, window.loadOptimizerTariffTimezone);\nconst midnight = (dayOffset) => {\n  const wall = Date.UTC(local.year, local.month - 1, local.day + dayOffset);\n  let result = wall;\n  for (let attempt = 0; attempt < 4; attempt++) {\n    const part = partsAt(result, window.loadOptimizerTariffTimezone);\n    const delta = wall - Date.UTC(part.year, part.month - 1, part.day, part.hour, part.minute,\
-          \ part.second);\n    result += delta;\n    if (delta === 0) break;\n  }\n  return result;\n};\nconst days = hass.states['sensor.load_optimizer_1_tariff_horizon']?.state === '48h' ? 2 : 1;\nwindow.loadOptimizerTariffChart = { start: midnight(0), end: midnight(days) };\n// Apexcharts-card subtracts this profile offset after data_generator.\n// Counteract that once, retaining real UTC instants for London labels.\nconst useServerTimezone = hass.locale?.time_zone === 'server';\nconst server = partsAt(now, hass.config.time_zone || 'Europe/London');\nconst serverOffset = Date.UTC(server.year, server.month - 1, server.day,\n  server.hour, server.minute, server.second) - Math.floor(now / 1000) * 1000;\nconst browserOffset = -new Date(now).getTimezoneOffset() * 60 * 1000;\nconst cardOffset = useServerTimezone ? browserOffset - serverOffset : 0;\nwindow.loadOptimizerTariffCardOffset = cardOffset;\nconst displayTimestamp = (timestamp) => timestamp + cardOffset;\nconst rawEntities = sourceState?.attributes?.tariff_entities\n\
-          \  || sourceState?.attributes?.tariff_entity\n  || '';\nconst entities = String(rawEntities)\n  .split(',')\n  .map((value) => value.trim())\n  .filter(Boolean);\n\nconst pointsByStart = new Map();\nlet lastEnd = null;\nfor (const entityId of entities) {\n  const rates = hass.states[entityId]?.attributes?.rates;\n  if (!Array.isArray(rates) || rates.length === 0) {\n    continue;\n  }\n  for (const entry of rates) {\n    const startRaw = entry.start || entry.valid_from || entry.from;\n    const endRaw = entry.end || entry.valid_to || entry.to;\n    const priceRaw = entry.price_p_per_kwh\n      ?? entry.value_inc_vat\n      ?? entry.value\n      ?? entry.price;\n    const start = new Date(startRaw).getTime();\n    const end = endRaw ? new Date(endRaw).getTime() : null;\n    let value = Number(priceRaw);\n    if (!Number.isFinite(start) || !Number.isFinite(value)) {\n      continue;\n    }\n\n    if (entry.price_p_per_kwh === undefined) {\n      value = value * 100;\n    }\n\n  \
-          \  const displayStart = displayTimestamp(start);\n    pointsByStart.set(displayStart, [displayStart, value]);\n    if (Number.isFinite(end)) {\n      const displayEnd = displayTimestamp(end);\n      pointsByStart.set(displayEnd, [displayEnd, value]);\n      lastEnd = Math.max(lastEnd || displayEnd, displayEnd);\n    }\n  }\n}\n\nconst points = Array.from(pointsByStart.values())\n  .sort((left, right) => left[0] - right[0]);\nif (points.length > 0 && Number.isFinite(lastEnd)) {\n  points.push([lastEnd + 1, null]);\n}\nreturn points;\n"
+          \ part.second);\n    result += delta;\n    if (delta === 0) break;\n  }\n  return result;\n};\nconst days = hass.states['sensor.load_optimizer_1_tariff_horizon']?.state === '48h' ? 2 : 1;\nwindow.loadOptimizerTariffChart = { start: midnight(0), end: midnight(days) };\n// Apexcharts-card subtracts this profile offset after data_generator.\n// Counteract that once, retaining real UTC instants for London labels.\nconst useServerTimezone = hass.locale?.time_zone === 'server';\nconst server = partsAt(now, hass.config.time_zone || 'Europe/London');\nconst serverOffset = Date.UTC(server.year, server.month - 1, server.day,\n  server.hour, server.minute, server.second) - Math.floor(now / 1000) * 1000;\nconst browserOffset = -new Date(now).getTimezoneOffset() * 60 * 1000;\nconst cardOffset = useServerTimezone ? browserOffset - serverOffset : 0;\nwindow.loadOptimizerTariffCardOffset = cardOffset;\nconst displayTimestamp = (timestamp) => timestamp + cardOffset;\nconst chartRates = entity?.attributes?.chart_price_periods;\n\
+          if (Array.isArray(chartRates)) {\n  const intervals = chartRates.filter((row) =>\n    Array.isArray(row) && row.length === 3\n    && row.every(Number.isFinite) && row[1] > row[0]\n  ).sort((left, right) => left[0] - right[0]);\n  const points = new Map();\n  intervals.forEach(([start, end, price], index) => {\n    points.set(displayTimestamp(start), [displayTimestamp(start), price]);\n    points.set(displayTimestamp(end), [displayTimestamp(end), price]);\n    const next = intervals[index + 1];\n    if (!next || next[0] > end) {\n      points.set(displayTimestamp(end) + 1, [displayTimestamp(end) + 1, null]);\n    }\n  });\n  return Array.from(points.values()).sort((left, right) => left[0] - right[0]);\n}\nconst rawEntities = sourceState?.attributes?.tariff_entities\n  || sourceState?.attributes?.tariff_entity\n  || '';\nconst entities = String(rawEntities)\n  .split(',')\n  .map((value) => value.trim())\n  .filter(Boolean);\n\nconst pointsByStart = new Map();\nlet lastEnd = null;\n\
+          for (const entityId of entities) {\n  const rates = hass.states[entityId]?.attributes?.rates;\n  if (!Array.isArray(rates) || rates.length === 0) {\n    continue;\n  }\n  for (const entry of rates) {\n    const startRaw = entry.start || entry.valid_from || entry.from;\n    const endRaw = entry.end || entry.valid_to || entry.to;\n    const priceRaw = entry.price_p_per_kwh\n      ?? entry.value_inc_vat\n      ?? entry.value\n      ?? entry.price;\n    const start = new Date(startRaw).getTime();\n    const end = endRaw ? new Date(endRaw).getTime() : null;\n    let value = Number(priceRaw);\n    if (!Number.isFinite(start) || !Number.isFinite(value)) {\n      continue;\n    }\n\n    if (entry.price_p_per_kwh === undefined) {\n      value = value * 100;\n    }\n\n    const displayStart = displayTimestamp(start);\n    pointsByStart.set(displayStart, [displayStart, value]);\n    if (Number.isFinite(end)) {\n      const displayEnd = displayTimestamp(end);\n      pointsByStart.set(displayEnd,\
+          \ [displayEnd, value]);\n      lastEnd = Math.max(lastEnd || displayEnd, displayEnd);\n    }\n  }\n}\n\nconst points = Array.from(pointsByStart.values())\n  .sort((left, right) => left[0] - right[0]);\nif (points.length > 0 && Number.isFinite(lastEnd)) {\n  points.push([lastEnd + 1, null]);\n}\nreturn points;\n"
       - entity: sensor.load_optimizer_ofgem_price_cap_benchmark
         name: Ofgem default-tariff benchmark
         type: line
@@ -152,9 +153,15 @@ views:
     cards:
     - type: markdown
       title: Next wash
-      content: '{% set sensor = ''sensor.load_optimizer_1_automation_explanation'' %}
+      content: '{% set explanation = ''sensor.load_optimizer_1_automation_explanation'' %}
 
-        {% set queue = state_attr(''sensor.load_optimizer_1_orchestration_status'', ''request'') or {} %}
+        {% set native = ''sensor.load_optimizer_1_orchestration_status'' %}
+
+        {% set request = state_attr(native, ''request'') or {} %}
+
+        {% set phase = state_attr(explanation, ''request_state'') or states(native) %}
+
+        {% set summary = state_attr(explanation, ''summary'') %}
 
         {% macro home_time(value) -%}
 
@@ -162,20 +169,47 @@ views:
 
         {%- endmacro %}
 
-        {% if not has_value(sensor) %}
+        {% if not has_value(explanation) %}
 
         **Scheduling status unavailable**
 
-        {% elif queue %}
+        {% elif state_attr(explanation, ''running_confirmed'') %}
 
-        **{{ queue.get(''program'', ''Programme'') }} queued**
+        **Dishwasher is washing**
+
+        {% if request %}A separate request is still pending.{% endif %}
+
+        {% elif request and phase == ''awaiting_plan'' %}
+
+        **One wash authorised; waiting for a plan**
+
+        No start is queued while the required checks are unresolved.
+
+        {% elif request and phase == ''commanding'' %}
+
+        **Starting {{ request.get(''program'') or ''the wash'' }}**
+
+        Running has not been confirmed yet.
+
+        {% elif request and request.get(''start'') %}
+
+        **{{ request.get(''program'') or ''Programme'' }} queued**
 
 
-        {{ home_time(queue.get(''start'')) }} to {{ home_time(queue.get(''finish'')) }}
+        Expected start: {{ home_time(request.get(''start'')) }}
 
-        {% set cost = queue.get(''cost_pence'') | float(none) %}
 
-        {% if is_number(cost) %}Estimated cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**{% endif %}
+        Expected finish: {{ home_time(request.get(''finish'')) }}
+
+        {% set cost = request.get(''cost_pence'') | float(none) %}
+
+        {% if is_number(cost) %}Estimated total cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**{% endif %}
+
+        {% if request.get(''late_finish'') %}
+
+        **Later finish:** no eligible cycle fits completely. This wash starts inside the authorised window and finishes afterwards.
+
+        {% endif %}
 
         {% else %}
 
@@ -183,15 +217,36 @@ views:
 
         {% endif %}
 
-
-        {{ state_attr(sensor, ''summary'') or ''No scheduling explanation available.'' }}
-
-        {% if state_attr(sensor, ''action_required'') %}
+        {% if request.get(''window_start'') and request.get(''window_end'') %}
 
 
-        {{ state_attr(sensor, ''action_required'') }}
+        Authorised start window (home time): **{{ home_time(request.get(''window_start'')) }} to {{ home_time(request.get(''window_end'')) }}**.
 
-        {% endif %}'
+        {% endif %}
+
+        {% if request.get(''normal_wash'') %}
+
+        One normal wash is authorised. Extra runs require their separate opt-in.
+
+        {% endif %}
+
+        {% if summary %}
+
+
+        {{ summary }}
+
+        {% endif %}
+
+        {% set action = state_attr(explanation, ''action_required'') %}
+
+        {% if action and action != summary %}
+
+
+        **Action needed:** {{ action }}
+
+        {% endif %}
+
+        '
     - type: markdown
       title: Last wash
       content: '{% set finish = states(''sensor.load_optimizer_1_last_finish'') %}
@@ -266,9 +321,15 @@ views:
     cards:
     - type: markdown
       title: Next wash
-      content: '{% set sensor = ''sensor.load_optimizer_1_automation_explanation'' %}
+      content: '{% set explanation = ''sensor.load_optimizer_1_automation_explanation'' %}
 
-        {% set queue = state_attr(''sensor.load_optimizer_1_orchestration_status'', ''request'') or {} %}
+        {% set native = ''sensor.load_optimizer_1_orchestration_status'' %}
+
+        {% set request = state_attr(native, ''request'') or {} %}
+
+        {% set phase = state_attr(explanation, ''request_state'') or states(native) %}
+
+        {% set summary = state_attr(explanation, ''summary'') %}
 
         {% macro home_time(value) -%}
 
@@ -276,20 +337,47 @@ views:
 
         {%- endmacro %}
 
-        {% if not has_value(sensor) %}
+        {% if not has_value(explanation) %}
 
         **Scheduling status unavailable**
 
-        {% elif queue %}
+        {% elif state_attr(explanation, ''running_confirmed'') %}
 
-        **{{ queue.get(''program'', ''Programme'') }} queued**
+        **Dishwasher is washing**
+
+        {% if request %}A separate request is still pending.{% endif %}
+
+        {% elif request and phase == ''awaiting_plan'' %}
+
+        **One wash authorised; waiting for a plan**
+
+        No start is queued while the required checks are unresolved.
+
+        {% elif request and phase == ''commanding'' %}
+
+        **Starting {{ request.get(''program'') or ''the wash'' }}**
+
+        Running has not been confirmed yet.
+
+        {% elif request and request.get(''start'') %}
+
+        **{{ request.get(''program'') or ''Programme'' }} queued**
 
 
-        {{ home_time(queue.get(''start'')) }} to {{ home_time(queue.get(''finish'')) }}
+        Expected start: {{ home_time(request.get(''start'')) }}
 
-        {% set cost = queue.get(''cost_pence'') | float(none) %}
 
-        {% if is_number(cost) %}Estimated cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**{% endif %}
+        Expected finish: {{ home_time(request.get(''finish'')) }}
+
+        {% set cost = request.get(''cost_pence'') | float(none) %}
+
+        {% if is_number(cost) %}Estimated total cost: **GBP {{ ''%.2f'' | format(cost / 100) }}**{% endif %}
+
+        {% if request.get(''late_finish'') %}
+
+        **Later finish:** no eligible cycle fits completely. This wash starts inside the authorised window and finishes afterwards.
+
+        {% endif %}
 
         {% else %}
 
@@ -297,26 +385,53 @@ views:
 
         {% endif %}
 
-
-        {{ state_attr(sensor, ''summary'') or ''No scheduling explanation available.'' }}
-
-        {% if state_attr(sensor, ''action_required'') %}
+        {% if request.get(''window_start'') and request.get(''window_end'') %}
 
 
-        {{ state_attr(sensor, ''action_required'') }}
+        Authorised start window (home time): **{{ home_time(request.get(''window_start'')) }} to {{ home_time(request.get(''window_end'')) }}**.
 
-        {% endif %}'
+        {% endif %}
+
+        {% if request.get(''normal_wash'') %}
+
+        One normal wash is authorised. Extra runs require their separate opt-in.
+
+        {% endif %}
+
+        {% if summary %}
+
+
+        {{ summary }}
+
+        {% endif %}
+
+        {% set action = state_attr(explanation, ''action_required'') %}
+
+        {% if action and action != summary %}
+
+
+        **Action needed:** {{ action }}
+
+        {% endif %}
+
+        '
     - type: markdown
       title: Scheduling
       content: '{% set entity = ''sensor.load_optimizer_1_automation_explanation'' %}
 
-        {% set blocks = state_attr(entity, ''blockers'') or [] %}
+        {% set blocks = state_attr(entity, ''blocker_messages'') or [] %}
 
-        {% set warnings = state_attr(entity, ''warnings'') or [] %}
+        {% set warnings = state_attr(entity, ''warning_messages'') or [] %}
+
+        {% set checks = (state_attr(entity, ''blockers'') or []) + (state_attr(entity, ''warnings'') or []) %}
 
         {% if not has_value(entity) %}
 
         Scheduling information unavailable.
+
+        {% elif not blocks and not warnings and checks %}
+
+        Readiness checks are pending. Review the integration details.
 
         {% elif not blocks and not warnings %}
 
@@ -324,40 +439,88 @@ views:
 
         {% endif %}
 
-        {% for reason in blocks %}
+        {% for message in blocks %}
 
-        - {{ reason | replace(''_'', '' '') | capitalize }}
+        - {{ message }}
 
         {% endfor %}
 
-        {% for reason in warnings %}
+        {% for message in warnings %}
 
-        - {{ reason | replace(''_'', '' '') | capitalize }}
+        - {{ message }}
 
         {% endfor %}'
+    - type: button
+      name: Schedule one wash
+      icon: mdi:calendar-plus
+      show_state: false
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.load_optimizer_1_request_overnight
+        confirmation:
+          text: Authorise one wash inside the overnight window? The optimiser chooses the programme and start time.
+    - type: button
+      name: Start now
+      icon: mdi:play-circle
+      show_state: false
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.load_optimizer_1_request_now
+        confirmation:
+          text: Start a wash now using the optimiser's selected programme?
+    - type: button
+      name: Cancel pending schedule
+      icon: mdi:calendar-remove
+      show_state: false
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.load_optimizer_1_cancel_schedule
+        confirmation:
+          text: Cancel the pending request and permission? An active wash will continue.
+  - type: grid
+    column_span: 1
+    cards:
+    - type: entities
+      title: Overnight window
+      show_header_toggle: false
+      entities:
+      - entity: time.load_optimizer_1_overnight_start
+        name: Overnight start
+      - entity: time.load_optimizer_1_overnight_end
+        name: Dishes ready by
+      - entity: number.load_optimizer_1_door_open_minimum_minutes
+        name: Loading door-open minimum
+    - type: markdown
+      title: Window settings
+      content: '{% set entity = ''sensor.load_optimizer_1_automation_explanation'' %}
+
+        Window settings use **{{ state_attr(entity, ''settings_timezone'') or ''the configured tariff timezone'' }}**.
+
+        Changes apply to the next request. An already authorised wash keeps its original window.
+
+
+        Start now uses the optimiser''s selected programme.
+
+
+        Scheduling one wash does not require the door rule to be enabled.
+
+        A later finish is allowed only when no eligible cycle fits completely; the start stays inside the window.
+
+        '
     - type: entities
       title: Automatic modes
       show_header_toggle: false
       entities:
       - entity: switch.load_optimizer_1_auto_mode_enabled
-        name: Overnight
+        name: Schedule after loading (door rule)
       - entity: switch.load_optimizer_1_auto_negative_price_enabled
-        name: Free / negative price
-  - type: grid
-    column_span: 1
-    cards:
-    - type: entities
-      title: Appliance
-      show_header_toggle: false
-      entities:
-      - entity: sensor.load_optimizer_1_cycle_state
-        name: Cycle
-      - entity: sensor.load_optimizer_1_power
-        name: Power
-      - entity: sensor.load_optimizer_1_data_freshness
-        name: Source freshness
-      - entity: sensor.load_optimizer_1_remote_activation_check
-        name: Remote start
+        name: Profitable extra runs
     - type: markdown
       title: Recommendation
       content: '{% set entity = ''sensor.load_optimizer_1_overnight_recommendation'' %}
@@ -388,9 +551,78 @@ views:
         No fully priced recommendation available.
 
         {% endif %}'
+    - type: markdown
+      title: Cycle costs
+      content: '{% set labels = {''fixed_cost_pence'': ''other per-run costs'', ''consumables_cost_pence'': ''consumables'', ''water_litres'': ''water use'', ''water_cost_pence_per_litre'': ''water price'', ''wear_cost_pence'': ''wear''} %}
+
+        {% for title, recommendation in [(''Normal overnight wash'', ''sensor.load_optimizer_1_overnight_recommendation''), (''Profitable extra run'', ''sensor.load_optimizer_1_negative_price_recommendation'')] %}
+
+        ### {{ title }}
+
+        {% set costs = state_attr(recommendation, ''operating_cost_breakdown'') or {} %}
+
+        {% if state_attr(recommendation, ''status'') == ''ready'' and costs %}
+
+        **{{ state_attr(recommendation, ''program'') }}**
+
+
+        | Estimate | Pence per cycle |
+
+        |---|---:|
+
+        | Electricity | {{ ''%.4f'' | format(costs.get(''energy_cost_pence'', 0)) }} |
+
+        | Consumables | {{ ''%.4f'' | format(costs.get(''consumables_cost_pence'', 0)) }} |
+
+        | Water | {{ ''%.4f'' | format(costs.get(''water_cost_pence'', 0)) }} |
+
+        | Wear | {{ ''%.4f'' | format(costs.get(''wear_cost_pence'', 0)) }} |
+
+        | Other per-run costs | {{ ''%.4f'' | format(costs.get(''fixed_cost_pence'', 0)) }} |
+
+        | **Total cost** | **{{ ''%.4f'' | format(costs.get(''total_cost_pence'', 0)) }}** |
+
+
+        {% if title == ''Profitable extra run'' %}
+
+        {% set benefit = state_attr(recommendation, ''net_benefit_pence'') | float(0) %}
+
+        Estimated net benefit: **{{ ''less than 0.01'' if 0 < benefit < 0.01 else (''%.2f'' | format(benefit)) }} p**.
+
+        {% endif %}
+
+        {% set missing = state_attr(recommendation, ''unconfigured_costs'') or [] %}
+
+        {% if missing %}
+
+        Unconfigured costs treated as zero: {% for field in missing %}{{ labels.get(field, field) }}{{ '', '' if not loop.last else ''.'' }}{% endfor %}
+
+        {% endif %}
+
+        {% else %}
+
+        {{ ''No profitable extra run is currently available. This does not prevent a requested normal wash.'' if title == ''Profitable extra run'' else ''No complete normal-wash cost estimate is currently available.'' }}
+
+        {% endif %}
+
+        {% endfor %}
+
+        '
   - type: grid
     column_span: 1
     cards:
+    - type: entities
+      title: Appliance
+      show_header_toggle: false
+      entities:
+      - entity: sensor.load_optimizer_1_cycle_state
+        name: Cycle
+      - entity: sensor.load_optimizer_1_power
+        name: Power
+      - entity: sensor.load_optimizer_1_data_freshness
+        name: Source freshness
+      - entity: sensor.load_optimizer_1_remote_activation_check
+        name: Remote start
     - type: entities
       title: Manual programme
       show_header_toggle: false
@@ -408,17 +640,6 @@ views:
           entity_id: button.load_optimizer_1_request_now_override
         confirmation:
           text: Start the selected dishwasher programme now?
-    - type: button
-      name: Cancel queued wash
-      icon: mdi:calendar-remove
-      show_state: false
-      tap_action:
-        action: perform-action
-        perform_action: button.press
-        target:
-          entity_id: button.load_optimizer_1_cancel_schedule
-        confirmation:
-          text: Cancel the queued dishwasher request? This does not stop a running wash.
   - type: grid
     column_span: 3
     cards:
@@ -593,6 +814,18 @@ views:
       title: Execution record
       content: '{% set native = ''sensor.load_optimizer_1_orchestration_status'' %}
 
+        {% set snapshot = state_attr(native, ''last_start_decision_snapshot'') %}
+
+        {% set request = snapshot.get(''request'') if snapshot is mapping else none %}
+
+        {% set quote = request.get(''recommendation_quote'') if request is mapping else none %}
+
+        {% set alternatives = request.get(''recommendation_alternatives'') if request is mapping else none %}
+
+        {% set tariff = quote.get(''tariff_evidence'') if quote is mapping else none %}
+
+        {% set benefit = quote.get(''estimated_net_benefit_pence'') if quote is mapping else none %}
+
         {% macro home_time(value) -%}
 
         {{ (as_datetime(value) | as_local).strftime(''%a %d %b %H:%M %Z'') if as_datetime(value, none) else ''Not recorded'' }}
@@ -607,11 +840,86 @@ views:
 
         | Last start attempt | {{ home_time(state_attr(native, ''last_attempt'')) }} |
 
-        | Programme | {{ state_attr(native, ''last_program'') or ''Not recorded'' }} |
+        | Attempted programme | {{ (request.program | default(''Not recorded'', true)) | replace(''|'', ''/'') | replace(''\n'', '' '') if request is mapping else ''Not recorded'' }} |
 
-        | Result | {{ state_attr(native, ''last_result'') or ''Not recorded'' }} |
+        | Recommendation estimate | {{ ''Under 0.01 p net benefit'' if benefit is number and 0 < benefit < 0.005 else ((''%.2f p'' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else ''Not recorded'') }} |
 
-        | Detail | {{ (state_attr(native, ''last_message'') or ''Not recorded'') | replace(''|'', ''/'') | replace(''\n'', '' '') }} |'
+        {% if quote is mapping and quote.estimated_cost_pence is number -%}
+
+        | Estimate window | {{ home_time(quote.start) }} to {{ home_time(quote.finish) }} |
+
+        {% set selection = quote.get(''overnight_selection_reason'') -%}
+
+        {% if selection == ''best_overnight'' -%}
+
+        | Why this estimate was selected | Lowest estimated total cost among eligible plans that finish within the overnight window. |
+
+        {% elif selection == ''cheapest_start_in_window_late_finish'' -%}
+
+        | Why this estimate was selected | No eligible plan finished within the window. This was the lowest-cost eligible start, with a later finish. |
+
+        {% endif -%}
+
+        {% endif -%}
+
+        {% if benefit is number and benefit > 0 -%}
+
+        | Estimated net benefit of extra wash | {{ ''Under 0.0001 p'' if benefit < 0.0001 else ''%.4f p'' | format(benefit) }} |
+
+        {% endif -%}
+
+        | Last recorded result | {{ state_attr(native, ''last_result'') or ''Not recorded'' }} |
+
+        | Result programme | {{ (state_attr(native, ''last_program'') or ''Not recorded'') | replace(''|'', ''/'') | replace(''\n'', '' '') }} |
+
+        | Detail | {{ (state_attr(native, ''last_message'') or ''Not recorded'') | replace(''|'', ''/'') | replace(''\n'', '' '') }} |
+
+        {% if tariff is mapping and tariff.periods is sequence and tariff.period_count is number and tariff.energy_cost_pence is number and tariff.non_energy_cost_pence is number %}
+
+
+        **Rates used in this estimate**
+
+
+        Estimated electricity: {{ ''%.4f p'' | format(tariff.energy_cost_pence) }}. Configured non-electricity costs: {{ ''%.4f p'' | format(tariff.non_energy_cost_pence) }}.
+
+        {% set sources = {''contracted'': ''Contracted rate'', ''free_electricity_calendar'': ''Free electricity calendar'', ''manual_special_price_window'': ''Manual price override''} -%}
+
+        {% if tariff.period_count > tariff.periods | count %}
+
+        Showing the first {{ tariff.periods | count }} of {{ tariff.period_count }} priced periods. The estimate includes all periods.
+
+        {% endif %}
+
+
+        | Estimate window | Rate | Source | Estimated energy |
+
+        |---|---|---|---|
+
+        {% for row in tariff.periods[:8] if row is mapping and row.price_p_per_kwh is number and row.energy_kwh is number -%}
+
+        | {{ home_time(row.start) }} to {{ home_time(row.end) }} | {{ ''%.4f p/kWh'' | format(row.price_p_per_kwh) }} | {{ sources.get(row.rate_source, ''Unknown source'') }} | {{ ''%.4f kWh'' | format(row.energy_kwh) }} |
+
+        {% endfor -%}
+
+        {% endif %}
+
+        {% if alternatives is sequence and alternatives is not string and alternatives is not mapping and alternatives %}
+
+
+        **Other programme estimates for this request**
+
+
+        | Programme | Estimated cost | Estimate window |
+
+        |---|---|---|
+
+        {% for option in alternatives[:3] if option is mapping and option.estimated_cost_pence is number -%}
+
+        | {{ option.program | replace(''|'', ''/'') | replace(''\n'', '' '') }} | {{ ''%.2f p'' | format(option.estimated_cost_pence) }} | {{ home_time(option.start) }} to {{ home_time(option.finish) }} |
+
+        {% endfor -%}
+
+        {% endif %}'
     - type: entities
       title: Sources
       show_header_toggle: false
@@ -639,13 +947,13 @@ views:
 
         {% if records %}
 
-        | Home time | Event | Programme / reason |
+        | Home time | What happened | Programme |
 
         |---|---|---|
 
         {% for event in records[:12] -%}
 
-        | {{ (as_datetime(event.timestamp) | as_local).strftime(''%d %b %H:%M %Z'') if as_datetime(event.timestamp, none) else ''Not recorded'' }} | {{ event.event | default(''decision'') }} | {{ event.program | default(event.reason | default('''')) | replace(''_'', '' '') }} |
+        | {{ (as_datetime(event.timestamp) | as_local).strftime(''%d %b %H:%M %Z'') if as_datetime(event.timestamp, none) else ''Not recorded'' }} | {{ (event.description | default(''A scheduling record was saved.'', true)) | replace(''|'', ''/'') | replace(''\n'', '' '') }} | {{ (event.program | default(''Not selected'', true)) | replace(''|'', ''/'') | replace(''\n'', '' '') }} |
 
         {% endfor -%}
 

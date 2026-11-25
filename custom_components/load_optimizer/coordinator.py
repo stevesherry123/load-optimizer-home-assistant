@@ -41,6 +41,8 @@ from .orchestration_migration import OrchestrationMigration
 from .optimizer.ev_charging import connection_is_available, deadline_from_ready_by, plan_ev_charge, state_float
 from .optimizer.tariffs import tariff_periods_from_entity
 from .price_cap import PriceCapManager
+from .tariff_intelligence import get_service
+from .narrative import OptionalNarrative
 
 LOGGER = logging.getLogger(__name__)
 
@@ -64,6 +66,8 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.config_entry = entry
         self.local_timezone = local_timezone
         self.price_cap_manager = PriceCapManager(hass, entry)
+        self.tariff_intelligence = get_service(hass, data)
+        self.narrative = OptionalNarrative(hass, self.async_publish_narrative)
         self.legacy_runtime = LegacyRuntime(hass) if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE else None
         self.orchestration_migration = (
             OrchestrationMigration(hass, entry)
@@ -78,6 +82,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.legacy_runtime and self.orchestrator:
             self.legacy_runtime.external_state_provider = self._orchestration_legacy_state
             self.orchestrator.set_automatic_preflight(self._async_automatic_start_block)
+            self.legacy_runtime.schedule_config_provider = self.orchestrator.configure_schedule
 
     async def _async_automatic_start_block(self, request: dict[str, Any]) -> str | None:
         if self.legacy_runtime is None:
@@ -97,6 +102,8 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             local_timezone=self.local_timezone,
             now_utc=now,
         )
+        intelligence = await self.tariff_intelligence.async_status(price_cap, now)
+        intelligence["narrative"] = self.narrative.snapshot(intelligence)
         if data.get(CONF_LOAD_TYPE) == LOAD_TYPE_LEARNED_APPLIANCE:
             if self.legacy_runtime is None or self.orchestration_migration is None or self.orchestrator is None:
                 raise RuntimeError("Learned-appliance runtime was not initialized")
@@ -115,6 +122,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "orchestration_migration": self.orchestration_migration.status,
                 "orchestration": self.orchestrator.status,
                 "price_cap": price_cap,
+                "tariff_intelligence": intelligence,
             }
 
         tariff_entity = self._state_payload(data.get(CONF_TARIFF_ENTITY))
@@ -164,6 +172,7 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "tariff_period_count": len(periods),
             "last_updated": now.isoformat(),
             "price_cap": price_cap,
+            "tariff_intelligence": intelligence,
             "entities": {
                 "tariff": data.get(CONF_TARIFF_ENTITY),
                 "battery": data.get(CONF_BATTERY_ENTITY),
@@ -196,3 +205,10 @@ class LoadOptimizerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
         self.data["orchestration"] = status
         self.async_update_listeners()
+
+    def async_publish_narrative(self):
+        """Publish AI lifecycle changes independently of scheduled analysis."""
+        if self.data:
+            analysis = self.data.get("tariff_intelligence", {})
+            analysis["narrative"] = self.narrative.snapshot(analysis)
+            self.async_update_listeners()

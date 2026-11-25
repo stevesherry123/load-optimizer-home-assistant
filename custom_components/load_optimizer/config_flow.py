@@ -30,6 +30,7 @@ from .const import (
     CONF_CHARGE_POWER_KW,
     CONF_CHARGER_EFFICIENCY,
     CONF_BLOCKED_WINDOW_ENTITY,
+    CONF_FREE_WINDOW_ENTITY,
     CONF_COST_CANDIDATE_INTERVAL,
     CONF_COST_FORECAST_HOURS,
     CONF_COST_FORECAST_INTERVAL,
@@ -89,10 +90,10 @@ def _appliance_review(hass, config: ApplianceConfiguration) -> str:
         for key, unit in (("power_sensor", "W"), ("energy_sensor", "kWh"),
                           ("program_sensor", None), ("state_sensor", None),
                           ("schedule_earliest_start_entity", None), ("schedule_latest_finish_entity", None),
-                          ("green_window_entity", None), ("blocked_window_entity", None)):
+                          ("green_window_entity", None), ("blocked_window_entity", None), ("free_window_entity", None)):
             if entity_id := item.get(key):
                 entity_ids = entity_id.split(",") if key in {
-                    "green_window_entity", "blocked_window_entity",
+                    "green_window_entity", "blocked_window_entity", "free_window_entity",
                 } else [entity_id]
                 for source_id in entity_ids:
                     sources.setdefault(source_id.strip(), set()).add(unit)
@@ -354,7 +355,9 @@ class LoadOptimizerConfigFlow(_ApplianceValidationFlow, config_entries.ConfigFlo
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_INSTANCES_YAML): str,
+                vol.Required(CONF_INSTANCES_YAML): selector.TextSelector(
+                    selector.TextSelectorConfig(multiline=True)
+                ),
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
                     default=DEFAULT_LEGACY_SCAN_INTERVAL_SECONDS,
@@ -378,6 +381,7 @@ class LoadOptimizerConfigFlow(_ApplianceValidationFlow, config_entries.ConfigFlo
                 ),
                 vol.Optional(CONF_GREEN_WINDOW_ENTITY): str,
                 vol.Optional(CONF_BLOCKED_WINDOW_ENTITY): str,
+                vol.Optional(CONF_FREE_WINDOW_ENTITY): str,
                 vol.Optional(CONF_COST_SEARCH_HOURS, default=24): vol.All(
                     vol.Coerce(int), vol.Range(min=1, max=72)
                 ),
@@ -450,6 +454,13 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
             data={**self.config_entry.options, **user_input},
         )
 
+    @property
+    def _dishwasher_existing(self) -> dict[str, Any]:
+        """Show migrated controller references without changing or activating them."""
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        controller = getattr(coordinator, "orchestrator", None)
+        return {**getattr(controller, "config", {}), **self._existing}
+
     async def async_step_ev(self, user_input: dict[str, Any] | None = None):
         """Edit EV inputs without replacing its config entry or opt-ins."""
         errors = await self.hass.async_add_executor_job(_ev_input_errors, user_input) if user_input is not None else {}
@@ -472,6 +483,8 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
         """Edit appliance sources and tariff inputs."""
         errors = {}
         if user_input is not None:
+            user_input = dict(user_input)
+            user_input.setdefault(CONF_TARIFF_ENTITY, "")
             errors = await self._async_prepare_appliances({**self._existing, **user_input})
             if not errors:
                 self._appliance_pending = dict(user_input)
@@ -479,7 +492,7 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
             errors = {key if key in {
                 CONF_INSTANCES_YAML, CONF_SCAN_INTERVAL, CONF_TARIFF_ENTITY, CONF_TARIFF_ENTITIES,
                 CONF_TARIFF_TIMEZONE, CONF_TARIFF_PRICE_UNIT, CONF_GREEN_WINDOW_ENTITY,
-                CONF_BLOCKED_WINDOW_ENTITY,
+                CONF_BLOCKED_WINDOW_ENTITY, CONF_FREE_WINDOW_ENTITY,
             } else CONF_INSTANCES_YAML: value for key, value in errors.items()}
 
         existing = {**self._existing, **(user_input or {})}
@@ -492,7 +505,7 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
                     vol.Optional(
                         CONF_INSTANCES_YAML,
                         default=existing.get(CONF_INSTANCES_YAML, ""),
-                    ): str,
+                    ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
                         default=existing.get(
@@ -502,7 +515,8 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
                     ): vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
                     vol.Optional(
                         CONF_TARIFF_ENTITY,
-                        default=existing.get(CONF_TARIFF_ENTITY, ""),
+                        description={"suggested_value": existing[CONF_TARIFF_ENTITY]}
+                        if existing.get(CONF_TARIFF_ENTITY) else {},
                     ): selector.EntitySelector(selector.EntitySelectorConfig()),
                     vol.Optional(
                         CONF_TARIFF_ENTITIES,
@@ -534,6 +548,10 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
                     vol.Optional(
                         CONF_BLOCKED_WINDOW_ENTITY,
                         default=existing.get(CONF_BLOCKED_WINDOW_ENTITY, ""),
+                    ): str,
+                    vol.Optional(
+                        CONF_FREE_WINDOW_ENTITY,
+                        default=existing.get(CONF_FREE_WINDOW_ENTITY, ""),
                     ): str,
                 }
             ),
@@ -573,19 +591,31 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
                     vol.Optional(
                         CONF_COST_SEARCH_HOURS,
                         default=existing.get(CONF_COST_SEARCH_HOURS, 24),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=72)),
+                    ): selector.NumberSelector(selector.NumberSelectorConfig(
+                        min=1, max=72, step=1, mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="h",
+                    )),
                     vol.Optional(
                         CONF_COST_FORECAST_HOURS,
                         default=existing.get(CONF_COST_FORECAST_HOURS, 12),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=72)),
+                    ): selector.NumberSelector(selector.NumberSelectorConfig(
+                        min=1, max=72, step=1, mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="h",
+                    )),
                     vol.Optional(
                         CONF_COST_FORECAST_INTERVAL,
                         default=existing.get(CONF_COST_FORECAST_INTERVAL, 30),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=60)),
+                    ): selector.NumberSelector(selector.NumberSelectorConfig(
+                        min=5, max=60, step=1, mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="min",
+                    )),
                     vol.Optional(
                         CONF_COST_CANDIDATE_INTERVAL,
                         default=existing.get(CONF_COST_CANDIDATE_INTERVAL, 5),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
+                    ): selector.NumberSelector(selector.NumberSelectorConfig(
+                        min=1, max=30, step=1, mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="min",
+                    )),
                     vol.Optional(
                         CONF_SCHEDULE_PREFERENCE_WEIGHT_PENCE,
                         default=existing.get(
@@ -635,7 +665,7 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
         if user_input is not None and not errors:
             return self._save_section(user_input)
 
-        existing = {**self._existing, **(user_input or {})}
+        existing = {**self._dishwasher_existing, **(user_input or {})}
         schema: dict[Any, Any] = {}
         entity_fields = (
             CONF_BOSCH_POWER_SWITCH,
@@ -656,9 +686,9 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
             )
         ] = str
         for field in entity_fields:
-            schema[
-                vol.Optional(field, default=existing.get(field, ""))
-            ] = selector.EntitySelector(selector.EntitySelectorConfig())
+            key = (vol.Optional(field, default=existing[field])
+                   if existing.get(field) else vol.Optional(field))
+            schema[key] = selector.EntitySelector(selector.EntitySelectorConfig())
         return self.async_show_form(
             step_id="dishwasher_control",
             errors=errors,

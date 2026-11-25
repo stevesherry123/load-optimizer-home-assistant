@@ -25,6 +25,12 @@ reload/restart and upgrade/rollback for persistence changes; test desktop/mobile
 and tariff-local time for chart changes. New physical control must be explicitly
 enabled and must not bypass appliance safety checks.
 
+For costing changes, `python dev/compare_tariff_planners.py /path/to/baseline
+/path/to/candidate` compares complete results against synthetic half-hour,
+quarter-hour, daylight-saving, free-rate and missing-rate fixtures. The warm
+median timings are local planner measurements, not a CI threshold or a measure
+of Home Assistant's event loop on a particular device.
+
 Stable releases use matching manifest/runtime versions and a full GitHub
 release created after successful checks. Development builds use prerelease
 versions and GitHub's prerelease flag. Never move or replace a published tag.

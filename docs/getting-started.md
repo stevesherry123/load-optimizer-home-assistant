@@ -5,7 +5,8 @@ recommendation. Automatic starting is a separate, optional step.
 
 ## Before Installation
 
-- Use Home Assistant 2024.12 or later, HACS, and a stable GitHub release.
+- Use Home Assistant 2026.10.2 or later, HACS, and a stable GitHub release.
+- Octopus Energy sources require BottlecapDave's integration 19.2.1 or later.
 - Install your tariff and appliance integrations first. Load Optimizer consumes
   their entities; it does not connect directly to your supplier or appliance.
 - Identify a numeric power sensor in **W** and preferably a cumulative energy

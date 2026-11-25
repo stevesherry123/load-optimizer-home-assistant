@@ -75,10 +75,55 @@ larger template or the device's corresponding select/button entities.
 
 ## Opt Into Automatic Modes Separately
 
-- **Automatic mode:** normal overnight scheduling. Requires a suitable policy,
+Normal automatic washing requires an observed door opening followed by closure.
+This door-based mode is optional and off by default. An explicit scheduling
+request authorises one normal wash without enabling the door-based mode.
+The door must remain open for at least **two minutes** by default. Configure
+**Door Open Minimum** on the dishwasher device
+(`number.load_optimizer_1_door_open_minimum_minutes`, 0.5-60 minutes).
+Shorter openings do not create a new normal-wash permission. This is a loading
+heuristic, not proof of dirty dishes. Initial/restored states, interrupted door
+telemetry and openings during a running wash do not qualify. A short reopening
+does not revoke an existing permission; the closed-door safety check still applies.
+
+If the door is open or its state is unavailable at the first planned start
+check, an authorised overnight wash waits for a confirmed closed door and a
+new fully priced start inside the original window. This does not extend the
+window, send a start command, or automatically retry a sequence already begun.
+
+### Script And Voice Requests
+
+[`examples/dishwasher-scripts.yaml`](examples/dishwasher-scripts.yaml) contains
+three optional scripts: **Schedule dishwasher**, **Start dishwasher now** and
+**Cancel dishwasher schedule**. Its contents are a `scripts.yaml` mapping; merge
+them into your existing scripts configuration rather than overwriting it.
+Replace the button IDs if your registered IDs differ.
+
+The schedule and start-now scripts hand programme selection to the optimiser,
+using eligible learned programmes rather than the manual override selection.
+An active native controller is required. In the unreleased development build,
+**Schedule dishwasher** persists permission for one wash even when a priced plan
+is not yet available. Missing prices produce a Home Assistant notification; when
+complete data returns, planning resumes inside the original window. A cancelled
+or expired request is never revived. **Start dishwasher now** still needs a ready
+recommendation, unless using the separate selected-programme override.
+Cancellation clears the pending request and normal door-based permission; it
+does not stop a running wash or disable separately opted-in negative-price runs.
+An explicit script request does not require a qualifying door opening, but all
+physical safety checks remain enforced.
+
+Scripts can be exposed through your existing Alexa/Home Assistant connection;
+optional Alexa routines can provide your chosen phrases. Load Optimizer does
+not configure Alexa, install these scripts, or send voice announcements itself.
+
+### Automatic Modes
+
+- **Schedule After Loading** (existing `auto_mode_enabled` switch): optional
+  door-based normal overnight scheduling. Requires a suitable policy,
   confidence, window and physical readiness. Recommendation permission alone
   does not enable automatic starts.
-- **Automatic free / negative-price mode:** separate opt-in, also requiring
+- **Profitable Extra Runs** (existing `auto_negative_price_enabled` switch):
+  separate opt-in, also requiring
   `allow_negative_price_run: true` for each permitted programme. Review your
   release's behaviour, run limits and non-energy costs first. Leave it off
   during initial onboarding.
@@ -92,6 +137,9 @@ Promotional events do not automatically alter tariff prices or enrol you in an
 offer. Free/negative scheduling needs usable zero/negative rates or an explicit
 special-price overlay. Water, detergent and wear can outweigh electricity
 credits; a negative electricity estimate is not guaranteed whole-cycle profit.
+The unreleased development build requires strictly positive whole-cycle net
+benefit for extra runs. See [operating costs](operating-costs.md) for the cost
+fields, zero-return behaviour and dashboard breakdown.
 
 To stop automatic scheduling, turn both modes off and cancel queued requests
 separately. To relinquish ownership, call
@@ -106,3 +154,29 @@ to clear the hold. This does not stop an active wash.
 
 For waiting or failed starts, see [troubleshooting](troubleshooting.md). Never
 remove safety or missing-data checks to force a request through.
+
+### Overnight Window (Unreleased Development Build)
+
+The dishwasher device exposes **Overnight Start**
+(`time.load_optimizer_1_overnight_start`) and **Dishes Ready By**
+(`time.load_optimizer_1_overnight_end`). New defaults are **21:00–07:00**, using
+the configured tariff timezone. Existing explicit appliance YAML window settings
+are retained until overridden using these controls. Changes to defaults apply
+to subsequent requests; they cannot move an existing authorised window.
+
+The optimiser chooses the cheapest eligible programme and start that finishes
+inside the window. If none fits completely, it chooses the cheapest eligible
+cycle that **starts inside the window**, allowing completion afterwards. The
+start boundary is inclusive and the end boundary exclusive: a request ending at
+07:00 cannot start at 07:00 or later. A cheaper midday start is never substituted.
+The explanation sensor exposes the authorised window, expected finish and
+`late_finish` flag.
+
+All candidate cycles need complete tariff coverage, including their late-finishing
+portion. Explicit no-run periods, configured hard finish constraints and physical
+safety gates still apply. Replanning can change programme and timing until the
+short pre-start freeze; a final source and window check also runs before commands.
+Normal wash permission takes priority over separately enabled opportunistic runs.
+Scheduling again while a normal request exists retains the same wash and window.
+
+These changes are development work, not an installed or published update.

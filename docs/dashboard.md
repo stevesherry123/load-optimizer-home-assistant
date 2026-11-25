@@ -1,5 +1,63 @@
 # Optional Dashboard
 
+The unreleased full and beta templates include a **Cycle costs** card showing
+electricity, consumables, water, wear, total cost and unconfigured assumptions.
+See [operating costs](operating-costs.md) for the calculation and configuration.
+
+## Development Scheduling Controls
+
+The unreleased full and beta dashboards show **Next wash** separately from a
+recommendation. The beta dashboard provides **Schedule one wash**, **Start now**
+and **Cancel pending schedule**, plus an advanced selected-programme start.
+The full dashboard exposes the same native actions in Scheduler Controls.
+These actions require configured, active native dishwasher control and retain
+the physical safety checks. Updating dashboard YAML alone does not install the
+matching integration code or activate control.
+
+| Display | Meaning |
+| --- | --- |
+| One wash authorised; waiting for a plan | Permission is saved, but no start is queued while prices or eligibility checks remain unresolved. A retained previous estimate is not a live queue. |
+| Programme queued | A programme and expected start/finish have been selected, with the original authorised start window shown. |
+| Starting | Start checks or commands are underway; running has not been confirmed. |
+| Dishwasher is washing | The appliance reports that it is running. A learning capture alone does not establish this state. |
+| No wash queued | There is no pending start. The summary explains cancellation, expiry or the most recent blocked request when applicable. |
+
+If no cycle fits completely, **Later finish** explains that the chosen start is
+inside the authorised window while completion falls afterwards. Times in Next
+wash are shown in Home Assistant's local timezone, including BST/GMT labels.
+
+**Overnight Start** and **Dishes Ready By** configure future requests. Window
+settings use the configured tariff timezone, shown in the Window settings card.
+An existing request keeps its original window after defaults change. Dishes
+Ready By is the preferred finish; a separately configured travel deadline remains
+a hard constraint. The full template shows the old optional travel controls only
+when their external helpers exist.
+
+**Schedule after loading (door rule)** is optional and off by default. Explicit
+scheduling does not require it. **Profitable extra runs** is a separate opt-in;
+authorising one normal wash does not enable extra runs. Both switches retain
+their existing entity IDs.
+
+Readiness and recent decisions use readable descriptions. New event records
+store a `description` alongside the original machine reason for diagnostics;
+older records remain readable through a generic or known-reason fallback.
+Ordinary status reads and event records do not send routine notifications.
+An estimate-only revision does not change the pending wash timings. A routine
+coverage refresh with the same plan does not create another decision record.
+Cancellation clears pending permission and never stops an active wash.
+
+In the beta dashboard, **Execution record** separates the estimate used to
+choose an overnight wash or profitable extra wash from the start attempt and
+reported result. The extra-wash record includes the estimated net benefit, even
+when it is smaller than the normal price display precision. New estimates
+retain their electricity and configured non-electricity costs, plus
+up to eight effective rate periods with estimated energy. The table identifies
+contracted rates, free calendar rates and manual price overrides without saving
+calendar names or account details. Longer estimates show how many periods are
+omitted; the total still includes them. Old records and explicit programme
+overrides do not acquire a rate breakdown from today's data. These are modelled
+costs at planning time, not a bill or a measurement of what the wash used.
+
 ## Start With One Appliance
 
 For the [new-install guide](getting-started.md), start with
@@ -75,6 +133,15 @@ events are bounded to the most recent 20 and stored with the native controls,
 so diagnosis does not depend on Recorder being enabled for optimizer sensors.
 Existing history is not reconstructed or guessed during an upgrade.
 
+The next unreleased explanation update distinguishes the dishwasher's own
+delayed-start timer from a wash in progress. A separate optimizer request, if
+present, is still displayed; the explanation does not cancel or modify it.
+Automatic programme cooldowns list their next eligible home-time dates. These
+do not restrict explicit selected-programme manual requests, which still require
+the normal physical safety checks. Missing power, no-run and free-electricity
+calendar sources have separate messages; unavailable promotional pricing must
+not be treated as a confirmed free session.
+
 Dates use Home Assistant's configured home timezone, including its timezone
 abbreviation, even when the dashboard is opened while travelling. The card falls
 back to the existing queue and attempt records on older integration versions.
@@ -137,3 +204,28 @@ axis labels and tooltips (including BST/GMT). Its day range and Now marker do no
 follow the viewing browser's day or the profile's local/server preference. London
 clock-change days cover 23 or 25 actual hours rather than dropping or duplicating
 the repeated hour. The 24h/48h labels mean one/two tariff calendar days.
+
+## Power Up Prices On The Chart
+
+The next unreleased full-dashboard template plots **Effective import price**
+from `sensor.load_optimizer_1_current_energy_price`'s `chart_price_periods`
+attribute. Verified configured Power Up intervals appear at zero, including
+future events and events that start partway through a tariff slot. The chart
+uses tariff-local today/tomorrow boundaries and retains the existing 24/48-hour
+layout, Ofgem reference and Now marker.
+
+The integration supplies already normalised p/kWh prices; the browser does not
+interpret calendar states as free electricity or apply a second GBP conversion.
+Calendar changes/cancellations refresh the data at the integration scan and the
+chart's one-minute refresh. Failed calendar reads remove promotional pricing,
+not the contracted rates. Free events cannot fill missing tariff periods. Manual
+special-price controls keep their existing precedence. This is effective
+planning cost, not a supplier billing statement; raw tariff history is unchanged.
+
+The compact chart feed is limited to two tariff-local days and a bounded payload.
+It retains every accepted event boundary rather than downsampling zero-price
+intervals. An oversized feed is withheld with an explicit `chart_price_status`,
+not drawn partially. An older backend without this attribute retains the prior
+raw-rate chart; an explicitly empty new feed does not fall back to stale rates.
+Both integration code and the customised full-dashboard chart must be updated
+to use this feature. Packaged template changes do not overwrite an existing copy.

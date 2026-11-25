@@ -1,4 +1,4 @@
-"""Real minimum-HA safety acceptance with synthetic data and no device I/O."""
+"""Real Home Assistant safety acceptance with synthetic data and no device I/O."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, patch
 from ha_onboarding_smoke import Clock, CONTROL, ROOT, configure, identities
 from homeassistant import loader
 from homeassistant.bootstrap import async_from_config_dict
-from homeassistant.components.http import HomeAssistantHTTP
 from homeassistant.core import HomeAssistant, SupportsResponse
 from custom_components.load_optimizer.legacy import app_runtime
 
@@ -38,6 +37,7 @@ async def main():
     with tempfile.TemporaryDirectory(prefix="load-optimizer-safety-") as directory:
         (Path(directory) / "custom_components").symlink_to(ROOT / "custom_components", target_is_directory=True)
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         loader.async_setup(hass)
         physical_commands = []
         calendar_response = {"calendar.synthetic_no_run": {"events": []}}
@@ -69,8 +69,7 @@ async def main():
              patch("custom_components.load_optimizer.legacy_runtime.datetime", Clock), \
              patch("custom_components.load_optimizer.orchestration.datetime", Clock), \
              patch.object(app_runtime, "datetime", Clock), \
-             patch.object(HomeAssistantHTTP, "start", new=AsyncMock()), \
-             patch.object(HomeAssistantHTTP, "stop", new=AsyncMock()), \
+             patch("homeassistant.bootstrap.DEFAULT_INTEGRATIONS", set()), \
              patch.object(type(hass.services), "async_call", new=guarded_call):
             try:
                 assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
@@ -126,6 +125,7 @@ async def main():
                 controller = coordinator.orchestrator
                 controller.config = dict(CONTROL)
                 controller.state["active"] = True
+                controller.state["auto_mode_enabled"] = True
                 controller.state["door_opened_since_last_cycle"] = True
                 controller.state["auto_mode_enabled"] = True
                 for key in ("bosch_connected_sensor", "bosch_remote_control_sensor", "bosch_remote_start_sensor"):

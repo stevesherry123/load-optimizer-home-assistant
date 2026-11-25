@@ -4,6 +4,13 @@ Plan appliance cycles and EV charging around your electricity tariff using
 existing Home Assistant entities. Learn when an appliance uses energy during a
 cycle, compare running costs, and find suitable low-cost or negative-price windows.
 
+This branch is the **dishwasher feature release candidate**, not a published
+update. It adds bounded overnight requests, total operating costs and clearer
+controls. New EV planning modes and automatic charger control are outside this
+candidate. See the [acceptance walkthrough](docs/dishwasher-acceptance.md) and
+[release record](docs/release-readiness.md) for its remaining gates. Use the
+documentation for your installed release when configuring a household system.
+
 ## Stable Features
 
 - **Appliance learning:** capture completed cycles from power and energy sensors,
@@ -47,7 +54,9 @@ inclusion was [approved and merged](https://github.com/hacs/default/pull/11744)
 on 2 November 2026. Existing custom-repository installations do not need to be
 removed or recreated; keep your configured integration and its learning data.
 
-Home Assistant **2024.12 or later** is required. The Ofgem benchmark is for
+Home Assistant **2026.10.2 or later** is required. When using BottlecapDave's
+Octopus Energy sources, version **19.2.1 or later** is required. Other tariff
+providers do not require that integration. The Ofgem benchmark is for
 Great Britain; other supplier integrations can supply compatible tariff data.
 No Octopus API token, separate app, or AI subscription is required.
 
@@ -132,6 +141,8 @@ Report faults with the release number, Home Assistant version and redacted
 diagnostics in [GitHub Issues](https://github.com/stevesherry123/load-optimizer-home-assistant/issues).
 Never post access tokens or a full private configuration. See the
 [contribution guide](CONTRIBUTING.md) for release-channel and testing rules.
+The [validation guide](docs/validation.md) provides the matching local/CI
+environment and complete acceptance runner.
 
 For a suspected vulnerability, use the private reporting route in
 [SECURITY.md](SECURITY.md), not a public issue. See

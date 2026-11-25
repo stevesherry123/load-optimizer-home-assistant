@@ -5,6 +5,11 @@ release's README and changelog for available features; main can contain unreleas
 work. Detailed internal delivery plans and acceptance diaries are maintained
 separately from the public product documentation.
 
+The current review and staged delivery plan is in
+[architecture milestones](architecture-milestones.md). Its initial implementation
+focuses on durable one-wash requests and bounded overnight scheduling; EV control
+remains a later, separately validated milestone.
+
 ## Priorities
 
 - Make appliance and programme-policy editing easier while preserving stable

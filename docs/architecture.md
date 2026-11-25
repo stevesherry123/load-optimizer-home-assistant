@@ -277,7 +277,7 @@ flowchart TD
     K -- "Yes" --> M["Cost candidate using learned power profile"]
 
     M --> N{"Negative price available?"}
-    N -- "Yes" --> O["Rank eligible negative-price programs by policy, useful energy intensity, cooldown, and cost"]
+    N -- "Yes" --> O["Require positive net benefit; rank extra runs by return per run, then programme priority"]
     N -- "No" --> P["Rank normal candidates by strategy, preference, cost, and windows"]
     O --> Q["Publish negative-price recommendation"]
     P --> R["Publish now, soon, overnight, cheapest, and greenest recommendations"]

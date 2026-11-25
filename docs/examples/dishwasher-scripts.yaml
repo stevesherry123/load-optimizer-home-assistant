@@ -1,0 +1,26 @@
+load_optimizer_schedule_dishwasher:
+  alias: Schedule dishwasher
+  description: Let Load Optimizer choose an eligible overnight programme and start time.
+  mode: single
+  sequence:
+    - action: button.press
+      target:
+        entity_id: button.load_optimizer_1_request_overnight
+
+load_optimizer_start_dishwasher_now:
+  alias: Start dishwasher now
+  description: Ask the optimiser to select a programme and start now, retaining safety checks.
+  mode: single
+  sequence:
+    - action: button.press
+      target:
+        entity_id: button.load_optimizer_1_request_now
+
+load_optimizer_cancel_dishwasher_schedule:
+  alias: Cancel dishwasher schedule
+  description: Cancel a pending request and its normal-wash permission without stopping a running wash.
+  mode: single
+  sequence:
+    - action: button.press
+      target:
+        entity_id: button.load_optimizer_1_cancel_schedule

@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import logging
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
@@ -13,6 +14,11 @@ from zoneinfo import ZoneInfo
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "custom_components/load_optimizer/orchestration.py"
+sys.path.insert(0, str(SOURCE.parent))
+from legacy.app_runtime import APP_VERSION, schedule_constraints
+from legacy.costing import (QUOTE_TARIFF_OVERRIDE_SOURCES, QUOTE_TARIFF_PERIOD_LIMIT,
+                            recommend_cycle, operational_overnight_window, parse_clock)
+
 tree = ast.parse(SOURCE.read_text())
 tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
 namespace = {
@@ -21,6 +27,10 @@ namespace = {
     "dt_util": SimpleNamespace(as_local=lambda now: now.astimezone(ZoneInfo("Europe/London"))),
     "Any": object, "Callable": object, "HomeAssistant": object, "ConfigEntry": object,
     "OrchestrationMigration": object, "Event": object, "callback": lambda fn: fn,
+    "schedule_constraints": schedule_constraints, "APP_VERSION": APP_VERSION,
+    "operational_overnight_window": operational_overnight_window, "parse_clock": parse_clock,
+    "QUOTE_TARIFF_OVERRIDE_SOURCES": QUOTE_TARIFF_OVERRIDE_SOURCES,
+    "QUOTE_TARIFF_PERIOD_LIMIT": QUOTE_TARIFF_PERIOD_LIMIT,
     "Store": Mock, "DOMAIN": "load_optimizer", "STATE_ON": "on",
     "LEGACY_AUTOMATION_IDS": [], "HomeAssistantError": RuntimeError,
 }
@@ -54,8 +64,11 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
             is_stopping=False,
         )
         self.scheduler = NativeOrchestrator(self.hass, SimpleNamespace(entry_id="test"), None)
-        self.scheduler.store = SimpleNamespace(async_save=AsyncMock())
-        self.scheduler._async_committed_attempt = AsyncMock(side_effect=lambda: self.scheduler.state["last_attempt"])
+        self.scheduler.store = SimpleNamespace(async_save=AsyncMock(),
+            async_load=AsyncMock(side_effect=lambda: deepcopy(self.scheduler.store.async_save.await_args.args[0])))
+        self.scheduler._async_committed_start_state = AsyncMock(
+            side_effect=lambda: deepcopy(self.scheduler.store.async_save.await_args.args[0]["state"]),
+        )
         self.scheduler.state = {**namespace["CONTROL_DEFAULTS"], "schedule_events": [], "run_history": []}
         self.scheduler.state.update(active=True, auto_mode_enabled=True, door_opened_since_last_cycle=True)
         self.scheduler.config = {
@@ -83,8 +96,671 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         Clock.current = datetime(2026, 10, 8, 15, 13, tzinfo=timezone.utc)
 
     def put(self, entity_id, state, **attributes):
+        if entity_id == "sensor.load_optimizer_1_negative_price_recommendation" and attributes.get("status") == "ready":
+            attributes.setdefault("positive_net_benefit", True)
+        if entity_id == "sensor.load_optimizer_1_overnight_recommendation":
+            if attributes.get("start"):
+                attributes.setdefault("finish", (datetime.fromisoformat(attributes["start"]) + timedelta(hours=2)).isoformat())
+            attributes.setdefault("overnight_planning_coverage", {
+                "complete": True, "search_complete": True,
+                "window_start": "2026-10-08T20:00:00+00:00",
+                "window_end": "2026-10-09T06:00:00+00:00",
+            })
         self.values[entity_id] = SimpleNamespace(state=state, attributes=attributes,
                                                 last_changed=Clock.current)
+
+    async def test_explicit_schedule_takes_over_door_request_without_duplicating_it(self):
+        await self.scheduler.async_evaluate()
+        original = deepcopy(self.scheduler.state["request"])
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = self.scheduler.state["request"]
+        self.assertFalse(request["automatic"])
+        self.assertEqual(request["created_at"], original["created_at"])
+        self.assertEqual(request["window_end"], original["window_end"])
+        self.assertEqual(self.scheduler.state["execution_status"], "queued")
+
+    async def test_explicit_schedule_is_permission_without_door_opt_in(self):
+        self.scheduler.state.update(auto_mode_enabled=False, door_opened_since_last_cycle=False)
+        await self.scheduler.async_request("overnight")
+        request = self.scheduler.state["request"]
+        self.assertTrue(request["normal_wash"])
+        self.assertFalse(request["automatic"])
+        self.assertEqual(request["window_start"], "2026-10-08T20:00:00+00:00")
+        self.assertEqual(request["window_end"], "2026-10-09T06:00:00+00:00")
+        Clock.current = datetime(2026, 10, 8, 22, tzinfo=timezone.utc)
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value=None))
+        self.assertTrue(await self.scheduler._async_start_allowed(dict(request)))
+        self.put("binary_sensor.door", "on")
+        self.assertFalse(await self.scheduler._async_start_allowed(dict(request)))
+
+    async def test_default_door_mode_is_off_and_door_activity_does_not_schedule(self):
+        self.scheduler.state.update(auto_mode_enabled=namespace["CONTROL_DEFAULTS"]["auto_mode_enabled"],
+                                    door_opened_since_last_cycle=False)
+        await self.door_event("off", "on")
+        Clock.current += timedelta(minutes=3)
+        await self.door_event("on", "off")
+        self.assertIsNone(self.scheduler.state["request"])
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_missing_prices_notify_once_and_recover_without_new_permission(self):
+        self.scheduler.state.update(auto_mode_enabled=False, door_opened_since_last_cycle=False)
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "not_ready", status="not_ready",
+                 overnight_planning_coverage={"complete": False})
+        await self.scheduler.async_request("overnight")
+        original = deepcopy(self.scheduler.state["request"])
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        self.assertEqual(self.hass.services.async_call.await_count, 1)
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready", confidence=88,
+                 start="2026-10-09T00:00:00+00:00", finish="2026-10-09T04:00:00+00:00", cost_pence=10)
+        await self.scheduler.async_evaluate()
+        recovered = self.scheduler.state["request"]
+        self.assertEqual(recovered["created_at"], original["created_at"])
+        self.assertEqual(recovered["window_end"], original["window_end"])
+        self.assertEqual(recovered["program"], "Eco50")
+        self.assertEqual(self.scheduler.state["execution_status"], "queued")
+        self.assertEqual(self.hass.services.async_call.await_args.args[:2], ("persistent_notification", "dismiss"))
+
+    async def test_overnight_quote_tracks_replans_then_freezes_with_the_request(self):
+        attributes = {"program": "Quick45", "status": "ready", "confidence": 88,
+                      "intent": "overnight", "reason": "best_overnight",
+                      "start": "2026-10-08T22:00:00+00:00",
+                      "finish": "2026-10-08T22:30:00+00:00", "cost_pence": 9}
+        alternate = {**attributes, "program": "Eco50", "cost_pence": 12}
+        entity = "sensor.load_optimizer_1_overnight_recommendation"
+        self.put(entity, "Quick45", **attributes, program_options=[alternate])
+        await self.scheduler.async_request("overnight")
+        request = self.scheduler.state["request"]
+        self.assertEqual(request["recommendation_quote"]["estimated_cost_pence"], 9)
+        self.assertEqual(request["recommendation_quote"]["overnight_selection_reason"], "best_overnight")
+        self.assertEqual(request["recommendation_alternatives"][0]["program"], "Eco50")
+        alternate["cost_pence"] = 99
+        self.assertEqual(request["recommendation_alternatives"][0]["estimated_cost_pence"], 12)
+
+        self.put(entity, "Quick45", **attributes)
+        await self.scheduler.async_evaluate()
+        self.assertNotIn("recommendation_alternatives", request)
+        self.put(entity, "Quick45", **{**attributes, "cost_pence": 7,
+                 "finish": "2026-10-09T07:00:00+00:00", "reason": "cheapest_start_in_window_late_finish"})
+        await self.scheduler.async_evaluate()
+        self.assertEqual(request["recommendation_quote"]["estimated_cost_pence"], 7)
+        self.assertEqual(request["recommendation_quote"]["overnight_selection_reason"],
+                         "cheapest_start_in_window_late_finish")
+
+        Clock.current = datetime.fromisoformat(attributes["start"]) - timedelta(minutes=1)
+        self.put(entity, "Quick45", **{**attributes, "cost_pence": 3})
+        await self.scheduler.async_evaluate()
+        self.assertEqual(request["recommendation_quote"]["estimated_cost_pence"], 7)
+        self.assertEqual(request["recommendation_quote"]["overnight_selection_reason"],
+                         "cheapest_start_in_window_late_finish")
+
+    async def test_manual_overnight_override_never_claims_optimiser_selection(self):
+        selected = {"program": "Quick45", "start": "2026-10-08T22:00:00+00:00",
+                    "finish": "2026-10-08T22:30:00+00:00", "cost_pence": 9}
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45",
+                 status="ready", intent="overnight", reason="best_overnight",
+                 tariff_evidence={"energy_cost_pence": 9, "non_energy_cost_pence": 0, "period_count": 1,
+                                  "periods": [{"start": selected["start"], "end": selected["finish"],
+                                               "price_p_per_kwh": 9, "energy_kwh": 1, "energy_cost_pence": 9}]},
+                 program_options=[selected], **selected)
+        self.scheduler.state["override_program"] = "Quick45"
+        self.scheduler.async_evaluate = AsyncMock()
+        await self.scheduler.async_request("overnight", override=True)
+        quote = self.scheduler.state["request"]["recommendation_quote"]
+        self.assertEqual(quote["estimated_cost_pence"], 9)
+        self.assertNotIn("overnight_selection_reason", quote)
+        self.assertNotIn("tariff_evidence", quote)
+
+    async def test_tariff_evidence_follows_a_same_price_replan_then_is_saved_detached(self):
+        entity = "sensor.load_optimizer_1_overnight_recommendation"
+        quote = {"program": "Quick45", "start": "2026-10-08T22:10:00+00:00",
+                 "finish": "2026-10-08T22:40:00+00:00", "cost_pence": 12}
+        rows = [
+            {"start": "2026-10-08T22:00:00+00:00", "end": "2026-10-08T22:25:00+00:00",
+             "price_p_per_kwh": 18, "energy_kwh": 0.5, "energy_cost_pence": 9,
+             "source_entity": "event.private_account_fixture"},
+            {"start": "2026-10-08T22:25:00+00:00", "end": "2026-10-08T23:00:00+00:00",
+             "price_p_per_kwh": 6, "energy_kwh": 0.5, "energy_cost_pence": 3,
+             "rate_source": "manual_special_price_window", "event_label": "Private label fixture"},
+        ]
+        evidence = {"energy_cost_pence": 12, "non_energy_cost_pence": 0, "period_count": 2, "periods": rows}
+        attrs = dict(quote, status="ready", intent="overnight", reason="best_overnight",
+                     confidence=90, tariff_evidence=evidence)
+        self.put(entity, "Quick45", **attrs)
+        await self.scheduler.async_request("overnight")
+        request = self.scheduler.state["request"]
+        first = request["recommendation_quote"]["tariff_evidence"]
+        self.assertEqual(first["periods"][0]["start"], quote["start"])
+        self.assertEqual(first["periods"][-1]["end"], quote["finish"])
+        self.assertNotIn("fixture", repr(first).lower())
+
+        rows[0].update(price_p_per_kwh=6, energy_cost_pence=3)
+        rows[1].update(price_p_per_kwh=18, energy_cost_pence=9)
+        self.assertEqual(first["periods"][0]["price_p_per_kwh"], 18)
+        self.put(entity, "Quick45", **attrs)
+        await self.scheduler.async_evaluate()
+        revised = deepcopy(request["recommendation_quote"])
+        self.assertEqual(revised["estimated_cost_pence"], 12)
+        self.assertEqual(revised["tariff_evidence"]["periods"][0]["price_p_per_kwh"], 6)
+        self.assertEqual(self.scheduler.state["schedule_events"][0]["event"], "estimate_updated")
+        self.assertFalse(any(event["event"] == "replanned" for event in self.scheduler.state["schedule_events"]))
+
+        Clock.current = datetime.fromisoformat(quote["start"]) - timedelta(minutes=1)
+        rows[0].update(price_p_per_kwh=14, energy_cost_pence=7)
+        rows[1].update(price_p_per_kwh=10, energy_cost_pence=5)
+        await self.scheduler.async_evaluate()
+        self.assertEqual(request["recommendation_quote"], revised)
+
+        Clock.current += timedelta(minutes=1)
+        self.scheduler._async_start_allowed = AsyncMock(return_value=True)
+        await self.scheduler._async_execute(request)
+        record = self.scheduler.store.async_save.await_args.args[0]["state"]
+        self.assertEqual(record["last_start_decision_snapshot"]["request"]["recommendation_quote"], revised)
+        self.assertEqual([call.args[0] for call in self.hass.services.async_call.await_args_list],
+                         ["persistent_notification"])
+
+    def test_bad_tariff_evidence_is_not_saved_but_valid_quote_remains(self):
+        quote = {"program": "Quick45", "start": "2026-10-08T22:00:00+00:00",
+                 "finish": "2026-10-08T22:30:00+00:00", "cost_pence": 0}
+        row = {"start": quote["start"], "end": quote["finish"], "rate_source": "contracted",
+               "price_p_per_kwh": 0, "energy_kwh": 1, "energy_cost_pence": 0}
+        for count, rows in (
+            (0, []), (2, [row]), (2, [row, row]), (9, [row] * 9),
+            (1, [{**row, "price_p_per_kwh": float("nan")}]),
+            (1, [{**row, "rate_source": "calendar.private_label"}]),
+            (1, [{**row, "end": quote["start"]}]),
+            (1, [{**row, "start": quote["finish"]}]),
+        ):
+            with self.subTest(count=count, rows=rows):
+                attrs = dict(quote, status="ready", intent="overnight", tariff_evidence={
+                    "energy_cost_pence": 0, "non_energy_cost_pence": 0, "period_count": count, "periods": rows,
+                })
+                saved = self.scheduler._recommendation_evidence(attrs, attrs)["recommendation_quote"]
+                self.assertEqual(saved["estimated_cost_pence"], 0)
+                self.assertNotIn("tariff_evidence", saved)
+
+    async def test_real_overnight_planner_reason_is_saved_with_its_quote(self):
+        start = datetime(2026, 10, 8, 20, tzinfo=timezone.utc)
+        end = start + timedelta(hours=10)
+        Clock.current = start - timedelta(hours=1)
+        periods = [{"start": first, "end": last, "price_p_per_kwh": price}
+                   for first, last, price in (
+                       (Clock.current, start + timedelta(hours=2), 20),
+                       (start + timedelta(hours=2), end, 8),
+                       (end, end + timedelta(hours=11), 15),
+                   )]
+        for runtime, expected in ((30, "best_overnight"), (630, "cheapest_start_in_window_late_finish")):
+            with self.subTest(runtime=runtime):
+                self.scheduler.state.update(request=None, execution_status="idle")
+                model = {"program": "Quick45", "expected_runtime_minutes": runtime,
+                         "expected_energy_kwh": 1.0, "representative_profile_w": [100, 100],
+                         "confidence": 90, "recent_cycles": []}
+                policy = {"program": "Quick45", "enabled": True,
+                          "allow_normal_recommendation": True, "allow_negative_price_run": False,
+                          "preference_rank": 50}
+                result = recommend_cycle([model], [policy], periods, reference_utc=Clock.current,
+                                         search_hours=12, candidate_interval_minutes=30, forecast_hours=0,
+                                         overnight_start="21:00", overnight_end="07:00",
+                                         schedule_timezone="Europe/London")
+                recommendation = result["overnight_recommendation"]
+                self.assertEqual(recommendation["reason"], expected)
+                self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45", **recommendation)
+
+                await self.scheduler.async_request("overnight")
+
+                saved = self.scheduler.store.async_save.await_args.args[0]["state"]["request"]
+                quote = saved["recommendation_quote"]
+                self.assertEqual(quote["overnight_selection_reason"], expected)
+                self.assertEqual(quote["estimated_cost_pence"], recommendation["cost_pence"])
+                self.assertEqual(datetime.fromisoformat(quote["finish"]) > end, runtime == 630)
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_normal_permission_survives_storage_reload_without_new_window(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        saved = deepcopy(self.scheduler.store.async_save.await_args.args[0])
+        request = deepcopy(self.scheduler.state["request"])
+        restored = NativeOrchestrator(self.hass, SimpleNamespace(entry_id="restored", data={}, options={}), None)
+        restored.store = SimpleNamespace(async_load=AsyncMock(return_value=saved), async_save=AsyncMock())
+        await restored.async_load()
+        self.assertEqual(restored.state["request"], request)
+        Clock.current = datetime(2026, 10, 9, 7, tzinfo=timezone.utc)
+        await restored.async_evaluate()
+        self.assertIsNone(restored.state["request"])
+        self.assertEqual(restored.state["last_reason"], "authorised_window_closed")
+        self.assertEqual(restored.automation_explanation["state"], "expired")
+        self.assertIsNone(restored.automation_explanation["queued_start"])
+        self.assertFalse(restored.automation_explanation["permission_active"])
+        await restored.async_evaluate()
+        self.assertIsNone(restored.state["request"])
+
+    async def test_cancelled_permission_cannot_resume_when_prices_return(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        await self.scheduler.async_cancel()
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_result"], "cancelled")
+
+    async def test_late_finish_is_visible_but_outside_window_start_is_rejected(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready", confidence=88,
+                 start="2026-10-09T05:30:00+00:00", finish="2026-10-09T09:30:00+00:00",
+                 reason="cheapest_start_in_window_late_finish")
+        await self.scheduler.async_request("overnight")
+        request = self.scheduler.state["request"]
+        self.assertTrue(request["late_finish"])
+        self.assertTrue(self.scheduler.automation_explanation["late_finish"])
+        self.assertFalse(self.scheduler._request_due(request, datetime(2026, 10, 9, 5, 29, 59, tzinfo=timezone.utc)))
+        self.assertTrue(self.scheduler._request_due(request, datetime(2026, 10, 9, 5, 30, tzinfo=timezone.utc)))
+        self.assertFalse(self.scheduler._request_due(request, datetime(2026, 10, 9, 6, tzinfo=timezone.utc)))
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready", confidence=88,
+                 start="2026-10-09T12:00:00+00:00", finish="2026-10-09T16:00:00+00:00")
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        self.assertEqual(request["window_end"], "2026-10-09T06:00:00+00:00")
+
+    async def test_settings_keep_custom_yaml_and_changes_only_affect_future_windows(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        other = {"instance_id": "2", "schedule_overnight_start": "23:00"}
+        self.assertEqual(self.scheduler.configure_schedule(other), other)
+        configured = self.scheduler.configure_schedule({"instance_id": "1", "tariff_timezone": "Europe/London",
+            "schedule_overnight_start": "22:00", "schedule_overnight_end": "06:00"})
+        self.assertEqual(self.scheduler.overnight_time("start"), "22:00")
+        await self.scheduler.async_request("overnight")
+        original = deepcopy(self.scheduler.state["request"])
+        await self.scheduler.async_set("overnight_start", "23:00")
+        revised = self.scheduler.configure_schedule(configured)
+        self.assertEqual(revised["schedule_overnight_start"], "22:00")
+        self.assertEqual(self.scheduler.state["request"]["window_start"], original["window_start"])
+        self.assertEqual(self.scheduler.overnight_time("start"), "23:00")
+        await self.scheduler.async_cancel()
+        self.assertEqual(self.scheduler.configure_schedule(configured)["schedule_overnight_start"], "23:00")
+        for value in ("25:00", "9:00", "21:90", None, "06:00"):
+            with self.assertRaises(ValueError):
+                await self.scheduler.async_set("overnight_start", value)
+
+    async def test_command_rechecks_stop_when_window_closes_during_preflight(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime(2026, 10, 9, 5, 59, 59, tzinfo=timezone.utc)
+        async def delayed_source_check(_request):
+            Clock.current += timedelta(seconds=2)
+        self.scheduler.set_automatic_preflight(delayed_source_check)
+        self.assertFalse(await self.scheduler._async_start_allowed(request, recheck=True))
+        self.assertEqual(self.scheduler.state["last_reason"], "outside_authorised_start_window")
+        self.assertTrue(all(call.args[0] == "persistent_notification" for call in self.hass.services.async_call.await_args_list))
+
+    async def test_open_door_waits_for_a_new_start_without_extending_permission(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = self.scheduler.state["request"]
+        original_end = request["window_end"]
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.put("binary_sensor.door", "on")
+        await self.scheduler._async_execute(deepcopy(request))
+        self.assertEqual(request["waiting_reason"], "door_open")
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        self.assertTrue(all(call.args[0] == "persistent_notification"
+                            for call in self.hass.services.async_call.await_args_list))
+        self.put("binary_sensor.door", "off")
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45", status="ready",
+                 program="Quick45", start="2026-10-08T22:15:00+00:00",
+                 finish="2026-10-08T22:45:00+00:00", confidence=88)
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "queued")
+        self.assertEqual(request["window_end"], original_end)
+        self.assertEqual(request["start"], "2026-10-08T22:15:00+00:00")
+        self.assertNotIn("door_blocked_start", request)
+        self.assertIsNone(self.scheduler._execution_task)
+
+    async def test_open_door_after_commands_begin_does_not_schedule_retry(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.put("binary_sensor.door", "on")
+        self.assertFalse(await self.scheduler._async_start_allowed(request, recheck=True))
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_reason"], "door_open")
+
+    async def test_pausing_automatic_mode_after_commands_begin_does_not_retry(self):
+        await self.scheduler.async_evaluate()
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.scheduler.state["auto_mode_enabled"] = False
+        self.assertFalse(await self.scheduler._async_start_allowed(request, recheck=True))
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_reason"], "automatic_overnight_mode_off")
+
+    async def test_open_door_wait_expires_at_original_window_end(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.put("binary_sensor.door", "unavailable")
+        await self.scheduler._async_execute(request)
+        self.assertEqual(self.scheduler.automation_explanation["reason_code"], "door_state_unavailable")
+        count = self.hass.services.async_call.await_count
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.hass.services.async_call.await_count, count)
+        Clock.current = datetime.fromisoformat(request["window_end"])
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_result"], "expired")
+        self.put("binary_sensor.door", "off")
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertTrue(all(call.args[0] == "persistent_notification"
+                            for call in self.hass.services.async_call.await_args_list))
+
+    async def test_constraint_failure_before_commands_retains_original_permission(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value="normal_wash_schedule_constraint_unavailable"))
+        await self.scheduler._async_execute(request)
+        saved = self.scheduler.state["request"]
+        self.assertEqual(saved["window_end"], request["window_end"])
+        self.assertEqual(saved["created_at"], request["created_at"])
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        self.assertTrue(all(c.args[0] == "persistent_notification" for c in self.hass.services.async_call.await_args_list))
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        # A new planner report can recover within the SAME window.
+        Clock.current += timedelta(minutes=5)
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45", status="ready",
+                 program="Quick45", start=(Clock.current + timedelta(minutes=10)).isoformat(), confidence=88)
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value=None))
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "queued")
+        self.assertEqual(self.scheduler.state["request"]["created_at"], request["created_at"])
+        self.assertEqual(self.scheduler.state["request"]["window_end"], request["window_end"])
+
+    async def test_applicable_deadline_survives_reload_and_expires_permission(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        self.scheduler.schedule_config["schedule_latest_finish_entity"] = "input_datetime.deadline"
+        self.put("input_datetime.deadline", "2026-10-08T23:00:00+00:00")
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        self.assertEqual(request["latest_finish_utc"], "2026-10-08T23:00:00+00:00")
+        await self.scheduler._async_save()
+        persisted = deepcopy(self.scheduler.store.async_save.await_args.args[0])
+        self.scheduler.state["request"] = None
+        # Restore a detached disk payload, rather than a reference to live state.
+        restored = persisted
+        self.scheduler.state.update(restored["state"])
+        self.put("input_datetime.deadline", "2026-10-09T06:00:00+00:00")
+        Clock.current = datetime(2026, 10, 8, 23, tzinfo=timezone.utc)
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_reason"], "normal_wash_deadline_expired")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        self.assertTrue(all(c.args[0] == "persistent_notification" for c in self.hass.services.async_call.await_args_list))
+
+    async def test_constraint_failure_after_command_cannot_restore_request(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value="normal_wash_outside_schedule_constraints"))
+        self.assertFalse(await self.scheduler._async_start_allowed(request, recheck=True))
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["last_result"], "blocked")
+
+    async def test_price_loss_at_preflight_retains_permission_for_recovery(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime(2026, 10, 8, 22, tzinfo=timezone.utc)
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value="normal_wash_cycle_not_fully_priced"))
+        self.assertFalse(await self.scheduler._async_start_allowed(request))
+        self.assertEqual(self.scheduler.state["request"]["created_at"], request["created_at"])
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        count = self.hass.services.async_call.await_count
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        self.assertEqual(self.hass.services.async_call.await_count, count)
+        self.assertIsNone(self.scheduler._execution_task)
+
+    async def test_price_loss_after_a_command_does_not_restore_overnight_request(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        await self.scheduler.async_request("overnight")
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.Quick45", options=["Dishcare.Dishwasher.Program.Quick45"])
+        request = deepcopy(self.scheduler.state["request"])
+        self.assertEqual(request["program"], "Quick45")
+        Clock.current = datetime.fromisoformat(request["start"])
+        self.scheduler.set_automatic_preflight(AsyncMock(
+            side_effect=[None, None, None, None, "normal_wash_cycle_not_fully_priced"],
+        ))
+        with patch.object(asyncio, "sleep", new=AsyncMock()):
+            await self.scheduler._async_execute(request)
+
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.state["execution_status"], "blocked")
+        self.assertEqual(self.scheduler.state["last_reason"], "normal_wash_cycle_not_fully_priced")
+        self.assertEqual([call.args[0] for call in self.hass.services.async_call.await_args_list
+                          if call.args[0] != "persistent_notification"], ["switch", "select", "button"])
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value=None))
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertIsNone(self.scheduler._execution_task)
+
+    async def test_start_snapshot_is_detached_and_survives_later_decisions_and_reload(self):
+        request = {"mode": "automatic", "program": "Eco50", "automatic": True,
+                   "start": Clock.current.isoformat(), "cost_pence": 23.5,
+                   "planning_coverage": {"complete": True}}
+        self.scheduler._async_start_allowed = AsyncMock(return_value=True)
+        # No selectable programme: exercise capture/persistence without hardware calls.
+        await self.scheduler._async_execute(request)
+        captured = deepcopy(self.scheduler.state["last_start_decision_snapshot"])
+        self.assertEqual(captured["request"], request)
+        self.assertEqual(captured["build_version"], APP_VERSION)
+        self.assertEqual(captured["captured_at"], self.scheduler.state["last_attempt"])
+        request["planning_coverage"]["complete"] = False
+        self.scheduler.state["shadow_decision"] = {"action": "wait", "reason": "appliance_not_idle"}
+        self.assertEqual(self.scheduler.state["last_start_decision_snapshot"], captured)
+        saved = deepcopy(self.scheduler.store.async_save.await_args.args[0])
+        restored = NativeOrchestrator(self.hass, SimpleNamespace(entry_id="restored", data={}, options={}), None)
+        restored.store = SimpleNamespace(async_load=AsyncMock(return_value=saved), async_save=AsyncMock())
+        await restored.async_load()
+        self.assertEqual(restored.state["last_start_decision_snapshot"], captured)
+        projected = restored.legacy_state("input_text.load_optimizer_1_last_start_decision_snapshot")
+        self.assertIn("execute", projected["state"])
+        self.assertNotIn("appliance_not_idle", projected["state"])
+
+    async def test_preflight_veto_does_not_replace_previous_execution_snapshot(self):
+        previous = {"action": "execute", "request": {"program": "Eco50"}}
+        self.scheduler.state["last_start_decision_snapshot"] = deepcopy(previous)
+        self.scheduler._async_start_allowed = AsyncMock(return_value=False)
+        await self.scheduler._async_execute({"mode": "now", "program": "MixedLoad"})
+        self.assertEqual(self.scheduler.state["last_start_decision_snapshot"], previous)
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_old_store_does_not_invent_a_historical_decision(self):
+        self.scheduler.state["shadow_decision"] = {"action": "wait", "reason": "current_only"}
+        projected = self.scheduler.legacy_state("input_text.load_optimizer_1_last_start_decision_snapshot")
+        self.assertEqual(projected["state"], "{}")
+
+    async def door_event(self, previous, current):
+        self.put("binary_sensor.door", current)
+        self.scheduler._async_state_changed(SimpleNamespace(data={
+            "entity_id": "binary_sensor.door",
+            "old_state": SimpleNamespace(state=previous) if previous is not None else None,
+            "new_state": self.values["binary_sensor.door"],
+        }))
+        if self.scheduler._background_tasks:
+            await asyncio.gather(*self.scheduler._background_tasks)
+
+    async def test_door_duration_authorises_only_at_or_above_threshold(self):
+        self.scheduler.state["active"] = False
+        for seconds, expected in ((119, False), (120, True), (180, True)):
+            self.scheduler.state["door_opened_since_last_cycle"] = False
+            await self.door_event("off", "on")
+            self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+            Clock.current += timedelta(seconds=seconds)
+            await self.door_event("on", "off")
+            self.assertEqual(self.scheduler.state["door_opened_since_last_cycle"], expected)
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_restored_door_state_outage_and_running_cycle_never_authorise(self):
+        self.scheduler.state.update(active=False, door_opened_since_last_cycle=False)
+        await self.door_event(None, "on")
+        Clock.current += timedelta(minutes=3)
+        await self.door_event("on", "off")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        await self.door_event("off", "on")
+        Clock.current += timedelta(minutes=3)
+        await self.door_event("on", "unavailable")
+        await self.door_event("unavailable", "off")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        await self.door_event("off", "on")
+        self.scheduler._async_state_changed(SimpleNamespace(data={
+            "entity_id": "binary_sensor.door", "old_state": self.values["binary_sensor.door"],
+            "new_state": None,
+        }))
+        Clock.current += timedelta(minutes=3)
+        await self.door_event(None, "on")
+        await self.door_event("on", "off")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        self.put("sensor.load_optimizer_1_cycle_state", "running")
+        await self.door_event("off", "on")
+        Clock.current += timedelta(minutes=3)
+        await self.door_event("on", "off")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+
+    async def test_threshold_is_configurable_and_short_reopening_preserves_permission(self):
+        self.scheduler.state.update(active=False, door_opened_since_last_cycle=False)
+        await self.scheduler.async_set("door_open_minimum_minutes", 3)
+        await self.door_event("closed", "open")
+        Clock.current += timedelta(minutes=2)
+        await self.door_event("open", "closed")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        await self.door_event("closed", "open")
+        Clock.current += timedelta(minutes=3)
+        await self.door_event("open", "closed")
+        self.assertTrue(self.scheduler.state["door_opened_since_last_cycle"])
+        await self.door_event("closed", "open")
+        Clock.current += timedelta(seconds=10)
+        await self.door_event("open", "closed")
+        self.assertTrue(self.scheduler.state["door_opened_since_last_cycle"])
+        for value in (0, 61, float("nan"), True, "2"):
+            with self.assertRaises(ValueError):
+                await self.scheduler.async_set("door_open_minimum_minutes", value)
+
+    async def test_cancellation_clears_normal_wash_permission(self):
+        await self.scheduler.async_cancel()
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+        self.assertIsNone(self.scheduler.state["request"])
+
+    async def test_overnight_retains_permission_and_waits_for_whole_night_prices(self):
+        for coverage, reason in (({}, "overnight_tariff_coverage_incomplete"),
+                                 ({"complete": False, "search_complete": False}, "overnight_search_horizon_incomplete")):
+            self.put("sensor.load_optimizer_1_overnight_recommendation", "Quick45", status="ready",
+                     confidence=88, overnight_planning_coverage=coverage)
+            await self.scheduler.async_evaluate()
+            self.assertTrue(self.scheduler.state["request"]["normal_wash"])
+            self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+            self.assertEqual(self.scheduler.automation_explanation["reason_code"], reason)
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready",
+                 confidence=79, program="Eco50", start="2026-10-09T00:00:00+00:00",
+                 finish="2026-10-09T04:00:00+00:00", cost_pence=21.77)
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["request"]["program"], "Eco50")
+        self.assertEqual(self.scheduler.state["request"]["cost_pence"], 21.77)
+        self.assertTrue(all(call.args[0] == "persistent_notification" for call in self.hass.services.async_call.await_args_list))
+
+    async def test_automatic_overnight_replans_and_preserves_original_reservation(self):
+        await self.scheduler.async_evaluate()
+        original = dict(self.scheduler.state["request"])
+        last_auto = self.scheduler.state["last_auto_normal_request"]
+        Clock.current += timedelta(minutes=2)
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready",
+                 confidence=79, program="Eco50", start="2026-10-09T00:00:00+00:00",
+                 finish="2026-10-09T04:00:00+00:00", cost_pence=21.77)
+        await self.scheduler.async_evaluate()
+        updated = self.scheduler.state["request"]
+        self.assertEqual(updated["program"], "Eco50")
+        self.assertEqual(updated["created_at"], original["created_at"])
+        self.assertEqual(self.scheduler.state["last_auto_normal_request"], last_auto)
+        event = next(event for event in self.scheduler.state["schedule_events"] if event["event"] == "replanned")
+        self.assertEqual(event["event"], "replanned")
+        self.assertEqual(event["previous_program"], "Quick45")
+        self.scheduler.store.async_save.reset_mock()
+        await self.scheduler.async_evaluate()
+        self.scheduler.store.async_save.assert_not_awaited()
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_advancing_price_search_cursor_does_not_replan_or_write_the_same_request(self):
+        entity = "sensor.load_optimizer_1_overnight_recommendation"
+        Clock.current = datetime(2026, 10, 8, 20, tzinfo=timezone.utc)
+        attrs = {**self.values[entity].attributes, "cost_pence": 12}
+        coverage = attrs.pop("overnight_planning_coverage")
+        self.put(entity, "Quick45", **attrs,
+                 overnight_planning_coverage={**coverage, "required_start": Clock.current.isoformat()})
+        await self.scheduler.async_evaluate()
+        original = deepcopy(self.scheduler.state["request"])
+        events = deepcopy(self.scheduler.state["schedule_events"])
+        self.scheduler.store.async_save.reset_mock()
+
+        for _ in range(25):
+            Clock.current += timedelta(minutes=1)
+            self.put(entity, "Quick45", **attrs,
+                     overnight_planning_coverage={**coverage, "required_start": Clock.current.isoformat()})
+            await self.scheduler.async_evaluate()
+
+        self.scheduler.store.async_save.assert_not_awaited()
+        self.assertEqual(self.scheduler.state["request"], original)
+        self.assertEqual(self.scheduler.state["schedule_events"], events)
+        self.assertEqual(self.scheduler.automation_explanation["overnight_planning_coverage"]["required_start"],
+                         Clock.current.isoformat())
+        self.assertIsNone(self.scheduler._execution_task)
+
+    async def test_replanning_never_edits_manual_active_frozen_or_another_night_requests(self):
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready",
+                 confidence=79, program="Eco50", start="2026-10-09T00:00:00+00:00",
+                 finish="2026-10-09T04:00:00+00:00", cost_pence=21.77)
+        base = {"mode": "automatic", "program": "Quick45", "automatic": True,
+                "start": "2026-10-08T22:00:00+00:00", "created_at": Clock.current.isoformat()}
+        for changes, execution in (({"automatic": False}, "queued"), ({"mode": "overnight"}, "queued"),
+                                   ({}, "commanding"), ({}, "confirmed"),
+                                   ({"start": (Clock.current + timedelta(minutes=2)).isoformat()}, "queued"),
+                                   ({"start": "2026-10-09T22:00:00+00:00"}, "queued")):
+            request = {**base, **changes}
+            self.scheduler.state.update(request=request, execution_status=execution)
+            self.assertFalse(self.scheduler._refresh_automatic_overnight_request(Clock.current))
+            self.assertEqual(self.scheduler.state["request"], request)
+        self.scheduler.state.update(request=base, execution_status="queued")
+        self.put("sensor.load_optimizer_1_cycle_state", "running")
+        self.assertFalse(self.scheduler._refresh_automatic_overnight_request(Clock.current))
+        self.put("sensor.load_optimizer_1_cycle_state", "idle")
+        task = asyncio.create_task(asyncio.sleep(10))
+        self.scheduler._execution_task = task
+        try:
+            self.assertFalse(self.scheduler._refresh_automatic_overnight_request(Clock.current))
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def test_replanning_keeps_saved_plan_during_incomplete_or_unready_recommendations(self):
+        await self.scheduler.async_evaluate()
+        original = dict(self.scheduler.state["request"])
+        for attributes in ({"status": "not_ready"}, {"status": "ready", "confidence": 10},
+                           {"status": "ready", "confidence": 88, "overnight_planning_coverage": {"complete": False}}):
+            self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", **attributes)
+            await self.scheduler.async_evaluate()
+            retained = self.scheduler.state["request"]
+            self.assertEqual(retained["program"], original["program"])
+            self.assertEqual(retained["start"], original["start"])
+            self.assertEqual(retained["window_end"], original["window_end"])
+            self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
 
     async def test_missing_no_run_source_prevents_new_automatic_plans_and_explains_why(self):
         self.put("sensor.load_optimizer_1_cost_status", "ready", blocked_window_source_ready=False,
@@ -98,6 +774,317 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("blocked_window_source_unavailable", self.scheduler.readiness("negative_price")["blockers"])
         self.hass.services.async_call.assert_not_awaited()
 
+    async def test_normal_wash_has_priority_during_negative_retry_wait(self):
+        self.scheduler.state.update(auto_negative_price_enabled=True,
+                                    last_auto_negative_price_request=(Clock.current - timedelta(minutes=29)).isoformat())
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "MachineCare", status="ready",
+                 ready_to_start=True, program="MachineCare", confidence=90)
+        await self.scheduler.async_evaluate()
+        self.assertTrue(self.scheduler.state["request"]["normal_wash"])
+        explanation = self.scheduler.automation_explanation
+        self.assertEqual(explanation["mode"], "overnight")
+        self.assertEqual(explanation["queued_program"], "Quick45")
+        self.assertIn("negative_price_retry_cooldown", self.scheduler.readiness("negative_price")["warnings"])
+
+
+    async def test_explanation_distinguishes_native_timer_from_running_capture(self):
+        self.put("sensor.operation", "BSH.Common.EnumType.OperationState.DelayedStart")
+        for cycle_state in ("idle", "scheduled", "running"):
+            with self.subTest(cycle_state=cycle_state):
+                self.put("sensor.load_optimizer_1_cycle_state", cycle_state)
+                explanation = self.scheduler.automation_explanation
+                self.assertEqual(explanation["state"], "appliance_scheduled")
+                self.assertEqual(explanation["reason_code"], "appliance_delayed_start_pending")
+                self.assertIn("waiting, not washing", explanation["summary"])
+                self.assertIn("dishwasher controls", explanation["action_required"])
+                for mode in ("overnight", "negative_price"):
+                    readiness = self.scheduler.readiness(mode)
+                    self.assertIn("appliance_delayed_start_pending", readiness["blockers"])
+                    self.assertNotIn("appliance_not_idle", readiness["warnings"])
+        self.hass.services.async_call.assert_not_awaited()
+        self.scheduler.store.async_save.assert_not_awaited()
+
+    async def test_native_timer_explanation_preserves_and_discloses_optimizer_queue(self):
+        request = {"mode": "overnight", "automatic": False, "program": "MixedLoad",
+                   "start": (Clock.current + timedelta(hours=1)).isoformat()}
+        self.scheduler.state["request"] = dict(request)
+        self.put("sensor.operation", "BSH.Common.EnumType.OperationState.DelayedStart")
+        explanation = self.scheduler.automation_explanation
+        self.assertEqual(explanation["state"], "appliance_scheduled")
+        self.assertEqual(explanation["queued_program"], "MixedLoad")
+        self.assertIn("separate optimizer request", explanation["action_required"])
+        self.assertEqual(self.scheduler.state["request"], request)
+        self.hass.services.async_call.assert_not_awaited()
+        self.scheduler.store.async_save.assert_not_awaited()
+
+    async def test_explanation_keeps_inactive_and_running_states_distinct(self):
+        self.put("sensor.load_optimizer_1_cycle_state", "running")
+        self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+        self.assertEqual(self.scheduler.automation_explanation["state"], "running")
+        self.put("sensor.operation", "BSH.Common.EnumType.OperationState.Ready")
+        self.assertEqual(self.scheduler.automation_explanation["state"], "capturing")
+        self.scheduler.state["active"] = False
+        self.put("sensor.operation", "BSH.Common.EnumType.OperationState.DelayedStart")
+        self.assertEqual(self.scheduler.automation_explanation["state"], "inactive")
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_negative_only_waits_distinguish_future_confidence_and_exhausted_limits(self):
+        self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=True)
+        for attributes, expected in (
+            ({"status": "ready", "ready_to_start": False, "confidence": 90}, "negative_window_not_started"),
+            ({"status": "ready", "ready_to_start": True, "confidence": 10}, "negative_price_confidence_below_threshold"),
+            ({"status": "not_ready", "reason": "maximum_runs_per_window_reached"}, "maximum_runs_per_window_reached"),
+            ({"status": "not_ready", "reason": "negative_run_history_incomplete"}, "negative_run_history_incomplete"),
+            ({"status": "not_ready"}, "negative_price_recommendation_not_ready"),
+        ):
+            with self.subTest(expected=expected):
+                self.put("sensor.load_optimizer_1_negative_price_recommendation", "Quick45", **attributes)
+                await self.scheduler.async_evaluate()
+                self.assertIsNone(self.scheduler.state["request"])
+                explanation = self.scheduler.automation_explanation
+                self.assertEqual(explanation["reason_code"], expected)
+                self.assertEqual(explanation["mode"], "negative_price")
+                self.assertNotIn("overnight", explanation["summary"].lower())
+
+    async def test_explicit_wash_readiness_uses_permission_instead_of_door_rule(self):
+        self.scheduler.state.update(auto_mode_enabled=False, door_opened_since_last_cycle=False)
+        await self.scheduler.async_request("overnight")
+        readiness = self.scheduler.readiness("overnight")
+        self.assertNotIn("door_not_opened_since_last_cycle", readiness["blockers"])
+        self.assertNotIn("automatic_mode_off", readiness["warnings"])
+        explanation = self.scheduler.automation_explanation
+        self.assertTrue(explanation["permission_active"])
+        self.assertEqual(explanation["request_state"], "queued")
+        self.assertEqual(explanation["default_window_start"], "21:00")
+        self.assertEqual(explanation["default_window_end"], "07:00")
+        self.assertFalse(explanation["door_authorisation_enabled"])
+        self.put("binary_sensor.door", "on")
+        readiness = self.scheduler.readiness("overnight")
+        self.assertEqual(readiness["state"], "red")
+        self.assertIn("Close the dishwasher door", " ".join(readiness["blocker_messages"]))
+        self.put("binary_sensor.door", "unavailable")
+        self.assertIn("door_state_unavailable", self.scheduler.readiness("overnight")["blockers"])
+
+    async def test_waiting_permission_explains_missing_prices_without_claiming_a_start(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "not_ready", status="not_ready",
+                 overnight_planning_coverage={"complete": False})
+        await self.scheduler.async_request("overnight")
+        explanation = self.scheduler.automation_explanation
+        self.assertEqual(explanation["request_state"], "awaiting_plan")
+        self.assertEqual(explanation["state"], "waiting")
+        self.assertTrue(explanation["permission_active"])
+        self.assertIsNone(explanation["queued_start"])
+        self.assertTrue(explanation["blocker_messages"])
+        self.assertFalse(explanation["running_confirmed"])
+        self.assertNotIn("door_not_opened_since_last_cycle", explanation["blockers"])
+
+    async def test_late_finish_and_cancellation_have_separate_explanations(self):
+        self.scheduler.state["auto_mode_enabled"] = False
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "Eco50", status="ready", confidence=88,
+                 start="2026-10-09T05:30:00+00:00", finish="2026-10-09T09:30:00+00:00")
+        await self.scheduler.async_request("overnight")
+        self.assertIn("finishes afterwards", self.scheduler.automation_explanation["summary"])
+        await self.scheduler.async_cancel()
+        explanation = self.scheduler.automation_explanation
+        self.assertEqual(explanation["state"], "cancelled")
+        self.assertFalse(explanation["permission_active"])
+        self.assertIsNone(explanation["queued_start"])
+        self.assertIn("cancelled", explanation["summary"].lower())
+        self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+        self.assertEqual(self.scheduler.automation_explanation["state"], "running")
+        self.assertTrue(self.scheduler.automation_explanation["running_confirmed"])
+        self.assertIn("will not stop", self.scheduler.automation_explanation["summary"])
+
+    async def test_price_failure_detail_and_event_descriptions_are_human_readable(self):
+        self.scheduler.state.update(auto_mode_enabled=False)
+        await self.scheduler.async_request("overnight")
+        request = deepcopy(self.scheduler.state["request"])
+        Clock.current = datetime(2026, 10, 8, 22, tzinfo=timezone.utc)
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value="normal_wash_tariff_unavailable"))
+        self.assertFalse(await self.scheduler._async_start_allowed(request))
+        explanation = self.scheduler.automation_explanation
+        self.assertIn("prices are unavailable", explanation["summary"])
+        self.assertTrue(all(isinstance(event.get("description"), str) for event in explanation["recent_events"]))
+        self.assertTrue(any("authorised" in event["description"] for event in explanation["recent_events"]))
+        self.assertTrue(all("normal_wash_tariff_unavailable" not in message for message in explanation["blocker_messages"]))
+        count = self.hass.services.async_call.await_count
+        self.scheduler.automation_explanation
+        self.scheduler.automation_explanation
+        self.assertEqual(self.hass.services.async_call.await_count, count)
+
+    async def test_extra_run_without_verified_profit_cannot_queue_or_claim_readiness(self):
+        self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=True,
+                                    door_opened_since_last_cycle=False)
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "Quick45", status="ready",
+                 ready_to_start=True, confidence=90, positive_net_benefit=False,
+                 power_hungry_window_fits_negative_price=True)
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.assertEqual(self.scheduler.automation_explanation["reason_code"], "no_positive_net_benefit")
+        self.assertIn("no_positive_net_benefit", self.scheduler.readiness("negative_price")["blockers"])
+        self.assertEqual(self.scheduler._safety_block("negative_price", "Quick45"), "no_positive_net_benefit")
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_negative_runs_keep_opt_in_physical_checks_and_pending_requests(self):
+        self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=False,
+                                    door_opened_since_last_cycle=False)
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "Quick45", status="ready",
+                 ready_to_start=True, confidence=90, program="Quick45", power_hungry_window_fits_negative_price=True)
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.scheduler.state["auto_negative_price_enabled"] = True
+        for sensor, state, reason in (
+            ("binary_sensor.door", "on", "door_open"),
+            ("binary_sensor.door", "unavailable", "door_state_unavailable"),
+            ("binary_sensor.remote_start", "off", "remote_start_disabled"),
+            ("binary_sensor.connected", "off", "dishwasher_not_connected"),
+            ("sensor.operation", namespace["RUNNING_OPERATION"], "appliance_already_running"),
+            ("sensor.operation", "BSH.Common.EnumType.OperationState.DelayedStart", "appliance_delayed_start_pending"),
+        ):
+            with self.subTest(reason=reason):
+                previous = self.values[sensor]
+                self.put(sensor, state)
+                self.assertEqual(self.scheduler._safety_block("negative_price", "Quick45"), reason)
+                self.values[sensor] = previous
+        pending = {"mode": "soon", "program": "MixedLoad", "automatic": False,
+                   "start": (Clock.current + timedelta(hours=1)).isoformat()}
+        self.scheduler.state["request"] = dict(pending)
+        await self.scheduler.async_evaluate()
+        self.assertEqual(self.scheduler.state["request"], pending)
+        self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"], "request_already_pending")
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_manual_request_keeps_the_original_quote_separate_from_start_time(self):
+        quote = {"program": "Quick45", "start": "2026-10-08T15:00:00+00:00",
+                 "finish": "2026-10-08T15:30:00+00:00", "cost_pence": -0.5}
+        options = [quote, *({**quote, "program": name, "cost_pence": 3.0}
+                           for name in ("Eco50", "Eco50", "Auto2", "MixedLoad", "Quick65"))]
+        self.put("sensor.load_optimizer_1_now_recommendation", "Quick45",
+                 status="ready", program_options=options, **quote)
+        self.scheduler.async_evaluate = AsyncMock()
+        await self.scheduler.async_request("now")
+        request = self.scheduler.state["request"]
+        self.assertEqual(request["start"], Clock.current.isoformat())
+        self.assertEqual(request["recommendation_quote"], {
+            "program": "Quick45", "start": quote["start"], "finish": quote["finish"],
+            "estimated_cost_pence": -0.5,
+        })
+        self.assertNotIn("cost_pence", request)
+        alternatives = request["recommendation_alternatives"]
+        self.assertEqual([row["program"] for row in alternatives], ["Eco50", "Auto2", "MixedLoad"])
+        options[1]["cost_pence"] = 100
+        self.assertEqual(alternatives[0]["estimated_cost_pence"], 3.0)
+
+    async def test_manual_override_does_not_inherit_another_programmes_quote(self):
+        self.put("sensor.load_optimizer_1_now_recommendation", "Quick45", status="ready",
+                 program="Quick45", start="2026-10-08T15:00:00+00:00",
+                 finish="2026-10-08T15:30:00+00:00", cost_pence=5)
+        self.scheduler.state["override_program"] = "MixedLoad"
+        self.scheduler.async_evaluate = AsyncMock()
+        await self.scheduler.async_request("now", override=True)
+        self.assertEqual(self.scheduler.state["request"]["program"], "MixedLoad")
+        self.assertNotIn("recommendation_quote", self.scheduler.state["request"])
+
+    async def test_restoring_automatic_modes_preserves_a_pending_manual_request(self):
+        pending = {"mode": "soon", "program": "MixedLoad", "automatic": False,
+                   "start": (Clock.current + timedelta(hours=1)).isoformat()}
+        self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=False,
+                                    request=deepcopy(pending))
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "Quick45", status="ready",
+                 ready_to_start=True, confidence=90, program="Quick45",
+                 power_hungry_window_fits_negative_price=True)
+
+        for key in ("auto_mode_enabled", "auto_negative_price_enabled"):
+            self.scheduler.store.async_save.reset_mock()
+            await self.scheduler.async_set(key, True)
+            self.assertEqual(self.scheduler.state["request"], pending)
+            self.scheduler.store.async_save.assert_awaited()
+            saved = self.scheduler.store.async_save.await_args.args[0]["state"]
+            self.assertIs(saved[key], True)
+            self.assertEqual(saved["request"], pending)
+            self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"],
+                             "request_already_pending")
+        self.hass.services.async_call.assert_not_awaited()
+
+    async def test_real_planner_repeats_only_allowed_programmes_across_separate_windows(self):
+        start = datetime(2026, 10, 13, 8, 30, tzinfo=timezone.utc)
+        Clock.current = start + timedelta(seconds=54, microseconds=183546)
+        self.scheduler.state.update(auto_mode_enabled=True, auto_negative_price_enabled=True,
+                                    door_opened_since_last_cycle=False)
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+        check = AsyncMock(return_value=None)
+        self.scheduler.set_automatic_preflight(check)
+        models = [{"program": "Quick45", "expected_runtime_minutes": 28.4, "expected_energy_kwh": 0.7},
+                  {"program": "MachineCare", "expected_runtime_minutes": 35.5, "expected_energy_kwh": 0.6},
+                  {"program": "NormalOnly", "expected_runtime_minutes": 10, "expected_energy_kwh": 5}]
+        for model in models:
+            model.update(representative_profile_w=[100, 100], confidence=90, recent_cycles=[],
+                         last_seen=(start - timedelta(minutes=10)).isoformat())
+        policies = [{"program": model["program"], "enabled": True, "allow_normal_recommendation": True,
+                     "allow_negative_price_run": model["program"] != "NormalOnly",
+                     "minimum_hours_between_runs": 96,
+                     "maximum_runs_per_window": 2 if model["program"] == "MachineCare" else 1,
+                     "preference_rank": 50, "negative_price_priority": 50} for model in models]
+        periods = [{"start": start + timedelta(hours=first), "end": start + timedelta(hours=last),
+                    "price_p_per_kwh": price}
+                   for first, last, price in ((0, 1, -1), (1, 2, -0.5), (2, 3, 20), (3, 4.5, -2), (4.5, 6, 20))]
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.Quick45",
+                 options=["Dishcare.Dishwasher.Program." + model["program"] for model in models])
+
+        async def appliance(domain, service, *_args, **_kwargs):
+            if domain == "select":
+                self.put("select.programmes", _args[0]["option"],
+                         **self.values["select.programmes"].attributes)
+            if (domain, service) == ("button", "press"):
+                self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+                self.put("sensor.load_optimizer_1_cycle_state", "running")
+
+        self.hass.services.async_call.side_effect = appliance
+        runs = []
+        with patch.object(asyncio, "sleep", new=AsyncMock()):
+            for _ in range(300):
+                result = recommend_cycle(models, policies, periods, reference_utc=Clock.current,
+                                         search_hours=5, candidate_interval_minutes=5, forecast_hours=0)
+                recommendation = result.get("negative_price_recommendation", {"status": "not_ready"})
+                self.put("sensor.load_optimizer_1_negative_price_recommendation",
+                         recommendation.get("program", "not_ready"), **recommendation)
+                self.assertIsNone(self.scheduler.state["request"])
+                attempt = Clock.current
+                await self.scheduler.async_evaluate()
+                await asyncio.gather(*self.tasks)
+                if self.scheduler.state["last_attempt"] == attempt.isoformat():
+                    self.assertEqual(self.scheduler.state["last_result"], "confirmed")
+                    program = self.scheduler.state["last_program"]
+                    request = self.scheduler.state["last_start_decision_snapshot"]["request"]
+                    quote = request["recommendation_quote"]
+                    self.assertEqual(request["mode"], "negative_price")
+                    self.assertEqual(quote["program"], program)
+                    self.assertEqual(quote["start"], recommendation["start"])
+                    self.assertEqual(quote["estimated_net_benefit_pence"], recommendation["net_benefit_pence"])
+                    self.assertLess(quote["tariff_evidence"]["energy_cost_pence"], 0)
+                    runs.append((attempt, program))
+                    model = next(model for model in models if model["program"] == program)
+                    Clock.current += timedelta(minutes=model["expected_runtime_minutes"])
+                    model["last_seen"] = Clock.current.isoformat()
+                    model["recent_cycles"].append({"finish": Clock.current.isoformat(),
+                                                   "runtime_minutes": model["expected_runtime_minutes"]})
+                    self.put("sensor.operation", "BSH.Common.EnumType.OperationState.Finished")
+                    self.put("sensor.load_optimizer_1_cycle_state", "idle")
+                    self.put("sensor.load_optimizer_1_last_finish", Clock.current.isoformat())
+                    await self.scheduler._async_record_cycle_end(attempt)
+                    self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+                Clock.current += timedelta(minutes=1)
+                if Clock.current >= start + timedelta(hours=5):
+                    break
+        self.assertEqual([program for _, program in runs],
+                         ["Quick45", "MachineCare", "MachineCare", "Quick45", "MachineCare"])
+        self.assertTrue(all(time < start + timedelta(hours=2) or start + timedelta(hours=3) <= time < start + timedelta(hours=4.5)
+                            for time, _ in runs))
+        self.assertTrue(all(later[0] - earlier[0] >= timedelta(minutes=30) for earlier, later in zip(runs, runs[1:])))
+        self.assertEqual(check.await_count, len(runs) * 4)
+        self.assertEqual(sum(call.args[:2] == ("button", "press") for call in self.hass.services.async_call.await_args_list), 5)
+
     async def test_live_source_disappearing_blocks_even_when_scan_reported_ready(self):
         self.put("sensor.load_optimizer_1_cost_status", "ready", blocked_window_source_ready=True,
                  blocked_window_entity="calendar.no_run")
@@ -109,6 +1096,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"], "power_source_unavailable")
 
     async def test_saved_automatic_requests_require_fresh_source_preflight(self):
+        self.scheduler.state["auto_negative_price_enabled"] = True
         for mode in ("automatic", "negative_price"):
             with self.subTest(mode=mode):
                 self.scheduler.state["auto_negative_price_enabled"] = True
@@ -122,6 +1110,67 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         calls = self.hass.services.async_call.await_args_list
         self.assertFalse(any(call.args[0] in {"switch", "button", "select", "home_connect", "home_connect_alt"}
                              for call in calls))
+
+    async def test_automatic_negative_preflight_is_not_replaced_by_another_programmes_fit(self):
+        self.scheduler.state["auto_negative_price_enabled"] = True
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "MachineCare", status="not_ready",
+                 program="MachineCare", power_hungry_window_fits_negative_price=False)
+        check = AsyncMock(return_value=None)
+        self.scheduler.set_automatic_preflight(check)
+        request = {"mode": "negative_price", "program": "Quick45", "automatic": True}
+        self.assertTrue(await self.scheduler._async_start_allowed(request))
+        check.assert_awaited_once_with(request)
+        check.return_value = "power_hungry_window_outside_negative_price"
+        self.assertFalse(await self.scheduler._async_start_allowed(request, recheck=True))
+        self.assertEqual(self.scheduler.state["last_reason"], "power_hungry_window_outside_negative_price")
+
+    async def test_negative_command_delays_and_fallbacks_reprice_at_each_actual_attempt(self):
+        self.scheduler.state["auto_negative_price_enabled"] = True
+        start = Clock.current
+        model = {"program": "Quick45", "expected_runtime_minutes": 30, "expected_energy_kwh": 0.7,
+                 "representative_profile_w": [1000, 1000], "confidence": 90, "recent_cycles": []}
+        policy = {"program": "Quick45", "enabled": True, "allow_normal_recommendation": False,
+                  "allow_negative_price_run": True, "maximum_runs_per_window": 1,
+                  "preference_rank": 50}
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.Quick45", options=["Dishcare.Dishwasher.Program.Quick45"])
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "MachineCare", status="ready",
+                 program="MachineCare", power_hungry_window_fits_negative_price=True)
+        for slack, allowed_domains, attempts in (
+            (10, ["switch"], [0, 0, 15]),
+            (18, ["switch", "select"], [0, 0, 15, 20]),
+            (35, ["switch", "select", "button"], [0, 0, 15, 20, 40]),
+            (55, ["switch", "select", "button", "home_connect_alt"], [0, 0, 15, 20, 40, 60]),
+        ):
+            with self.subTest(slack_seconds=slack):
+                Clock.current = start
+                self.hass.services.async_call.reset_mock()
+                end = start + timedelta(minutes=30, seconds=slack)
+                periods = [{"start": start, "end": end, "price_p_per_kwh": -1},
+                           {"start": end, "end": start + timedelta(hours=6), "price_p_per_kwh": 20}]
+                checked_at = []
+
+                async def preflight(request):
+                    self.assertEqual(request["program"], "Quick45")
+                    checked_at.append((Clock.current - start).total_seconds())
+                    result = recommend_cycle([model], [policy], periods, reference_utc=Clock.current,
+                                             search_hours=0, candidate_interval_minutes=1, forecast_hours=0)
+                    return (None if result["negative_price_recommendation"]["ready_to_start"]
+                            else "power_hungry_window_outside_negative_price")
+
+                async def advance(seconds):
+                    Clock.current += timedelta(seconds=seconds)
+
+                self.scheduler.set_automatic_preflight(preflight)
+                request = {"mode": "negative_price", "program": "Quick45", "automatic": True,
+                           "start": start.isoformat(), "finish": (start + timedelta(minutes=30)).isoformat()}
+                with patch.object(asyncio, "sleep", new=advance):
+                    await self.scheduler._async_execute(request)
+                self.assertEqual(self.scheduler.state["last_reason"], "power_hungry_window_outside_negative_price")
+                self.assertEqual([call.args[0] for call in self.hass.services.async_call.await_args_list
+                                  if call.args[0] != "persistent_notification"], allowed_domains)
+                self.assertEqual(checked_at, attempts)
+                self.assertIsNone(self.scheduler.state["request"])
 
     async def test_mandatory_preflight_unavailable_is_fail_closed(self):
         request = {"mode": "automatic", "program": "MixedLoad", "start": Clock.current.isoformat()}
@@ -153,6 +1202,20 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(self.scheduler.state["last_result"], "confirmed")
                 self.assertEqual(check.await_count, count)
 
+    async def test_failed_programme_selection_blocks_all_start_commands(self):
+        self.put("select.programmes", "previous", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
+        async def fail_selection(domain, service, *args, **kwargs):
+            if domain == "select":
+                raise RuntimeError("synthetic selection failure")
+        self.hass.services.async_call.side_effect = fail_selection
+        with patch.object(asyncio, "sleep", new=AsyncMock()):
+            await self.scheduler._async_execute({"mode": "now", "program": "MixedLoad",
+                                                "automatic": False, "explicit_program_override": True})
+        self.assertEqual(self.scheduler.state["last_reason"], "command_error")
+        self.assertFalse(any(call.args[0] in {"button", "home_connect_alt", "home_connect"}
+                             for call in self.hass.services.async_call.await_args_list))
+
     async def test_unconfirmed_programme_blocks_all_start_commands(self):
         self.put("select.programmes", "previous", options=["Dishcare.Dishwasher.Program.MixedLoad"])
         self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
@@ -165,7 +1228,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_no_run_failure_during_power_on_delay_prevents_start_commands(self):
         self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="synthetic")
-        self.put("select.programmes", "Dishcare.Dishwasher.Program.MixedLoad", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
         check = AsyncMock(side_effect=[None, None, "blocked_window_source_unavailable"])
         self.scheduler.set_automatic_preflight(check)
         request = {"mode": "automatic", "program": "MixedLoad", "start": Clock.current.isoformat()}
@@ -177,31 +1240,57 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(call.args[:2] == ("switch", "turn_on") for call in calls))
         self.assertFalse(any(call.args[0] in {"button", "select", "home_connect", "home_connect_alt"} for call in calls))
 
-    async def test_failed_reservation_blocks_first_appliance_command(self):
-        self.put("select.programmes", "Dishcare.Dishwasher.Program.MixedLoad", options=["Dishcare.Dishwasher.Program.MixedLoad"])
-        self.scheduler._async_committed_attempt.side_effect = OSError("synthetic write failure")
+    async def test_failed_command_reservation_blocks_all_appliance_calls(self):
+        self.put("select.programmes", "ready", options=["Dishcare.Dishwasher.Program.MixedLoad"])
+        self.scheduler._async_committed_start_state.return_value = {"execution_status": "queued"}
+        self.scheduler._async_committed_start_state.side_effect = None
         await self.scheduler._async_execute({"mode": "now", "program": "MixedLoad", "automatic": False})
         self.assertEqual(self.scheduler.state["last_reason"], "start_reservation_not_saved")
+        self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
         self.assertTrue(all(call.args[0] == "persistent_notification"
                             for call in self.hass.services.async_call.await_args_list))
 
-    async def test_disabling_mode_during_source_check_prevents_appliance_calls(self):
-        self.put("select.programmes", "Dishcare.Dishwasher.Program.MixedLoad", options=["Dishcare.Dishwasher.Program.MixedLoad"])
-        for mode, setting in (("automatic", "auto_mode_enabled"), ("negative_price", "auto_negative_price_enabled")):
+    async def test_disabling_automatic_mode_during_preflight_prevents_command(self):
+        for mode, setting, reason in (
+            ("automatic", "auto_mode_enabled", "automatic_overnight_mode_off"),
+            ("negative_price", "auto_negative_price_enabled", "automatic_negative_price_mode_off"),
+        ):
             with self.subTest(mode=mode):
+                self.hass.services.async_call.reset_mock()
                 self.scheduler.state[setting] = True
-                self.put("sensor.load_optimizer_1_negative_price_recommendation", "MixedLoad",
-                         power_hungry_window_fits_negative_price=True)
+                request = {"mode": mode, "program": "Quick45", "automatic": True,
+                           "start": Clock.current.isoformat()}
+                self.scheduler.state["request"] = deepcopy(request)
 
-                async def disable(_request):
+                async def check(_request):
                     self.scheduler.state[setting] = False
 
-                self.scheduler.set_automatic_preflight(disable)
-                await self.scheduler._async_execute({"mode": mode, "program": "MixedLoad", "automatic": True})
-                self.assertEqual(self.scheduler.state["last_reason"],
-                    "automatic_negative_price_mode_off" if mode == "negative_price" else "automatic_overnight_mode_off")
-        self.assertTrue(all(call.args[0] == "persistent_notification"
-                            for call in self.hass.services.async_call.await_args_list))
+                self.scheduler.set_automatic_preflight(check)
+                await self.scheduler._async_execute(request)
+                self.assertEqual(self.scheduler.state["last_reason"], reason)
+                self.assertIsNone(self.scheduler.state["request"])
+                self.assertTrue(all(call.args[0] == "persistent_notification"
+                                    for call in self.hass.services.async_call.await_args_list))
+
+    async def test_pausing_door_mode_during_preflight_preserves_authorised_window(self):
+        await self.scheduler.async_evaluate()
+        request = deepcopy(self.scheduler.state["request"])
+        self.assertTrue(request["normal_wash"])
+        self.assertTrue(request["automatic"])
+        Clock.current = datetime.fromisoformat(request["start"])
+
+        async def check(_request):
+            self.scheduler.state["auto_mode_enabled"] = False
+
+        self.scheduler.set_automatic_preflight(check)
+        self.hass.services.async_call.reset_mock()
+        await self.scheduler._async_execute(request)
+
+        saved = self.scheduler.state["request"]
+        self.assertEqual(saved, {**request, "waiting_reason": "automatic_overnight_mode_off"})
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
+        self.assertEqual(self.scheduler.store.async_save.await_args.args[0]["state"]["request"], saved)
+        self.hass.services.async_call.assert_not_awaited()
 
     async def test_manual_request_preserves_cooldown_override_and_does_not_use_automatic_preflight(self):
         self.scheduler.state["door_opened_since_last_cycle"] = False
@@ -386,14 +1475,38 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.state["last_result"], "completed")
         self.assertEqual(self.scheduler.state["execution_status"], "idle")
 
-    async def test_replayed_completion_preserves_newer_request(self):
-        capture = Clock.current - timedelta(hours=1)
+    async def test_replayed_completion_does_not_clear_new_request_after_reload(self):
+        start = Clock.current - timedelta(hours=2)
         self.put("sensor.load_optimizer_1_last_finish", Clock.current.isoformat())
-        await self.scheduler._async_record_cycle_end(capture)
-        self.scheduler.state.update(request={"program": "Quick45"}, execution_status="queued")
-        await self.scheduler._async_record_cycle_end(capture)
-        self.assertEqual(self.scheduler.state["request"], {"program": "Quick45"})
-        self.assertEqual(self.scheduler.state["execution_status"], "queued")
+        await self.scheduler._async_record_cycle_end(start)
+        self.assertEqual(self.scheduler.state["last_completed_capture_start"], start.isoformat())
+
+        self.scheduler.state["door_opened_since_last_cycle"] = True
+        await self.scheduler.async_evaluate()
+        stored = deepcopy(self.scheduler.store.async_save.await_args.args[0])
+        self.assertIsNotNone(stored["state"]["request"])
+        restored = NativeOrchestrator(self.hass, SimpleNamespace(entry_id="test", data={}, options={}),
+                                      self.scheduler.migration)
+        restored.store = SimpleNamespace(
+            async_load=AsyncMock(return_value=stored),
+            async_save=AsyncMock(),
+        )
+        await restored.async_load()
+        restored.store.async_save.reset_mock()
+        events = deepcopy(restored.state["schedule_events"])
+        for replay in (start, start - timedelta(hours=1)):
+            await restored._async_record_cycle_end(replay)
+        self.assertEqual(restored.state["request"], stored["state"]["request"])
+        self.assertTrue(restored.state["door_opened_since_last_cycle"])
+        self.assertEqual(restored.state["schedule_events"], events)
+        restored.store.async_save.assert_not_awaited()
+
+        Clock.current += timedelta(hours=2)
+        self.put("sensor.load_optimizer_1_last_finish", Clock.current.isoformat())
+        await restored._async_record_cycle_end(Clock.current - timedelta(minutes=45))
+        self.assertIsNone(restored.state["request"])
+        self.assertEqual(restored.state["last_result"], "completed")
+        self.assertEqual(restored.state["schedule_events"][0]["event"], "completed")
 
     async def test_observed_real_run_can_complete_even_when_learning_is_rejected(self):
         self.scheduler.state["confirmed_cycle_started_at"] = "2026-10-08T15:09:05+00:00"
@@ -461,6 +1574,7 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_eligibility_after_daily_reset_reports_remaining_cooldown(self):
         self.scheduler.state["last_auto_normal_request"] = "2026-10-08T14:59:00+00:00"
         Clock.current = datetime(2026, 10, 8, 15, 1, tzinfo=timezone.utc)
+        self.assertFalse(self.scheduler._overnight_window_unused(Clock.current))
         self.assertEqual(self.scheduler.automation_explanation["automatic_eligible_after"],
                          "2026-10-09T02:59:00+00:00")
         eligible = datetime(2026, 10, 9, 2, 59, tzinfo=timezone.utc)
@@ -473,7 +1587,25 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["state"], "scheduled")
         self.assertEqual(status["queued_start"], "2026-10-08T22:00:00+00:00")
         self.assertIsNone(status["last_start_attempt"])
-        self.assertEqual(self.scheduler.state["schedule_events"][0]["event"], "queued")
+        self.assertTrue(any(event["event"] == "queued" for event in self.scheduler.state["schedule_events"]))
+
+    async def test_recovery_hold_blocks_readiness_even_after_completion_is_reported(self):
+        self.scheduler.state.update(start_recovery_required=True, last_result="completed")
+        for mode in ("overnight", "negative_price"):
+            readiness = self.scheduler.readiness(mode)
+            self.assertEqual(readiness["state"], "red")
+            self.assertIn("start_confirmation_interrupted", readiness["blockers"])
+        status = self.scheduler.automation_explanation
+        self.assertEqual(status["state"], "attention_required")
+        self.assertEqual(status["reason_code"], "start_confirmation_interrupted")
+        self.assertIn("Cancel Schedule", status["action_required"])
+        self.assertFalse(await self.scheduler._async_start_allowed(
+            {"mode": "now", "program": "Quick45", "automatic": False},
+        ))
+        self.hass.services.async_call.assert_not_awaited()
+
+        await self.scheduler.async_cancel()
+        self.assertNotIn("start_confirmation_interrupted", self.scheduler.readiness("overnight")["blockers"])
 
     async def test_wait_reason_changes_are_persisted_but_not_logged_each_minute(self):
         self.scheduler.state["auto_mode_enabled"] = False
@@ -506,6 +1638,106 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         decision = self.scheduler._automatic_decision(Clock.current)
         self.assertEqual(decision["request_mode"], "negative_price")
         self.assertEqual(decision["program"], "Super60")
+
+    async def test_real_planner_drives_repeated_free_runs_with_limits_and_no_door_reload(self):
+        self.scheduler.set_automatic_preflight(AsyncMock(return_value=None))
+        start = datetime(2026, 10, 10, 8, 30, tzinfo=timezone.utc)
+        Clock.current = start + timedelta(seconds=54, microseconds=183546)
+        self.scheduler.state.update(auto_mode_enabled=False, auto_negative_price_enabled=True,
+                                    door_opened_since_last_cycle=False)
+        self.scheduler.config.update(bosch_start_button="button.start", bosch_device_id="dishwasher")
+        models = [
+            {"program": "Quick45", "expected_runtime_minutes": 28.4, "expected_energy_kwh": 0.7},
+            {"program": "MachineCare", "expected_runtime_minutes": 35.5, "expected_energy_kwh": 0.6},
+            {"program": "NormalOnly", "expected_runtime_minutes": 10, "expected_energy_kwh": 5},
+        ]
+        for model in models:
+            model.update(representative_profile_w=[100, 100], confidence=90, recent_cycles=[],
+                         last_seen=(start - timedelta(minutes=10)).isoformat())
+        policies = [{"program": m["program"], "enabled": True,
+                     "allow_normal_recommendation": True, "allow_negative_price_run": m["program"] != "NormalOnly",
+                     "minimum_hours_between_runs": 96, "maximum_runs_per_window": 2 if m["program"] == "MachineCare" else 1,
+                     "preference_rank": 50, "negative_price_priority": 50} for m in models]
+        periods = [
+            {"start": start, "end": start + timedelta(hours=1), "price_p_per_kwh": -1},
+            {"start": start + timedelta(hours=1), "end": start + timedelta(hours=2), "price_p_per_kwh": -0.5},
+            {"start": start + timedelta(hours=2), "end": start + timedelta(hours=3), "price_p_per_kwh": 20},
+            {"start": start + timedelta(hours=3), "end": start + timedelta(hours=4, minutes=30), "price_p_per_kwh": -2},
+            {"start": start + timedelta(hours=4, minutes=30), "end": start + timedelta(hours=6), "price_p_per_kwh": 20},
+        ]
+        self.put("select.programmes", "Dishcare.Dishwasher.Program.Quick45",
+                 options=["Dishcare.Dishwasher.Program." + m["program"] for m in models])
+
+        async def mock_appliance(domain, service, data, **kwargs):
+            if domain == "select":
+                self.put("select.programmes", data["option"],
+                         **self.values["select.programmes"].attributes)
+            if domain == "button" and service == "press":
+                self.put("sensor.operation", namespace["RUNNING_OPERATION"])
+                self.put("sensor.load_optimizer_1_cycle_state", "running")
+
+        self.hass.services.async_call.side_effect = mock_appliance
+        runs = []
+        with patch.object(asyncio, "sleep", new=AsyncMock()):
+            for _ in range(300):
+                result = recommend_cycle(models, policies, periods, reference_utc=Clock.current,
+                    search_hours=5, candidate_interval_minutes=5, forecast_hours=0)
+                recommendation = result.get("negative_price_recommendation", {"status": "not_ready"})
+                self.put("sensor.load_optimizer_1_negative_price_recommendation",
+                         recommendation.get("program", "not_ready"), **recommendation)
+                self.assertIsNone(self.scheduler.state["request"])
+                attempt = Clock.current
+                await self.scheduler.async_evaluate()
+                await asyncio.gather(*self.tasks)
+                if self.scheduler.state["last_attempt"] == attempt.isoformat():
+                    self.assertEqual(self.scheduler.state["last_result"], "confirmed")
+                    program = self.scheduler.state["last_program"]
+                    runs.append((attempt, program))
+                    model = next(m for m in models if m["program"] == program)
+                    Clock.current += timedelta(minutes=model["expected_runtime_minutes"])
+                    model["last_seen"] = Clock.current.isoformat()
+                    model["recent_cycles"].append({"finish": Clock.current.isoformat(),
+                        "runtime_minutes": model["expected_runtime_minutes"]})
+                    self.put("sensor.operation", "BSH.Common.EnumType.OperationState.Finished")
+                    self.put("sensor.load_optimizer_1_cycle_state", "idle")
+                    self.put("sensor.load_optimizer_1_last_finish", Clock.current.isoformat())
+                    await self.scheduler._async_record_cycle_end(attempt)
+                    self.assertFalse(self.scheduler.state["door_opened_since_last_cycle"])
+                else:
+                    self.assertIsNone(self.scheduler.state["request"])
+                Clock.current += timedelta(minutes=1)
+                if Clock.current >= start + timedelta(hours=5):
+                    break
+        self.assertEqual([program for _, program in runs],
+                         ["Quick45", "MachineCare", "MachineCare", "Quick45", "MachineCare"])
+        self.assertTrue(all((time < start + timedelta(hours=2) or
+                             start + timedelta(hours=3) <= time < start + timedelta(hours=4, minutes=30))
+                            for time, _ in runs))
+        self.assertTrue(all(b[0] - a[0] >= timedelta(minutes=30) for a, b in zip(runs, runs[1:])))
+        starts = [call for call in self.hass.services.async_call.await_args_list
+                  if call.args[:2] == ("button", "press")]
+        self.assertEqual(len(starts), 5)
+
+    async def test_negative_runs_still_require_opt_in_and_physical_safety(self):
+        self.scheduler.state.update(auto_mode_enabled=False, door_opened_since_last_cycle=False)
+        self.put("sensor.load_optimizer_1_negative_price_recommendation", "Quick45",
+                 status="ready", program="Quick45", ready_to_start=True, confidence=90,
+                 power_hungry_window_fits_negative_price=True)
+        await self.scheduler.async_evaluate()
+        self.assertIsNone(self.scheduler.state["request"])
+        self.scheduler.state["auto_negative_price_enabled"] = True
+        for sensor, state, reason in (
+            ("binary_sensor.door", "on", "door_open"),
+            ("binary_sensor.remote_start", "off", "remote_start_disabled"),
+            ("binary_sensor.connected", "off", "dishwasher_not_connected"),
+            ("sensor.operation", namespace["RUNNING_OPERATION"], "appliance_already_running"),
+        ):
+            with self.subTest(reason=reason):
+                previous = self.values[sensor]
+                self.put(sensor, state)
+                self.assertEqual(self.scheduler._safety_block("negative_price", "Quick45"), reason)
+                self.values[sensor] = previous
+        self.hass.services.async_call.assert_not_awaited()
 
     async def test_live_programmes_replace_the_stale_migration_dropdown(self):
         self.scheduler.program_options = ["engine", "Quick45", "QuickD"]
@@ -608,7 +1840,8 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler._automatic_decision(Clock.current)["reason"],
                          "overnight_recommendation_not_ready")
         await self.scheduler.async_evaluate()
-        self.assertIsNone(self.scheduler.state["request"])
+        self.assertIsNone(self.scheduler.state["request"]["start"])
+        self.assertEqual(self.scheduler.state["execution_status"], "awaiting_plan")
 
     async def test_manual_mixedload_request_reaches_the_mocked_appliance_despite_recent_automatic_request(self):
         self.scheduler.state.update(override_program="MixedLoad",

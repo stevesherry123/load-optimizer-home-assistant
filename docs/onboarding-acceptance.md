@@ -26,6 +26,10 @@ known capture or queued request. See [runtime safety](runtime-safety.md).
 
 ## Human and physical acceptance
 
+For the dishwasher feature candidate, use the scoped
+[acceptance walkthrough](dishwasher-acceptance.md) and record unperformed cases
+explicitly in the [release record](release-readiness.md).
+
 Before relying on a supported release, an unfamiliar tester should:
 
 1. Follow its README/setup guide on a separate installation, not an unpublished

@@ -1,15 +1,19 @@
 """Exercise HACS runtime/ownership fixes with real HA, without live devices."""
 
 import asyncio
+from inspect import signature
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
 from threading import Event, get_ident
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from homeassistant.core import HomeAssistant
+from homeassistant import loader
+from homeassistant.bootstrap import async_from_config_dict
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from custom_components.load_optimizer import (
     _async_claim_native_status_entity_ids, _async_migrate_native_status_entities,
@@ -18,18 +22,40 @@ from custom_components.load_optimizer.const import DOMAIN
 from custom_components.load_optimizer.legacy import app_runtime
 from custom_components.load_optimizer.legacy_runtime import LegacyRuntime
 from custom_components.load_optimizer.orchestration import NativeOrchestrator
+from custom_components.load_optimizer.sensor import LoadOptimizerSensor, LoadOptimizerRuntimeSensor
 
 
 async def main():
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
+        loader.async_setup(hass)
         try:
-            await er.async_get(hass).async_load()
-            await ir.async_get(hass).async_load()
+            # The registry test needs Core bootstrap, not discovery or external integrations.
+            with patch("homeassistant.bootstrap.DEFAULT_INTEGRATIONS", set()):
+                assert await async_from_config_dict({"homeassistant": {"time_zone": "Europe/London"}}, hass) is hass
+            # General status must not publish new coordinator fields by default.
+            private = {"orchestration": {"household_mapping": "private-fixture"},
+                       "legacy_entities": {"fixture": "private"}, "future_private_field": "private-fixture"}
+            data = {**private, "mode": "learned_appliance", "instance_count": 1,
+                    "published_entity_count": 10, "last_scan": "fixture-time",
+                    "tariff_period_count": 48, "last_updated": "fixture-time"}
+            sensor = SimpleNamespace(coordinator=SimpleNamespace(data=data),
+                                     entity_description=SimpleNamespace(key="status"))
+            assert LoadOptimizerSensor.extra_state_attributes.fget(sensor) == {
+                "tariff_period_count": 48, "last_updated": "fixture-time"}
+            assert LoadOptimizerRuntimeSensor.extra_state_attributes.fget(sensor) == {
+                key: data[key] for key in ("mode", "instance_count", "published_entity_count", "last_scan")}
+            print("General status exposes only allowed summary fields, including with future private data")
             notifications = []
-            hass.services.async_register("persistent_notification", "create",
-                lambda call: notifications.append(call.data))
+
+            @callback
+            def capture_notification(call):
+                assert get_ident() == loop_thread, "Notification was not scheduled on HA's loop"
+                notifications.append(call.data)
+
             loop_thread = get_ident()
+            hass.services.async_register("persistent_notification", "create", capture_notification)
             runtime = LegacyRuntime(hass)
             runtime.store = SimpleNamespace(async_load=AsyncMock(return_value=None), async_save=AsyncMock())
             hass.states.async_set("sensor.test_power", "0", {"unit_of_measurement": "W"})
@@ -122,7 +148,13 @@ async def main():
             foreign = registry.async_get_or_create("sensor", "template", "foreign-template",
                 suggested_object_id=target.split(".")[1])
             hass.states.async_set(target, "unavailable")
-            entry = SimpleNamespace(entry_id="ownership-test", data={"load_type": "learned_appliance"})
+            fields = {"subentries_data": None} if "subentries_data" in signature(ConfigEntry).parameters else {}
+            entry = ConfigEntry(entry_id="ownership-test", domain=DOMAIN,
+                data={"load_type": "learned_appliance"}, options={}, source="user",
+                title="Synthetic ownership test", version=1, minor_version=1,
+                unique_id=None, discovery_keys=MappingProxyType({}), **fields)
+            with patch.object(type(hass.config_entries), "async_setup", new=AsyncMock(return_value=True)):
+                await hass.config_entries.async_add(entry)
             ev = SimpleNamespace(entry_id="advisory-ev", data={"load_type": "ev_charging"})
             _async_migrate_native_status_entities(hass, ev)
             assert not ir.async_get(hass).async_get_issue(DOMAIN, "legacy_status_conflict_advisory-ev")

@@ -47,6 +47,11 @@ async def main():
                             'sensor.load_optimizer_status':state('sensor.load_optimizer_status','ready',{}),
                             'sensor.load_optimizer_1_cost_status':state('sensor.load_optimizer_1_cost_status','ready',{'tariff_entities':['event.test_rates'],'tariff_timezone':'Europe/London','tariff_start':start.isoformat(),'tariff_end':end}),
                             'sensor.load_optimizer_1_tariff_horizon':state('sensor.load_optimizer_1_tariff_horizon',chart['graph_span'],{}),
+                            'sensor.load_optimizer_1_current_energy_price':state('sensor.load_optimizer_1_current_energy_price','12',{
+                                'tariff_timezone':'Europe/London',
+                                'chart_price_periods':[[datetime.fromisoformat(r['start']).timestamp()*1000,
+                                                       datetime.fromisoformat(r['end']).timestamp()*1000,
+                                                       r['price_p_per_kwh']] for r in rates]}),
                             'event.test_rates':state('event.test_rates','ready',{'rates':rates}),
                             'sensor.load_optimizer_ofgem_price_cap_benchmark':state('sensor.load_optimizer_ofgem_price_cap_benchmark','25',{'unit_of_measurement':'p/kWh','references':[{'effective_from_utc':start.isoformat(),'effective_to_utc':end,'unit_rate_p_per_kwh':25}]}),
                         }

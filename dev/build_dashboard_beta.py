@@ -56,30 +56,7 @@ def build():
             card["apex_config"]["tooltip"]["y"]["formatter"] = (
                 "EVAL:function(value) { return Number(value).toFixed(2) + ' p/kWh'; }")
 
-    next_wash = markdown("Next wash", """
-        {% set sensor = 'sensor.load_optimizer_1_automation_explanation' %}
-        {% set queue = state_attr('sensor.load_optimizer_1_orchestration_status', 'request') or {} %}
-        {% macro home_time(value) -%}
-        {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'Not recorded' }}
-        {%- endmacro %}
-        {% if not has_value(sensor) %}
-        **Scheduling status unavailable**
-        {% elif queue %}
-        **{{ queue.get('program', 'Programme') }} queued**
-
-        {{ home_time(queue.get('start')) }} to {{ home_time(queue.get('finish')) }}
-        {% set cost = queue.get('cost_pence') | float(none) %}
-        {% if is_number(cost) %}Estimated cost: **GBP {{ '%.2f' | format(cost / 100) }}**{% endif %}
-        {% else %}
-        **No wash queued**
-        {% endif %}
-
-        {{ state_attr(sensor, 'summary') or 'No scheduling explanation available.' }}
-        {% if state_attr(sensor, 'action_required') %}
-
-        {{ state_attr(sensor, 'action_required') }}
-        {% endif %}
-    """)
+    next_wash = deepcopy(next(card for card in walk(full) if card.get("title") == "Next wash"))
     last_wash = markdown("Last wash", """
         {% set finish = states('sensor.load_optimizer_1_last_finish') %}
         {% set native = 'sensor.load_optimizer_1_orchestration_status' %}
@@ -106,18 +83,21 @@ def build():
 
     schedule = markdown("Scheduling", """
         {% set entity = 'sensor.load_optimizer_1_automation_explanation' %}
-        {% set blocks = state_attr(entity, 'blockers') or [] %}
-        {% set warnings = state_attr(entity, 'warnings') or [] %}
+        {% set blocks = state_attr(entity, 'blocker_messages') or [] %}
+        {% set warnings = state_attr(entity, 'warning_messages') or [] %}
+        {% set checks = (state_attr(entity, 'blockers') or []) + (state_attr(entity, 'warnings') or []) %}
         {% if not has_value(entity) %}
         Scheduling information unavailable.
+        {% elif not blocks and not warnings and checks %}
+        Readiness checks are pending. Review the integration details.
         {% elif not blocks and not warnings %}
         No outstanding checks reported.
         {% endif %}
-        {% for reason in blocks %}
-        - {{ reason | replace('_', ' ') | capitalize }}
+        {% for message in blocks %}
+        - {{ message }}
         {% endfor %}
-        {% for reason in warnings %}
-        - {{ reason | replace('_', ' ') | capitalize }}
+        {% for message in warnings %}
+        - {{ message }}
         {% endfor %}
     """)
     recommendation = markdown("Recommendation", """
@@ -140,8 +120,8 @@ def build():
     """)
     controls = {"type": "entities", "title": "Automatic modes", "show_header_toggle": False,
         "entities": [
-            {"entity": "switch.load_optimizer_1_auto_mode_enabled", "name": "Overnight"},
-            {"entity": "switch.load_optimizer_1_auto_negative_price_enabled", "name": "Free / negative price"},
+            {"entity": "switch.load_optimizer_1_auto_mode_enabled", "name": "Schedule after loading (door rule)"},
+            {"entity": "switch.load_optimizer_1_auto_negative_price_enabled", "name": "Profitable extra runs"},
         ]}
     manual = {"type": "entities", "title": "Manual programme", "show_header_toggle": False,
         "entities": [{"entity": "select.load_optimizer_1_override_program", "name": "Programme"}]}
@@ -149,16 +129,27 @@ def build():
         return {"type": "button", "name": name, "icon": f"mdi:{icon}", "show_state": False,
                 "tap_action": {"action": "perform-action", "perform_action": "button.press",
                     "target": {"entity_id": entity}, "confirmation": {"text": message}}}
+    window = {"type": "entities", "title": "Overnight window", "show_header_toggle": False,
+        "entities": [
+            {"entity": "time.load_optimizer_1_overnight_start", "name": "Overnight start"},
+            {"entity": "time.load_optimizer_1_overnight_end", "name": "Dishes ready by"},
+            {"entity": "number.load_optimizer_1_door_open_minimum_minutes", "name": "Loading door-open minimum"},
+        ]}
+    window_help = deepcopy(next(card for card in walk(full) if card.get("title") == "Window settings"))
     dishwasher = view("Dishwasher", "dishwasher", "dishwasher",
-        section(deepcopy(next_wash), schedule, controls),
+        section(deepcopy(next_wash), schedule,
+            command("Schedule one wash", "button.load_optimizer_1_request_overnight",
+                "Authorise one wash inside the overnight window? The optimiser chooses the programme and start time.", "calendar-plus"),
+            command("Start now", "button.load_optimizer_1_request_now",
+                "Start a wash now using the optimiser's selected programme?", "play-circle"),
+            command("Cancel pending schedule", "button.load_optimizer_1_cancel_schedule",
+                "Cancel the pending request and permission? An active wash will continue.", "calendar-remove")),
+        section(window, window_help, controls, recommendation,
+            deepcopy(next(card for card in walk(full) if card.get("title") == "Cycle costs"))),
         section(entities("Appliance", 1, [("cycle_state", "Cycle"), ("power", "Power"),
             ("data_freshness", "Source freshness"), ("remote_activation_check", "Remote start")]),
-            recommendation),
-        section(manual,
-            command("Start selected programme", "button.load_optimizer_1_request_now_override",
-                "Start the selected dishwasher programme now?", "play-circle-outline"),
-            command("Cancel queued wash", "button.load_optimizer_1_cancel_schedule",
-                "Cancel the queued dishwasher request? This does not stop a running wash.", "calendar-remove")),
+            manual, command("Start selected programme", "button.load_optimizer_1_request_now_override",
+                "Start the selected dishwasher programme now?", "play-circle-outline")),
         section(forecast, span=3))
 
     learned = deepcopy(next(card for card in walk(learning) if card.get("title") == "Learned Programs"))
@@ -178,10 +169,10 @@ def build():
     events = markdown("Recent decisions", """
         {% set records = state_attr('sensor.load_optimizer_1_automation_explanation', 'recent_events') or [] %}
         {% if records %}
-        | Home time | Event | Programme / reason |
+        | Home time | What happened | Programme |
         |---|---|---|
         {% for event in records[:12] -%}
-        | {{ (as_datetime(event.timestamp) | as_local).strftime('%d %b %H:%M %Z') if as_datetime(event.timestamp, none) else 'Not recorded' }} | {{ event.event | default('decision') }} | {{ event.program | default(event.reason | default('')) | replace('_', ' ') }} |
+        | {{ (as_datetime(event.timestamp) | as_local).strftime('%d %b %H:%M %Z') if as_datetime(event.timestamp, none) else 'Not recorded' }} | {{ (event.description | default('A scheduling record was saved.', true)) | replace('|', '/') | replace('\\n', ' ') }} | {{ (event.program | default('Not selected', true)) | replace('|', '/') | replace('\\n', ' ') }} |
         {% endfor -%}
         {% else %}
         No scheduling events recorded.
@@ -189,6 +180,12 @@ def build():
     """)
     native = markdown("Execution record", """
         {% set native = 'sensor.load_optimizer_1_orchestration_status' %}
+        {% set snapshot = state_attr(native, 'last_start_decision_snapshot') %}
+        {% set request = snapshot.get('request') if snapshot is mapping else none %}
+        {% set quote = request.get('recommendation_quote') if request is mapping else none %}
+        {% set alternatives = request.get('recommendation_alternatives') if request is mapping else none %}
+        {% set tariff = quote.get('tariff_evidence') if quote is mapping else none %}
+        {% set benefit = quote.get('estimated_net_benefit_pence') if quote is mapping else none %}
         {% macro home_time(value) -%}
         {{ (as_datetime(value) | as_local).strftime('%a %d %b %H:%M %Z') if as_datetime(value, none) else 'Not recorded' }}
         {%- endmacro %}
@@ -196,9 +193,49 @@ def build():
         |---|---|
         | Scheduler | {{ states(native) }} |
         | Last start attempt | {{ home_time(state_attr(native, 'last_attempt')) }} |
-        | Programme | {{ state_attr(native, 'last_program') or 'Not recorded' }} |
-        | Result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
+        | Attempted programme | {{ (request.program | default('Not recorded', true)) | replace('|', '/') | replace('\\n', ' ') if request is mapping else 'Not recorded' }} |
+        | Recommendation estimate | {{ 'Under 0.01 p net benefit' if benefit is number and 0 < benefit < 0.005 else (('%.2f p' | format(quote.estimated_cost_pence)) if quote is mapping and quote.estimated_cost_pence is number else 'Not recorded') }} |
+        {% if quote is mapping and quote.estimated_cost_pence is number -%}
+        | Estimate window | {{ home_time(quote.start) }} to {{ home_time(quote.finish) }} |
+        {% set selection = quote.get('overnight_selection_reason') -%}
+        {% if selection == 'best_overnight' -%}
+        | Why this estimate was selected | Lowest estimated total cost among eligible plans that finish within the overnight window. |
+        {% elif selection == 'cheapest_start_in_window_late_finish' -%}
+        | Why this estimate was selected | No eligible plan finished within the window. This was the lowest-cost eligible start, with a later finish. |
+        {% endif -%}
+        {% endif -%}
+        {% if benefit is number and benefit > 0 -%}
+        | Estimated net benefit of extra wash | {{ 'Under 0.0001 p' if benefit < 0.0001 else '%.4f p' | format(benefit) }} |
+        {% endif -%}
+        | Last recorded result | {{ state_attr(native, 'last_result') or 'Not recorded' }} |
+        | Result programme | {{ (state_attr(native, 'last_program') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |
         | Detail | {{ (state_attr(native, 'last_message') or 'Not recorded') | replace('|', '/') | replace('\\n', ' ') }} |
+        {% if tariff is mapping and tariff.periods is sequence and tariff.period_count is number and tariff.energy_cost_pence is number and tariff.non_energy_cost_pence is number %}
+
+        **Rates used in this estimate**
+
+        Estimated electricity: {{ '%.4f p' | format(tariff.energy_cost_pence) }}. Configured non-electricity costs: {{ '%.4f p' | format(tariff.non_energy_cost_pence) }}.
+        {% set sources = {'contracted': 'Contracted rate', 'free_electricity_calendar': 'Free electricity calendar', 'manual_special_price_window': 'Manual price override'} -%}
+        {% if tariff.period_count > tariff.periods | count %}
+        Showing the first {{ tariff.periods | count }} of {{ tariff.period_count }} priced periods. The estimate includes all periods.
+        {% endif %}
+
+        | Estimate window | Rate | Source | Estimated energy |
+        |---|---|---|---|
+        {% for row in tariff.periods[:8] if row is mapping and row.price_p_per_kwh is number and row.energy_kwh is number -%}
+        | {{ home_time(row.start) }} to {{ home_time(row.end) }} | {{ '%.4f p/kWh' | format(row.price_p_per_kwh) }} | {{ sources.get(row.rate_source, 'Unknown source') }} | {{ '%.4f kWh' | format(row.energy_kwh) }} |
+        {% endfor -%}
+        {% endif %}
+        {% if alternatives is sequence and alternatives is not string and alternatives is not mapping and alternatives %}
+
+        **Other programme estimates for this request**
+
+        | Programme | Estimated cost | Estimate window |
+        |---|---|---|
+        {% for option in alternatives[:3] if option is mapping and option.estimated_cost_pence is number -%}
+        | {{ option.program | replace('|', '/') | replace('\\n', ' ') }} | {{ '%.2f p' | format(option.estimated_cost_pence) }} | {{ home_time(option.start) }} to {{ home_time(option.finish) }} |
+        {% endfor -%}
+        {% endif %}
     """)
     capabilities["grid_options"] = {"columns": "full"}
     diagnostics = view("Diagnostics", "diagnostics", "stethoscope",

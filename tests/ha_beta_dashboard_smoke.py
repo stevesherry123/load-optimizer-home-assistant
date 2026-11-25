@@ -20,10 +20,18 @@ async def main():
     dashboard = build()
     assert [view["path"] for view in dashboard["views"]] == ["overview", "dishwasher", "learning", "diagnostics"]
     actions = [node for node in walk(dashboard) if node.get("action") == "perform-action"]
-    assert len(actions) == 2 and all(node.get("confirmation") for node in actions)
+    assert len(actions) == 4 and all(node.get("confirmation") for node in actions)
     assert dashboard["views"][-1]["sections"][-1]["cards"][-1]["title"] == "Automation Capabilities"
+    assert {action["target"]["entity_id"] for action in actions} == {
+        "button.load_optimizer_1_request_overnight", "button.load_optimizer_1_request_now",
+        "button.load_optimizer_1_cancel_schedule", "button.load_optimizer_1_request_now_override"}
+    entity_ids = {node.get("entity") for node in walk(dashboard)}
+    assert {"time.load_optimizer_1_overnight_start", "time.load_optimizer_1_overnight_end",
+            "number.load_optimizer_1_door_open_minimum_minutes"} <= entity_ids
+
     with TemporaryDirectory() as directory:
         hass = HomeAssistant(directory)
+        hass.config.skip_pip = True
         dt_util.set_default_time_zone(await dt_util.async_get_time_zone("Europe/London"))
         try:
             templates = [card for card in walk(dashboard) if card.get("type") == "markdown"]
@@ -40,17 +48,126 @@ async def main():
                 for card in templates:
                     rendered = Template(card["content"], hass).async_render(parse_result=False)
                     assert isinstance(rendered, str), card["title"]
+                    if card["title"] == "Scheduling" and populated:
+                        assert "Readiness checks are pending" in rendered and "No outstanding" not in rendered
                     if card["title"] == "Next wash":
                         assert ("No wash queued" if populated else "Scheduling status unavailable") in rendered
-                    if card["title"] == "Execution record" and populated:
-                        assert "Quick45" in rendered and "completed" in rendered and "04:00 GMT" in rendered
-                        assert "| Last start attempt |" in rendered
-                        assert rendered.startswith("| Record | Value |\n|---|---|"), rendered
+                    if card["title"] == "Execution record":
+                        assert "| Recommendation estimate | Not recorded |" in rendered
+                        assert "Estimate window" not in rendered
+                        assert "Rates used in this estimate" not in rendered
+                        assert "Other programme estimates" not in rendered
+                        if populated:
+                            assert "Quick45" in rendered and "completed" in rendered and "04:00 GMT" in rendered
+                            assert rendered.startswith("| Record | Value |\n|---|---|"), rendered
+            execution = next(card for card in templates if card["title"] == "Execution record")
+            for price, reason, rationale in (
+                (-0.5, None, None),
+                (0, "best_overnight", "Lowest estimated total cost among eligible plans"),
+                (12.25, "cheapest_start_in_window_late_finish", "No eligible plan finished within the window"),
+                (12.25, "unknown_reason", None),
+            ):
+                hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "confirmed", {
+                    "last_attempt": "2026-10-27T04:03:00Z",
+                    "last_program": "Older | program",
+                    "last_start_decision_snapshot": {"request": {"program": "Quick45", "recommendation_quote": {
+                        "program": "Quick45", "estimated_cost_pence": price,
+                        "start": "2026-10-27T04:00:00Z", "finish": "2026-10-27T04:30:00Z",
+                        **({"overnight_selection_reason": reason} if reason else {}),
+                    }, "recommendation_alternatives": [{
+                        "program": "Eco50", "estimated_cost_pence": 0,
+                        "start": "2026-10-27T04:10:00Z", "finish": "2026-10-27T08:30:00Z",
+                    }]}}})
+                rendered = Template(execution["content"], hass).async_render(parse_result=False)
+                assert f"| Recommendation estimate | {price:.2f} p |" in rendered
+                assert "| Estimate window | Tue 27 Oct 04:00 GMT to Tue 27 Oct 04:30 GMT |\n" in rendered, rendered
+                if rationale:
+                    assert f"| Why this estimate was selected | {rationale}" in rendered, rendered
+                else:
+                    assert "Why this estimate was selected" not in rendered, rendered
+                assert "| Last start attempt | Tue 27 Oct 04:03 GMT |" in rendered
+                assert "| Attempted programme | Quick45 |" in rendered
+                assert "| Result programme | Older / program |" in rendered
+                assert "| Eco50 | 0.00 p | Tue 27 Oct 04:10 GMT to Tue 27 Oct 08:30 GMT |" in rendered
+            tariff_periods = [
+                {"start": "2026-10-27T04:00:00Z", "end": "2026-10-27T04:10:00Z",
+                 "price_p_per_kwh": 0, "energy_kwh": 0.1, "rate_source": "free_electricity_calendar"},
+                {"start": "2026-10-27T04:10:00Z", "end": "2026-10-27T04:20:00Z",
+                 "price_p_per_kwh": -5, "energy_kwh": 0.2, "rate_source": "manual_special_price_window"},
+            ]
+            hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "completed", {
+                "last_start_decision_snapshot": {"request": {"program": "Quick45", "recommendation_quote": {
+                    "program": "Quick45", "estimated_cost_pence": 3,
+                    "start": "2026-10-27T04:00:00Z", "finish": "2026-10-27T05:30:00Z",
+                    "tariff_evidence": {"period_count": 9, "energy_cost_pence": -1,
+                                        "non_energy_cost_pence": 4, "periods": tariff_periods * 4},
+                }}}})
+            rendered = Template(execution["content"], hass).async_render(parse_result=False)
+            assert "Rates used in this estimate" in rendered
+            assert "Estimated electricity: -1.0000 p. Configured non-electricity costs: 4.0000 p." in rendered
+            assert "Showing the first 8 of 9 priced periods. The estimate includes all periods." in rendered
+            assert "| 0.0000 p/kWh | Free electricity calendar | 0.1000 kWh |" in rendered
+            assert "| -5.0000 p/kWh | Manual price override | 0.2000 kWh |" in rendered
+            for benefit, cost, expected in (
+                (0.000001, 0, "Under 0.0001 p"), (2.125, -2.125, "2.1250 p"),
+            ):
+                hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "completed", {
+                    "last_start_decision_snapshot": {"request": {"program": "Quick45", "recommendation_quote": {
+                        "program": "Quick45", "estimated_cost_pence": cost,
+                        "start": "2026-10-27T04:00:00Z", "finish": "2026-10-27T04:30:00Z",
+                        "estimated_net_benefit_pence": benefit,
+                    }}}})
+                rendered = Template(execution["content"], hass).async_render(parse_result=False)
+                assert f"| Estimated net benefit of extra wash | {expected} |" in rendered
+                if cost == 0:
+                    assert "| Recommendation estimate | Under 0.01 p net benefit |" in rendered
             hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "queued", {"request": {
                 "program": "MixedLoad", "start": "2026-10-28T22:00:00Z", "finish": "2026-10-29T00:00:00Z", "cost_pence": 40}})
             card = next(card for card in templates if card["title"] == "Next wash")
             rendered = Template(card["content"], hass).async_render(parse_result=False)
             assert "MixedLoad queued" in rendered and "GBP 0.40" in rendered and "GMT" in rendered
+            # Every phase renders distinctly, even when an old plan is retained
+            # during a price outage. The two dashboards share this exact card.
+            full = yaml.safe_load((ROOT / "homeassistant/dashboards/full/load_optimizer_dashboard.yaml").read_text())
+            assert next(card for card in walk(full) if card.get("title") == "Next wash")["content"].strip() == card["content"].strip()
+            pending = {"normal_wash": True, "program": "MixedLoad", "start": "2026-10-28T22:00:00Z",
+                       "finish": "2026-10-29T08:30:00Z", "late_finish": True,
+                       "window_start": "2026-10-28T21:00:00Z", "window_end": "2026-10-29T07:00:00Z"}
+            for phase, expected in (("awaiting_plan", "One wash authorised; waiting for a plan"),
+                                    ("queued", "MixedLoad queued"), ("commanding", "Running has not been confirmed")):
+                hass.states.async_set("sensor.load_optimizer_1_orchestration_status", phase, {"request": pending})
+                hass.states.async_set("sensor.load_optimizer_1_automation_explanation", "waiting", {
+                    "request_state": phase, "summary": "Waiting for complete prices.", "running_confirmed": False})
+                rendered = Template(card["content"], hass).async_render(parse_result=False)
+                assert expected in rendered and "authorised start window" in rendered.lower(), rendered
+                assert "GMT" in rendered and "One normal wash is authorised" in rendered
+                if phase == "awaiting_plan":
+                    assert "MixedLoad queued" not in rendered and "No start is queued" in rendered
+                if phase == "queued":
+                    assert "Later finish" in rendered and "finishes afterwards" in rendered
+            hass.states.async_set("sensor.load_optimizer_1_automation_explanation", "running", {
+                "running_confirmed": True, "summary": "The dishwasher has confirmed it is washing."})
+            rendered = Template(card["content"], hass).async_render(parse_result=False)
+            assert "Dishwasher is washing" in rendered and "MixedLoad queued" not in rendered
+            hass.states.async_set("sensor.load_optimizer_1_orchestration_status", "cancelled", {"request": None})
+            hass.states.async_set("sensor.load_optimizer_1_automation_explanation", "cancelled", {
+                "running_confirmed": False, "summary": "Pending request cancelled. An active wash is not stopped."})
+            rendered = Template(card["content"], hass).async_render(parse_result=False)
+            assert "No wash queued" in rendered and "cancelled" in rendered
+            hass.states.async_set("sensor.load_optimizer_1_automation_explanation", "waiting", {
+                "blocker_messages": ["Close the dishwasher door before a wash can start."],
+                "warning_messages": ["A request is already pending."], "blockers": ["door_open"]})
+            schedule = next(item for item in templates if item["title"] == "Scheduling")
+            rendered = Template(schedule["content"], hass).async_render(parse_result=False)
+            assert "Close the dishwasher door" in rendered and "door_open" not in rendered
+            economics = next(card for card in templates if card["title"] == "Cycle costs")
+            hass.states.async_set("sensor.load_optimizer_1_negative_price_recommendation", "Quick45", {
+                "status": "ready", "program": "Quick45", "net_benefit_pence": 0.000001,
+                "operating_cost_breakdown": {"energy_cost_pence": -0.000001, "total_cost_pence": -0.000001},
+                "unconfigured_costs": ["consumables_cost_pence", "wear_cost_pence"]})
+            rendered = Template(economics["content"], hass).async_render(parse_result=False)
+            assert "less than 0.01" in rendered and "consumables, wear" in rendered
+            assert "treated as zero" in rendered
             print(f"{len(templates)} beta Markdown cards passed missing/live-state fixtures; queue, UK time and confirmed actions passed")
         finally:
             await hass.async_stop()

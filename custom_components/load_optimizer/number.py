@@ -6,6 +6,7 @@ from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity import EntityCategory
 
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE
 from .coordinator import LoadOptimizerCoordinator
@@ -16,7 +17,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     if entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
         return
     coordinator: LoadOptimizerCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([NativeSpecialPrice(coordinator)])
+    async_add_entities([NativeSpecialPrice(coordinator), NativeDoorOpenMinimum(coordinator)])
+
+
+class NativeDoorOpenMinimum(OrchestrationEntity, NumberEntity):
+    """Minimum observed door opening before authorising a normal wash."""
+
+    _attr_icon = "mdi:door-open"
+    _attr_native_min_value = 0.5
+    _attr_native_max_value = 60
+    _attr_native_step = 0.5
+    _attr_native_unit_of_measurement = "min"
+    _attr_mode = NumberMode.BOX
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator) -> None:
+        OrchestrationEntity.__init__(self, coordinator, "number", "door_open_minimum_minutes", "Door Open Minimum")
+
+    @property
+    def native_value(self) -> float:
+        return self.orchestrator.door_open_minimum_minutes
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.orchestrator.async_set("door_open_minimum_minutes", value)
 
 
 class NativeSpecialPrice(OrchestrationEntity, NumberEntity):

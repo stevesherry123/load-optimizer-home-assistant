@@ -356,18 +356,16 @@ class VersionTests(unittest.TestCase):
         self.assertIn("OBSOLETE_CONTROL_ENTITY", integration)
         self.assertIn("entity_registry.async_remove", integration)
 
-    def test_retired_greener_nights_calendar_is_ignored(self):
+    def test_retired_calendars_are_migrated_once_not_translated_each_scan(self):
         root = Path(__file__).resolve().parents[1]
         source = (
             root / "custom_components/load_optimizer/legacy_runtime.py"
         ).read_text()
 
-        self.assertIn('RETIRED_GREEN_WINDOW_SUFFIX = "_greener_nights"', source)
-        self.assertIn('config[CONF_GREEN_WINDOW_ENTITY] = ""', source)
-        self.assertIn('POWER_DOWN_SUFFIX = "_octoplus_power_down"', source)
-        self.assertIn("self.hass.states.get(power_down)", source)
-        self.assertIn("for config in configs:", source)
-        self.assertIn("self._normalise_calendar_entities(config)", source)
+        self.assertNotIn("_normalise_calendar_entities", source)
+        setup = (root / "custom_components/load_optimizer/__init__.py").read_text()
+        self.assertIn("async_add_executor_job(clean_calendar_settings, dict(entry.data))", setup)
+        self.assertIn("async_update_entry(entry, data=data, options=options)", setup)
 
     def test_retired_orchestration_packages_are_not_distributed(self):
         root = Path(__file__).resolve().parents[1]
@@ -583,6 +581,32 @@ class CurrentTariffPeriodTests(unittest.TestCase):
 class PublishingTests(unittest.TestCase):
     def tearDown(self):
         PUBLISHED_ENTITY_CACHE.clear()
+
+    @patch("legacy.app_runtime.api_request")
+    def test_only_ready_automatic_intents_publish_tariff_evidence(self, api_request):
+        api_request.return_value = {"state": "ready"}
+        start = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+        finish = start + timedelta(minutes=30)
+        evidence = {"energy_cost_pence": 3, "non_energy_cost_pence": 2,
+                    "period_count": 1, "periods": []}
+        quote = {"status": "ready", "program": "Eco", "cost_pence": 5,
+                 "start": start.isoformat(), "finish": finish.isoformat(), "tariff_evidence": evidence}
+        result = {"status": "ready", "program": "Eco", "start": start, "finish": finish,
+                  "overnight_recommendation": quote, "negative_price_recommendation": quote,
+                  "now_recommendation": quote}
+        for cycle_running, blocked in ((False, False), (True, False), (False, True)):
+            with self.subTest(cycle_running=cycle_running, blocked=blocked):
+                api_request.reset_mock()
+                PUBLISHED_ENTITY_CACHE.clear()
+                publish_cost_entities("token", "sensor.load_optimizer_1", "Test",
+                                      {**result, "blocked_window_source_ready": not blocked},
+                                      cycle_running=cycle_running, reference_utc=start)
+                attrs = {call.args[1]: call.args[2]["attributes"] for call in api_request.call_args_list}
+                for intent in ("overnight", "negative_price"):
+                    recommendation = attrs[f"/states/sensor.load_optimizer_1_{intent}_recommendation"]
+                    self.assertEqual(recommendation.get("tariff_evidence"),
+                                     None if cycle_running or blocked else evidence)
+                self.assertNotIn("tariff_evidence", attrs["/states/sensor.load_optimizer_1_now_recommendation"])
 
     @patch("legacy.app_runtime.api_request")
     def test_tariff_horizon_uses_calendar_days_across_dst(self, api_request):
