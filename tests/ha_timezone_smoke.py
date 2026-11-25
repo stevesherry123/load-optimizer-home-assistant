@@ -30,7 +30,7 @@ async def main():
         seen = []
         factory = Mock(side_effect=lambda hass, entry, *, local_timezone: (
             seen.append(local_timezone) or SimpleNamespace(async_config_entry_first_refresh=AsyncMock(),
-                orchestrator=None, ev_controller=None, legacy_runtime=None,
+                orchestrator=None, ev_controller=None, ev_adapter=None, legacy_runtime=None,
                 tariff_intelligence=SimpleNamespace(entity_ids=[]))))
         original = aiozoneinfo.get_time_zone
         threads = []

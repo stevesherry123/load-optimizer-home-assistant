@@ -43,6 +43,10 @@ from .const import (
     CONF_GREEN_WINDOW_ENTITY,
     CONF_INSTANCES_YAML,
     CONF_CONNECTION_STATUS_ENTITY,
+    CONF_EV_CHARGER_SWITCH,
+    CONF_EV_POWER_ENTITY,
+    CONF_EV_STATUS_ENTITY,
+    CONF_EV_CONFIRMATION_SECONDS,
     CONF_LOAD_TYPE,
     CONF_PUBLISH_COST_FORECAST,
     CONF_PUBLISH_DIAGNOSTICS,
@@ -207,6 +211,9 @@ def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
         (CONF_BATTERY_CAPACITY_ENTITY, True, "sensor"),
         (CONF_TARGET_PERCENT_ENTITY, False, "sensor"),
         (CONF_CONNECTION_STATUS_ENTITY, False, ["sensor", "binary_sensor"]),
+        (CONF_EV_CHARGER_SWITCH, False, "switch"),
+        (CONF_EV_POWER_ENTITY, False, "sensor"),
+        (CONF_EV_STATUS_ENTITY, False, "sensor"),
     ):
         value = existing.get(key)
         kwargs = {}
@@ -227,6 +234,10 @@ def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
     )
     schema.update(
         {
+            vol.Optional(CONF_TARIFF_ENTITIES, description={"suggested_value": existing.get(CONF_TARIFF_ENTITIES, [])}):
+                selector.EntitySelector(selector.EntitySelectorConfig(multiple=True)),
+            vol.Optional(CONF_EV_CONFIRMATION_SECONDS, default=existing.get(CONF_EV_CONFIRMATION_SECONDS, 180)):
+                vol.All(vol.Coerce(float), vol.Range(min=30, max=600)),
             vol.Optional(
                 CONF_TARIFF_TIMEZONE,
                 default=existing.get(CONF_TARIFF_TIMEZONE, DEFAULT_TARIFF_TIMEZONE),
@@ -273,6 +284,18 @@ def _ev_schema(existing: dict[str, Any] | None = None) -> dict[Any, Any]:
 def _ev_input_errors(values: dict[str, Any]) -> dict[str, str]:
     """Validate values that cannot be expressed in HA's serializable form schema."""
     errors = {}
+    control_fields = (CONF_EV_CHARGER_SWITCH, CONF_EV_POWER_ENTITY, CONF_CONNECTION_STATUS_ENTITY)
+    if values.get(CONF_EV_CHARGER_SWITCH) or values.get(CONF_EV_POWER_ENTITY):
+        for field in control_fields:
+            if not values.get(field):
+                errors[field] = "required_for_charger_control"
+    if CONF_EV_CONFIRMATION_SECONDS in values:
+        try:
+            timeout = float(values[CONF_EV_CONFIRMATION_SECONDS])
+            if isinstance(values[CONF_EV_CONFIRMATION_SECONDS], bool) or not timeout.is_integer() or not 30 <= timeout <= 600:
+                raise ValueError
+        except (ValueError, TypeError, OverflowError):
+            errors[CONF_EV_CONFIRMATION_SECONDS] = "invalid_number"
     mode = values.get(CONF_CHARGING_MODE, DEFAULT_CHARGING_MODE)
     if not isinstance(mode, str) or mode not in EV_CHARGING_MODES:
         errors[CONF_CHARGING_MODE] = "invalid_charging_mode"
@@ -487,8 +510,10 @@ class LoadOptimizerOptionsFlow(_ApplianceValidationFlow, config_entries.OptionsF
             updates = dict(user_input)
             if CONF_SLOT_MINUTES in updates:
                 updates[CONF_SLOT_MINUTES] = int(updates[CONF_SLOT_MINUTES])
-            for field in (CONF_TARGET_PERCENT_ENTITY, CONF_CONNECTION_STATUS_ENTITY, CONF_READY_BY):
+            for field in (CONF_TARGET_PERCENT_ENTITY, CONF_CONNECTION_STATUS_ENTITY, CONF_READY_BY,
+                          CONF_EV_CHARGER_SWITCH, CONF_EV_POWER_ENTITY, CONF_EV_STATUS_ENTITY):
                 updates.setdefault(field, "")
+            updates.setdefault(CONF_TARIFF_ENTITIES, [])
             return self._save_section(updates)
         return self.async_show_form(
             step_id="ev",

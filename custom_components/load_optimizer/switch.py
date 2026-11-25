@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import CONF_LOAD_TYPE, DOMAIN, LOAD_TYPE_LEARNED_APPLIANCE
 from .coordinator import LoadOptimizerCoordinator
 from .orchestration_entity import OrchestrationEntity
+from .entity import LoadOptimizerEntity
 
 SWITCHES = (
     ("auto_mode_enabled", "Schedule After Loading", "mdi:robot"),
@@ -31,13 +32,34 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    if entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
-        return
     coordinator: LoadOptimizerCoordinator = hass.data[DOMAIN][entry.entry_id]
+    if entry.data.get(CONF_LOAD_TYPE) != LOAD_TYPE_LEARNED_APPLIANCE:
+        if coordinator.ev_adapter:
+            async_add_entities([EVControlPermissionSwitch(coordinator)])
+        return
     async_add_entities(
         NativeOrchestrationSwitch(coordinator, key, name, icon)
         for key, name, icon in SWITCHES
     )
+
+
+class EVControlPermissionSwitch(LoadOptimizerEntity, SwitchEntity):
+    """Explicit session permission, always off after setup or reload."""
+
+    _attr_icon = "mdi:ev-station"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator, "ev_control_enabled", "Automatic Charging")
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.ev_control_enabled
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self.coordinator.async_set_ev_control(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self.coordinator.async_set_ev_control(False)
 
 
 class NativeOrchestrationSwitch(OrchestrationEntity, SwitchEntity):

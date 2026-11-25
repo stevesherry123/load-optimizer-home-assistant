@@ -94,6 +94,11 @@ and [supported repository WebSocket controls](https://github.com/home-assistant/
 
 ## Development Branches
 
+Before promoting the current implementation milestones, complete the
+[release readiness record](release-readiness.md), including a clean source
+revision, generated validation evidence and the outstanding physical/onboarding
+checks. The record does not itself publish a release or grant control permission.
+
 `main` may contain unreleased work. Feature and experimental branches have their
 own acceptance gates; their names are not release metadata or a promise of safe
 side-by-side installation. Use published tags and release notes to identify the

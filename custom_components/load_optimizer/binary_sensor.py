@@ -66,5 +66,5 @@ class LoadOptimizerBinarySensor(LoadOptimizerEntity, BinarySensorEntity):
             "charging_mode": plan.get("charging_mode", "required"),
             "target_reachable": plan.get("target_reachable", False),
             "shortfall_battery_kwh": plan.get("shortfall_battery_kwh"),
-            "advisory_only": True,
+            "advisory_only": not self.coordinator.data.get("control", {}).get("enabled", False),
         }
