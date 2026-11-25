@@ -121,3 +121,20 @@ result, relevant state/reason and reproduction steps. Download diagnostics from
 the integration/device page, review the contents and share only redacted data.
 Use [private reporting](../SECURITY.md) for suspected security problems. Never
 attach tokens, full configuration, private backups or unreviewed screenshots.
+
+## Overnight coverage evidence (1.8.1)
+
+The overnight recommendation reports its required start/end and `covered_until`.
+A failed coverage check may also report `coverage_issue`: `gap` (with
+`next_priced_start`), `overlap`, `invalid_interval`, or
+`rates_end_before_required_finish`. A short search horizon keeps its distinct
+`overnight_search_horizon_incomplete` reason; increasing rates alone cannot fix
+a search that does not reach the authorised window.
+
+When a saved request first notifies a scheduling wait, its event preserves only
+these timestamps, booleans and known reason codes. Later scans cannot overwrite
+that record with a moving cursor. Supplier metadata and raw source payloads are
+not copied. Existing notification deduplication and all start safety checks remain.
+Old events without this evidence remain readable; they cannot prove the exact
+source gap retrospectively. Use the record from a recurrence alongside provider
+startup and rate history before assigning a root cause.

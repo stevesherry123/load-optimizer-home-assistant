@@ -459,6 +459,26 @@ class OrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(call.args[0] == "persistent_notification"
                             for call in self.hass.services.async_call.await_args_list))
 
+    async def test_wait_record_keeps_bounded_detached_coverage_evidence(self):
+        coverage = {"complete": False, "search_complete": True,
+                    "reason": "overnight_tariff_coverage_incomplete", "coverage_issue": "gap",
+                    "required_end": "2026-10-09T09:00:00+00:00",
+                    "covered_until": "2026-10-09T03:00:00+00:00",
+                    "next_priced_start": "2026-10-09T03:30:00+00:00",
+                    "private_provider_data": "private-fixture"}
+        self.put("sensor.load_optimizer_1_overnight_recommendation", "not_ready",
+                 status="not_ready", overnight_planning_coverage=coverage)
+        request = {}
+        await self.scheduler._async_normal_attention(request, "overnight_tariff_coverage_incomplete", "Prices missing")
+        event = deepcopy(self.scheduler.state["schedule_events"][0])
+        coverage["covered_until"] = "2026-10-09T08:00:00+00:00"
+        self.assertEqual(event["planning_coverage"]["covered_until"], "2026-10-09T03:00:00+00:00")
+        self.assertNotIn("private-fixture", str(event))
+        await self.scheduler._async_normal_attention(request, "overnight_tariff_coverage_incomplete", "Prices missing")
+        self.assertEqual(len(self.scheduler.state["schedule_events"]), 1)
+        self.assertTrue(all(call.args[0] == "persistent_notification"
+                            for call in self.hass.services.async_call.await_args_list))
+
     async def test_constraint_failure_before_commands_retains_original_permission(self):
         self.scheduler.state["auto_mode_enabled"] = False
         await self.scheduler.async_request("overnight")

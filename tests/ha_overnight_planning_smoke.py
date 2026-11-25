@@ -106,6 +106,14 @@ async def main():
                 assert controller.state["execution_status"] == "awaiting_plan"
                 assert controller.automation_explanation["reason_code"] == "overnight_tariff_coverage_incomplete"
                 assert "recommendation_quote" not in controller.state["request"]
+                event = next(item for item in controller.state["schedule_events"]
+                             if item["event"] == "waiting")
+                evidence = event["planning_coverage"]
+                assert evidence["coverage_issue"] == "rates_end_before_required_finish"
+                assert evidence["covered_until"] == (start.replace(minute=0, second=0) + timedelta(hours=7)).isoformat()
+                committed = await controller._async_committed_start_state()
+                stored_event = next(item for item in committed["schedule_events"] if item["event"] == "waiting")
+                assert stored_event["planning_coverage"] == evidence
                 print("Real HA: partial prices retain wash permission, notify, and cannot start a wash")
 
                 Clock.current += timedelta(minutes=2)

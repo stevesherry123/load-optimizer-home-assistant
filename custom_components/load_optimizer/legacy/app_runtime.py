@@ -23,7 +23,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import TariffDataUnavailable, non_energy_cost_breakdown, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.8.0"
+APP_VERSION = "1.8.1"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -1024,13 +1024,22 @@ def overnight_planning_coverage(config: dict, summaries: list[dict], policies: l
     cursor = start
     previous_end = None
     for first, last, price in relevant:
-        if (not math.isfinite(price) or last <= first or first > cursor
-                or previous_end is not None and first < previous_end):
+        if not math.isfinite(price) or last <= first:
+            result.update(coverage_issue="invalid_interval", covered_until=min(cursor, end).isoformat())
+            return result
+        if first > cursor:
+            result.update(coverage_issue="gap", covered_until=cursor.isoformat(),
+                          next_priced_start=first.isoformat())
+            return result
+        if previous_end is not None and first < previous_end:
+            result.update(coverage_issue="overlap", covered_until=min(cursor, end).isoformat())
             return result
         cursor = max(cursor, last)
         previous_end = last
     result["covered_until"] = min(cursor, end).isoformat()
     result["complete"] = cursor >= end
+    if not result["complete"]:
+        result["coverage_issue"] = "rates_end_before_required_finish"
     result["reason"] = "overnight_tariff_coverage_complete" if result["complete"] else result["reason"]
     return result
 

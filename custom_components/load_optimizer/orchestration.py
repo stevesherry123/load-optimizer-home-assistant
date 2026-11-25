@@ -250,7 +250,26 @@ class NativeOrchestrator:
         if request.get("notified_reason") == reason:
             return
         request["notified_reason"] = reason
-        self._record_schedule_event("waiting", reason, message=message)
+        recommendation = self._recommendation("overnight")
+        coverage = recommendation.attributes.get("overnight_planning_coverage", {}) if recommendation else {}
+        evidence = {}
+        if isinstance(coverage, dict):
+            for key in ("window_start", "window_end", "required_start", "required_end",
+                        "covered_until", "next_priced_start"):
+                if value := self._parse_datetime(coverage.get(key)):
+                    evidence[key] = value.isoformat()
+            for key in ("complete", "search_complete"):
+                if type(coverage.get(key)) is bool:
+                    evidence[key] = coverage[key]
+            issue = coverage.get("coverage_issue")
+            if isinstance(issue, str) and issue in {"invalid_interval", "gap", "overlap", "rates_end_before_required_finish"}:
+                evidence["coverage_issue"] = issue
+            coverage_reason = coverage.get("reason")
+            if isinstance(coverage_reason, str) and coverage_reason in {"overnight_search_horizon_incomplete", "overnight_tariff_coverage_incomplete",
+                                   "overnight_tariff_coverage_complete"}:
+                evidence["reason"] = coverage_reason
+        self._record_schedule_event("waiting", reason, message=message,
+                                    planning_coverage=evidence)
         await self.hass.services.async_call("persistent_notification", "create", {
             "notification_id": "load_optimizer_1_schedule_attention",
             "title": "Dishwasher scheduling needs attention", "message": message,
