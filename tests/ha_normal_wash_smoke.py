@@ -43,6 +43,9 @@ async def main():
 
         async def command(registry, domain, service, data, **kwargs):
             calls.append((domain, service))
+            if (domain, service) == ("select", "select_option"):
+                hass.states.async_set(data["entity_id"], data["option"],
+                                      {"options": ["Dishcare.Dishwasher.Program.Eco50"]})
             if (domain, service) == ("button", "press"):
                 hass.states.async_set("sensor.synthetic_operation", "BSH.Common.EnumType.OperationState.Run")
 
