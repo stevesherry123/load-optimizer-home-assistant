@@ -138,3 +138,15 @@ not copied. Existing notification deduplication and all start safety checks rema
 Old events without this evidence remain readable; they cannot prove the exact
 source gap retrospectively. Use the record from a recurrence alongside provider
 startup and rate history before assigning a root cause.
+
+### Ofgem benchmark refresh failures
+
+From 1.9.0, a failed refresh exposes a bounded error_detail and next_retry_at.
+Retries start after 15 minutes and back off to at most six hours; the hold survives
+restart and concurrent refreshes share one request. The first failure and later
+recovery are logged. A still-applicable cached regional value is marked stale;
+an expired or differently configured value is never returned as current.
+The benchmark is separate from the actual tariff used for dishwasher scheduling.
+Current official table titles omit the comma before single rate; 1.9.0 accepts
+both forms without admitting multi-rate or gas tables. Do not work around this
+by entering a made-up reference or changing your electricity tariff.

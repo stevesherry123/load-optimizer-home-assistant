@@ -100,6 +100,23 @@ class OfgemPriceCapTests(unittest.TestCase):
             [],
         )
 
+    def test_current_official_title_without_comma_and_future_quarter(self):
+        payload = (Path(__file__).parent / "fixtures/ofgem-single-rate-20261126.json").read_text()
+        source = "var options = " + payload
+        for payment in ("direct_debit", "standard_credit", "prepayment"):
+            expected = ofgem.PAYMENT_TITLES[payment].replace(",", "")
+            options = json.loads(payload)
+            options["options"]["title"]["text"] = "Electricity standing charges and unit rates " + expected
+            result = ofgem.parse_everviz_references("var options = " + json.dumps(options),
+                region="North Western England", payment_method=payment)
+            self.assertEqual([r.effective_from for r in result], [date(2026, 10, 1), date(2027, 1, 1)])
+            self.assertEqual([r.unit_rate_p_per_kwh for r in result], [26.49, 32.85])
+        for title in ("Electricity standing charges and unit rates paid by Direct Debit multi-rate",
+                      "Gas standing charges and unit rates paid by Direct Debit single rate"):
+            options["options"]["title"]["text"] = title
+            self.assertEqual(ofgem.parse_everviz_references("var options = " + json.dumps(options),
+                region="North Western England", payment_method="direct_debit"), [])
+
     def test_rejects_missing_region(self):
         with self.assertRaisesRegex(ValueError, "no row for region"):
             ofgem.parse_everviz_references(

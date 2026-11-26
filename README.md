@@ -4,11 +4,14 @@ Plan appliance cycles and EV charging around your electricity tariff using
 existing Home Assistant entities. Learn when an appliance uses energy during a
 cycle, compare running costs, and find suitable low-cost or negative-price windows.
 
-Version **1.8.0** adds required/opportunistic EV advisory plans and a shareable
-compact dashboard. It retains the 1.7.0 dishwasher release, which delivers bounded overnight dishwasher scheduling, configured
-operating costs and clearer controls, with consistent deadline and start safety
-checks. Development is consolidated on **main**; published stable releases are
-the normal update channel. Automatic charger control remains separate work. See the [release record](docs/release-readiness.md).
+Version **1.9.0** uses recent completed cycles for duration, energy and power-profile
+predictions while preserving lifetime learning. It also repairs current Ofgem
+benchmark table matching and bounds failed refresh retries. It retains overnight
+dishwasher scheduling, configured operating costs, EV advisory plans and optional
+dashboard templates. Development is consolidated on **main**; published stable
+releases are the normal update channel. Automatic charger control remains
+separate work. See the [release record](docs/release-readiness.md) and
+[estimation guide](docs/estimation-replay.md) for evidence and limitations.
 
 ## Stable Features
 

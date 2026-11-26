@@ -13,7 +13,8 @@ class TimezoneSafetyTests(unittest.TestCase):
         method = next(n for n in ast.walk(tree) if isinstance(n,ast.AsyncFunctionDef) and n.name=="async_status")
         self.assertIn("local_timezone", [arg.arg for arg in method.args.kwonlyargs])
         self.assertNotIn("ZoneInfo", (ROOT / "price_cap.py").read_text())
-        conversions = [n for n in ast.walk(method) if isinstance(n,ast.Call)
+        locked = next(n for n in ast.walk(tree) if isinstance(n,ast.AsyncFunctionDef) and n.name=="_async_status_locked")
+        conversions = [n for n in ast.walk(locked) if isinstance(n,ast.Call)
                        and isinstance(n.func,ast.Attribute) and n.func.attr=="astimezone"
                        and n.args and isinstance(n.args[0],ast.Name) and n.args[0].id=="local_timezone"]
         self.assertEqual(len(conversions),2)

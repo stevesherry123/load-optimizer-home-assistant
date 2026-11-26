@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, time, timezone, tzinfo
+from datetime import datetime, timedelta, time, timezone, tzinfo
 import logging
 from urllib.parse import urljoin, urlsplit
 
@@ -31,6 +31,10 @@ REQUEST_HEADERS = {
 }
 
 
+class PriceCapSourceError(ValueError):
+    """A bounded public reason, without remote content or credentials."""
+
+
 class PriceCapManager:
     """Fetch and retain validated effective-dated Ofgem references."""
 
@@ -39,6 +43,7 @@ class PriceCapManager:
         self.store = Store(hass, STORE_VERSION, f"{DOMAIN}.price_cap.{entry.entry_id}")
         self.cache: dict = {}
         self.loaded = False
+        self._refresh_lock = asyncio.Lock()
 
     async def _async_load(self) -> None:
         if self.loaded:
@@ -73,19 +78,20 @@ class PriceCapManager:
         page = await self._async_fetch_text(session, OFGEM_PRICE_CAP_URL)
         urls = everviz_urls(page)
         if not urls:
-            raise ValueError("Ofgem page contains no price-cap tables")
+            raise PriceCapSourceError("no_embedded_tables")
         if len(urls) > MAX_TABLES:
-            raise ValueError("Ofgem page contains too many price-cap tables")
+            raise PriceCapSourceError("too_many_embedded_tables")
         for url in urls:
             source = await self._async_fetch_text(session, url)
-            references = parse_everviz_references(
-                source,
-                region=region,
-                payment_method=payment_method,
-            )
+            try:
+                references = parse_everviz_references(
+                    source, region=region, payment_method=payment_method,
+                )
+            except (ValueError, TypeError, KeyError, IndexError) as error:
+                raise PriceCapSourceError("invalid_table_data") from error
             if references:
                 return references
-        raise ValueError("Ofgem page contains no matching electricity table")
+        raise PriceCapSourceError("no_matching_electricity_table")
 
     @staticmethod
     async def _async_fetch_text(session, url: str) -> str:
@@ -121,7 +127,14 @@ class PriceCapManager:
         local_timezone: tzinfo,
         now_utc: datetime | None = None,
     ) -> dict:
-        """Return a current reference, refreshing the official source daily."""
+        """Serialize refreshes and reuse bounded failure retries across restarts."""
+        async with self._refresh_lock:
+            return await self._async_status_locked(
+                region=region, payment_method=payment_method,
+                local_timezone=local_timezone, now_utc=now_utc,
+            )
+
+    async def _async_status_locked(self, *, region, payment_method, local_timezone, now_utc):
         await self._async_load()
         if not region or not payment_method:
             return {"status": "not_configured", "source": "ofgem"}
@@ -144,25 +157,52 @@ class PriceCapManager:
             except ValueError:
                 pass
 
-        fetch_error = None
-        if not retrieved_today:
+        failure = self.cache.get("refresh_failure") or {}
+        if not isinstance(failure, dict) or (failure.get("region"), failure.get("payment_method")) != (region, payment_method):
+            failure = {}
+        try:
+            retry_at = datetime.fromisoformat(failure.get("next_retry_at", ""))
+            retry_pending = retry_at.utcoffset() is not None and now_utc < retry_at
+        except (ValueError, TypeError):
+            retry_pending = False
+        fetch_error = failure.get("error") if retry_pending else None
+        error_detail = failure.get("detail") if retry_pending else None
+        if not retrieved_today and not retry_pending:
             try:
                 async with asyncio.timeout(60):
                     references = await self._async_fetch(region, payment_method)
-                retrieved_at = now_utc.isoformat()
-                self.cache = {
+                refreshed = {
                     "region": region,
                     "payment_method": payment_method,
-                    "retrieved_at": retrieved_at,
+                    "retrieved_at": now_utc.isoformat(),
                     "source_url": OFGEM_PRICE_CAP_URL,
                     "references": [reference.as_dict() for reference in references],
                 }
-                await self.store.async_save(self.cache)
+                await self.store.async_save(refreshed)
+                self.cache = refreshed
+                retrieved_at = refreshed["retrieved_at"]
                 cache_matches = True
+                if failure:
+                    LOGGER.info("Ofgem price-cap reference refresh recovered")
+                failure = {}
             except Exception as error:  # Retain the last validated official value.
                 fetch_error = type(error).__name__
-                LOGGER.warning("Unable to refresh Ofgem price-cap reference (%s)", fetch_error)
+                error_detail = str(error) if isinstance(error, PriceCapSourceError) else "source_refresh_failed"
+                previous_count = failure.get("attempts", 0)
+                attempts = max(1, min(previous_count + 1, 6)) if type(previous_count) is int else 1
+                failure = {"region": region, "payment_method": payment_method,
+                           "error": fetch_error, "detail": error_detail, "attempts": attempts,
+                           "next_retry_at": (now_utc + timedelta(minutes=min(15 * 2 ** (attempts - 1), 360))).isoformat()}
+                self.cache["refresh_failure"] = failure
+                try:
+                    await self.store.async_save(self.cache)
+                except Exception:
+                    LOGGER.debug("Unable to persist Ofgem refresh retry; retained in memory")
+                if attempts == 1:
+                    LOGGER.warning("Unable to refresh Ofgem price-cap reference (%s: %s); retry deferred", fetch_error, error_detail)
 
+        refresh_status = {"error_detail": error_detail,
+                          "next_retry_at": failure.get("next_retry_at")}
         references = self._references(self.cache.get("references", [])) if cache_matches else []
         current = reference_for_date(references, local_date)
         if current is None:
@@ -172,6 +212,7 @@ class PriceCapManager:
                 "region": region,
                 "payment_method": payment_method,
                 "error": fetch_error,
+                **refresh_status,
             }
         public_references = []
         for reference in references:
@@ -199,5 +240,6 @@ class PriceCapManager:
             "retrieved_at": retrieved_at,
             "stale": fetch_error is not None,
             "error": fetch_error,
+            **refresh_status,
             "references": public_references,
         }

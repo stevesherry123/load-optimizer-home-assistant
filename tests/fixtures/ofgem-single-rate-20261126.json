@@ -1,0 +1,149 @@
+{
+  "data": {
+    "csv": "Category;A;B;C\n0;4;6;3\n1;3;2;4\n2;5;4;3\n3;6;4;1\n4;2;4;6\n5;3;2;4",
+    "seriesMapping": [
+      {
+        "x": 0,
+        "y": 1
+      },
+      {
+        "x": 0,
+        "y": 2
+      },
+      {
+        "x": 0,
+        "y": 3
+      }
+    ],
+    "itemDelimiter": "",
+    "matchingKey": null,
+    "dateFormat": "",
+    "value": [
+      [
+        "Region",
+        "Daily standing charge October to December 2026",
+        "Daily standing charge January to March 2027",
+        "Unit rate  October to December 2026",
+        "Unit rate January to March 2027"
+      ],
+      [
+        "North Western England",
+        "45.68 pence per day",
+        "45.62 pence per day",
+        "26.49 pence per kWh",
+        "32.85 pence per kWh"
+      ],
+      [
+        "North Eastern England",
+        "61.58 pence per day",
+        "61.51 pence per day",
+        "25.46 pence per kWh",
+        "31.69 pence per kWh"
+      ],
+      [
+        "Yorkshire",
+        "61.67 pence per day",
+        "61.59 pence per day",
+        "25.60 pence per kWh",
+        "32.11 pence per kWh"
+      ],
+      [
+        "Northern Scotland",
+        "55.14 pence per day",
+        "55.07 pence per day",
+        "26.35 pence per kWh",
+        "32.40 pence per kWh"
+      ],
+      [
+        "Southern England",
+        "47.81 pence per day",
+        "47.74 pence per day",
+        "26.47 pence per kWh",
+        "32.78 pence per kWh"
+      ],
+      [
+        "Southern Scotland",
+        "61.41 pence per day",
+        "61.33 pence per day",
+        "26.11 pence per kWh",
+        "32.57 pence per kWh"
+      ],
+      [
+        "Merseyside and Northern Wales",
+        "67.66 pence per day",
+        "67.59 pence per day",
+        "27.86 pence per kWh",
+        "34.44 pence per kWh"
+      ],
+      [
+        "London",
+        "42.92 pence per day",
+        "42.88 pence per day",
+        "26.60 pence per kWh",
+        "33.08 pence per kWh"
+      ],
+      [
+        "South Eastern England",
+        "52.32 pence per day",
+        "52.25 pence per day",
+        "26.88 pence per kWh",
+        "33.29 pence per kWh"
+      ],
+      [
+        "Eastern England",
+        "51.84 pence per day",
+        "51.76 pence per day",
+        "26.61 pence per kWh",
+        "33.05 pence per kWh"
+      ],
+      [
+        "East Midlands",
+        "51.45 pence per day",
+        "51.38 pence per day",
+        "25.36 pence per kWh",
+        "31.65 pence per kWh"
+      ],
+      [
+        "West Midlands",
+        "57.23 pence per day",
+        "57.16 pence per day",
+        "25.60 pence per kWh",
+        "32.00 pence per kWh"
+      ],
+      [
+        "South Western England",
+        "55.58 pence per day",
+        "55.51 pence per day",
+        "26.58 pence per kWh",
+        "32.86 pence per kWh"
+      ],
+      [
+        "Southern Wales",
+        "55.41 pence per day",
+        "55.35 pence per day",
+        "26.55 pence per kWh",
+        "32.92 pence per kWh"
+      ],
+      [
+        "Great Britain average",
+        "54.83 pence per day",
+        "54.77 pence per day",
+        "26.32 pence per kWh",
+        "32.69 pence per kWh"
+      ]
+    ]
+  },
+  "options": {
+    "title": {
+      "text": "<h3>Electricity standing charges and unit rates paid by Direct Debit single rate</h3>",
+      "align": "left",
+      "style": {
+        "fontSize": "22px",
+        "fontWeight": "bold",
+        "color": "#000000",
+        "fontFamily": "Gordita Bold"
+      },
+      "enabled": true
+    }
+  }
+}
