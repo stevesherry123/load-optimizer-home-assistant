@@ -15,6 +15,7 @@ from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config_validation import ConfigurationError, appliance_document
+from .prediction import recent_prediction
 
 try:
     from .costing import TariffDataUnavailable, non_energy_cost_breakdown, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
@@ -23,7 +24,7 @@ except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import TariffDataUnavailable, non_energy_cost_breakdown, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.8.1"
+APP_VERSION = "1.9.0"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -951,7 +952,7 @@ def program_summary(program: str, model: dict) -> dict:
         variations.append(energy_stddev / energy)
     consistency = max(0.0, 1.0 - min(max(variations, default=0.0), 1.0))
     confidence = round(100 * min(model.get("runs", 0) / 5, 1.0) * consistency)
-    return {
+    summary = {
         "program": program,
         "runs": model.get("runs", 0),
         "first_seen": model.get("first_seen"),
@@ -966,6 +967,17 @@ def program_summary(program: str, model: dict) -> dict:
         "representative_profile_w": model.get("representative_profile_w", []),
         "recent_cycles": model.get("recent_cycles", []),
     }
+    summary.update({
+        "lifetime_runtime_minutes": runtime,
+        "lifetime_energy_kwh": energy,
+        "prediction_basis": "lifetime_fallback",
+        "prediction_sample_count": model.get("runs", 0),
+    })
+    # All consumers (costs, finish times and profile charts) use the same
+    # prediction. This never modifies the persisted lifetime model.
+    summary.update(recent_prediction(model) or {})
+    return summary
+
 
 
 def planning_window_end(config: dict, instance: dict, now: datetime) -> datetime:
@@ -975,8 +987,8 @@ def planning_window_end(config: dict, instance: dict, now: datetime) -> datetime
                 float(config.get("cost_forecast_hours", 12))]
     if any(not math.isfinite(hours) or not 0 <= hours <= 72 for hours in horizons):
         raise ValueError("Planning horizon must be between 0 and 72 hours")
-    runtimes = [stat_summary(model, "runtime_minutes", 1)[0] or 0
-                for model in instance.get("program_models", {}).values()]
+    runtimes = [program_summary(program, model)["expected_runtime_minutes"] or 0
+                for program, model in instance.get("program_models", {}).items()]
     # A finishing capture can teach a longer model after calendars are fetched.
     if started := datetime_from_value(instance.get("cycle_start")):
         elapsed = max(0, (reference - started).total_seconds() / 60)
@@ -1058,7 +1070,7 @@ def estimated_cycle_finish(instance: dict) -> tuple[str | None, int | None]:
     cycle_start = instance.get("cycle_start")
     program = instance.get("program")
     model = instance.get("program_models", {}).get(program, {})
-    runtime_minutes, _ = stat_summary(model, "runtime_minutes", 1)
+    runtime_minutes = program_summary(program, model)["expected_runtime_minutes"]
     if not cycle_start or not runtime_minutes:
         return None, None
     try:
@@ -1086,6 +1098,9 @@ def public_program_summary(summary: dict) -> dict:
         "energy_stddev_kwh",
         "average_peak_power_w",
         "confidence",
+        "lifetime_runtime_minutes", "lifetime_energy_kwh",
+        "prediction_basis", "prediction_sample_count",
+        "prediction_runtime_range_minutes", "prediction_energy_range_kwh",
     )
     return {key: summary.get(key) for key in public_keys}
 

@@ -7,6 +7,7 @@ from datetime import date
 import calendar
 import json
 import re
+import html
 from typing import Any
 
 OFGEM_PRICE_CAP_URL = (
@@ -64,7 +65,7 @@ def _table_options(source: str) -> dict[str, Any]:
 
 
 def _plain_text(value: object) -> str:
-    return re.sub(r"<[^>]+>", " ", str(value)).replace("&amp;", "&").strip()
+    return html.unescape(re.sub(r"<[^>]+>", " ", str(value))).strip()
 
 
 def _period(header: str) -> tuple[date, date]:
@@ -102,7 +103,8 @@ def parse_everviz_references(
         raise ValueError(f"Unsupported price-cap payment method: {payment_method}")
     options = _table_options(source)
     title = _plain_text(options.get("options", {}).get("title", {}).get("text", ""))
-    if "Electricity" not in title or expected_title.lower() not in title.lower():
+    normalise = lambda value: " ".join(value.lower().replace(",", " ").split())
+    if "electricity" not in normalise(title) or normalise(expected_title) not in normalise(title):
         return []
 
     rows = options.get("data", {}).get("value")

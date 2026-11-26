@@ -40,3 +40,27 @@ Next acceptance steps:
 
 A successful wash verifies execution, not estimation accuracy. Never replace a
 model with a percentage correction inferred from a single cycle.
+
+## Runtime predictions from 1.9.0
+
+The running totals and lifetime mean remain the historical record. The scheduling
+prediction uses the five latest accepted completed cycles with distinct aware
+finish timestamps, positive finite runtime/energy and compatible finite power
+profiles. Insufficient, invalid or incompatible recent evidence falls back to the
+lifetime model. Duration, energy and normalized power shape use the same cohort;
+costing scales that shape to the predicted energy. Calendar coverage and running
+finish estimates use that duration too. No stored learning data is rewritten.
+
+Public programme summaries expose prediction_basis, prediction_sample_count,
+lifetime_runtime_minutes and lifetime_energy_kwh. Recent predictions also expose
+observed runtime and energy ranges and standard deviations. These describe the
+sample, not a guarantee that a future run finishes inside its estimated bounds.
+Confidence retains its existing lifetime consistency meaning. Programme options
+are not available in the retained history, so the recent cohort cannot distinguish
+option changes. Compare future quoted predictions with metered completed runs;
+a good duration replay does not establish energy or price accuracy.
+
+The replay command remains a historical baseline/candidate comparison; its raw
+aggregate reconstruction does not call the updated runtime summary and does not
+rewrite or calibrate the model. Keep prediction-time evidence for prospective
+acceptance.

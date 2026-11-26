@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0
+
+- Predict duration, energy and power-profile timing from the latest five valid,
+  dated completed runs of each programme; retain lifetime learning unchanged
+  and use it as the fallback when recent evidence is insufficient. Expose the
+  prediction basis, sample count and observed recent ranges separately.
+- Use the same prediction for cost ranking, running finish estimates and calendar
+  search tails. Observed ranges are not guaranteed deadline bounds.
+- Accept current official Ofgem single-rate titles without a comma; continue
+  excluding gas and multi-rate tables and selecting by effective date.
+- Serialize benchmark refreshes, persist exponential failure backoff (15 minutes
+  to six hours), retain applicable cached values as stale and never present an
+  expired benchmark as current. Log the first failure and recovery with bounded
+  diagnostics instead of repeating a warning on every scan.
+
 ## 1.8.1
 
 - Identify the first unpriced point, next priced interval, overlapping/invalid
