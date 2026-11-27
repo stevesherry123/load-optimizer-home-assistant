@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, localcontext
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .minute_profile import segments as minute_segments
+
 FEED_ENTRY = re.compile(
     r"(?P<day>\d{1,2})/(?P<month>\d{1,2})\s+"
     r"(?P<hour>\d{1,2}):(?P<minute>\d{2})\s*=\s*"
@@ -267,6 +269,12 @@ def overlay_price_window(
 
 
 def _profile_segments(model: dict) -> list[dict]:
+    if model.get("minute_energy_profile") is not None:
+        minute_profile = model["minute_energy_profile"]
+        if (not isinstance(minute_profile, dict) or
+                minute_profile.get("duration_seconds") != float(model.get("expected_runtime_minutes") or 0) * 60):
+            raise ValueError("Minute profile duration differs from predicted finish")
+        return minute_segments(minute_profile, model.get("expected_energy_kwh"))
     profile = model.get("representative_profile_w", [])
     runtime_minutes = model.get("expected_runtime_minutes")
     expected_energy = model.get("expected_energy_kwh")

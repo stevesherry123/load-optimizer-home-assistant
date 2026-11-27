@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.10.0
+
+- Retain energy-preserving elapsed-minute profiles from complete, finite power
+  captures. Reject interrupted, missing, duplicate, long-gap or incompatible
+  samples without inventing power between missing readings. Retain raw counter
+  deltas, capture timestamps and explicitly exposed supported programme options.
+- Use five compatible minute profiles from the same recent prediction cohort for
+  cost comparisons and negative-window checks. Align cumulative energy to the
+  predicted duration, conserving total energy and retaining short heater pulses.
+- Preserve lifetime statistics and run counts. Recover only an exact retained
+  full capture on upgrade; older twenty-point profiles remain an explicit
+  fallback until enough complete compatible captures have accumulated.
+- Expose readable profile-readiness summaries and bounded step-profile charts.
+  Costing retains every minute even when a display chart is downsampled.
+
 ## 1.9.0
 
 - Predict duration, energy and power-profile timing from the latest five valid,

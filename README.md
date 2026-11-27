@@ -4,14 +4,14 @@ Plan appliance cycles and EV charging around your electricity tariff using
 existing Home Assistant entities. Learn when an appliance uses energy during a
 cycle, compare running costs, and find suitable low-cost or negative-price windows.
 
-Version **1.9.0** uses recent completed cycles for duration, energy and power-profile
-predictions while preserving lifetime learning. It also repairs current Ofgem
-benchmark table matching and bounds failed refresh retries. It retains overnight
-dishwasher scheduling, configured operating costs, EV advisory plans and optional
-dashboard templates. Development is consolidated on **main**; published stable
-releases are the normal update channel. Automatic charger control remains
-separate work. See the [release record](docs/release-readiness.md) and
-[estimation guide](docs/estimation-replay.md) for evidence and limitations.
+Version **1.10.0** captures energy-preserving minute profiles so short heating
+bursts are retained in tariff comparisons. Existing learning is preserved; the
+richer forecast activates after five compatible complete captures, with explicit
+progress and fallback status. It retains recent-cycle duration/energy predictions,
+reliable Ofgem benchmarks, dishwasher scheduling, EV advisory plans and optional
+dashboards. Development is consolidated on **main**; published stable releases
+are the normal update channel. Automatic charger control remains separate work.
+See the [estimation guide](docs/estimation-replay.md) for evidence and limitations.
 
 ## Stable Features
 
