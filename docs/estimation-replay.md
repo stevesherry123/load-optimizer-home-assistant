@@ -64,3 +64,50 @@ The replay command remains a historical baseline/candidate comparison; its raw
 aggregate reconstruction does not call the updated runtime summary and does not
 rewrite or calibrate the model. Keep prediction-time evidence for prospective
 acceptance.
+
+## Energy-preserving minute profiles from 1.10.0
+
+Twenty interpolated point samples can miss an entire short heating burst. New
+completed captures instead retain the integrated Wh of each elapsed minute,
+including the actual duration of a partial final minute. They use the same
+piecewise-linear integration as captured total energy. A minute bin is a
+representation of available readings, not a claim of new one-minute sensor
+measurements. Known missing readings, gaps over 180 seconds, invalid/duplicate
+offsets, interrupted captures and inconsistent duration/energy do not qualify.
+Captures over 24 hours retain the existing fallback.
+
+Five compatible profiles from the same five completed runs used for duration and
+energy are required. Their cumulative-energy curves are aligned to the predicted
+duration and averaged. This small time resampling conserves energy instead of
+resampling isolated power points; it is not a separate model of heating phases
+and drying duration. Cost ranking, negative-window checks and minute forecast
+charts use the same resulting profile. The recent energy estimate remains an
+estimate and is not replaced by the latest counter value.
+
+Raw counter deltas and capture start/finish timestamps are retained when available.
+Explicit numeric/boolean Home Connect dishwasher option values exposed in the
+programme source's program_options/options mapping are bounded and retained;
+arbitrary source attributes, free text and entity mappings are not copied.
+Absent option data is marked not_exposed, not guessed. Different observed option
+metadata prevents profile promotion for that cohort. Unknown options cannot be
+used to guarantee that historical settings match.
+
+An upgrade can recover the one full raw last_cycle capture only when its exact
+finish matches a unique retained programme record. It adds profile metadata,
+never another learned run or a replacement lifetime statistic. Other historical
+twenty-point profiles cannot recover the lost detail. The existing forecast
+remains active during collection. Public programme attributes include
+power_profile_basis, minute_profile_sample_count, minute_profile_fallback_reason
+and a readable power_profile_summary. Normally one retained full capture is
+available; four further compatible captures then complete the cohort.
+
+Display charts aggregate bounded adjacent minute bins by energy, preserving the
+displayed area; the cost engine retains all minute bins. Existing point formats
+remain compatible (elapsed minutes in compact charts, progress percent in the
+programme-model chart), with duplicate boundary points expressing steps.
+
+Acceptance covers pulses between the old sample points, partial minutes, missing
+data, no promotion of incompatible metadata, upgrade/reload preservation and a
+second heater changing tariff cost/negative-window eligibility. Assess subsequent
+real cycles using only their pre-run forecast. Do not count a current cycle's
+compression reconstruction or a single earlier template as five-run acceptance.

@@ -16,15 +16,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config_validation import ConfigurationError, appliance_document
 from .prediction import recent_prediction
+from .minute_profile import capture as capture_minute_profile, chart_points, program_options, option_snapshot, validate as valid_minute_profile
 
 try:
-    from .costing import TariffDataUnavailable, non_energy_cost_breakdown, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
+    from .costing import _profile_segments, TariffDataUnavailable, non_energy_cost_breakdown, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from .observability import EventEngine, configure_logging as configure_event_logging
 except ImportError:  # Running as /app/main.py in the Home Assistant container.
     from costing import TariffDataUnavailable, non_energy_cost_breakdown, normalize_tariff_periods, operational_overnight_window, overlay_price_window, recommend_cycle, tariff_periods_from_entity
     from observability import EventEngine, configure_logging as configure_event_logging
 
-APP_VERSION = "1.9.0"
+APP_VERSION = "1.10.0"
 HEARTBEAT_INTERVAL_SECONDS = 300
 FULL_REPUBLISH_INTERVAL_SECONDS = 900
 LAST_HEARTBEAT_AT: datetime | None = None
@@ -942,6 +943,9 @@ def repair_learning_quality(database: dict, configs: list[dict]) -> None:
 
 
 def program_summary(program: str, model: dict) -> dict:
+    retained_cycles = model.get("recent_cycles")
+    if not isinstance(retained_cycles, list):
+        retained_cycles = []
     runtime, runtime_stddev = stat_summary(model, "runtime_minutes", 1)
     energy, energy_stddev = stat_summary(model, "energy_kwh", 4)
     peak, _ = stat_summary(model, "peak_power_w", 1)
@@ -972,10 +976,22 @@ def program_summary(program: str, model: dict) -> dict:
         "lifetime_energy_kwh": energy,
         "prediction_basis": "lifetime_fallback",
         "prediction_sample_count": model.get("runs", 0),
+        "power_profile_basis": "legacy_point_fallback",
+        "minute_profile_sample_count": sum(valid_minute_profile(c.get("minute_energy_profile"))
+            for c in retained_cycles[-5:] if isinstance(c, dict)),
+        "minute_profile_fallback_reason": "insufficient_recent_cycles",
     })
     # All consumers (costs, finish times and profile charts) use the same
     # prediction. This never modifies the persisted lifetime model.
     summary.update(recent_prediction(model) or {})
+    count = summary["minute_profile_sample_count"]
+    summary["power_profile_summary"] = (
+        "Using minute energy from five compatible completed captures."
+        if summary["power_profile_basis"] == "minute_energy_v1" else
+        "Minute profiles have different programme-option metadata; the existing profile remains active."
+        if summary["minute_profile_fallback_reason"] == "programme_option_metadata_differs" else
+        f"Collecting minute profiles: {count} of 5 complete captures; the existing profile remains active."
+    )
     return summary
 
 
@@ -1101,6 +1117,8 @@ def public_program_summary(summary: dict) -> dict:
         "lifetime_runtime_minutes", "lifetime_energy_kwh",
         "prediction_basis", "prediction_sample_count",
         "prediction_runtime_range_minutes", "prediction_energy_range_kwh",
+        "power_profile_basis", "minute_profile_sample_count", "minute_profile_fallback_reason",
+        "program_options_status", "power_profile_summary",
     )
     return {key: summary.get(key) for key in public_keys}
 
@@ -1123,8 +1141,11 @@ def compact_profile_data(models: dict, last_cycle: dict) -> dict:
             for index, power in enumerate(profile)
             if power is not None
         ]
+        if summary.get("minute_energy_profile"):
+            points = chart_points(_profile_segments(summary), max_groups=max(10, min(180, 1800 // max(len(models), 1))))
         program_profiles.append({
             "program": program,
+            "power_profile_basis": summary.get("power_profile_basis"),
             "runs": summary.get("runs", 0),
             "runtime_minutes": runtime,
             "energy_kwh": summary.get("expected_energy_kwh"),
@@ -1181,6 +1202,7 @@ def update_program_model(instance: dict, cycle: dict) -> dict:
     model["last_updated"] = cycle.get("finish")
     recent_cycles = model.setdefault("recent_cycles", [])
     recent_cycles.append({
+        "start": cycle.get("start"),
         "finish": cycle.get("finish"),
         "runtime_minutes": cycle.get("runtime_minutes"),
         "energy_kwh": cycle.get("energy_kwh"),
@@ -1188,6 +1210,9 @@ def update_program_model(instance: dict, cycle: dict) -> dict:
         "sample_count": cycle.get("sample_count"),
         "energy_source": cycle.get("energy_source"),
         "normalised_power_profile_w": profile,
+        "minute_energy_profile": capture_minute_profile(cycle),
+        "energy_sensor_delta_kwh": cycle.get("energy_sensor_delta_kwh"),
+        "program_options": option_snapshot(cycle.get("program_options")),
     })
     del recent_cycles[:-10]
     return program_summary(program, model)
@@ -1197,6 +1222,17 @@ def bootstrap_program_models(database: dict) -> None:
     for instance in database.get("instances", {}).values():
         if "program_models" not in instance and instance.get("last_cycle"):
             update_program_model(instance, instance["last_cycle"])
+        # Recover only a retained full capture matching its exact historical
+        # completion. Never invent detail from the older twenty-point profile.
+        last = instance.get("last_cycle") or {}
+        model = instance.get("program_models", {}).get(normalise_program(last.get("program")))
+        if model and (minute_profile := capture_minute_profile(last)):
+            matches = [cycle for cycle in model.get("recent_cycles", []) if cycle.get("finish") == last.get("finish")]
+            if len(matches) == 1 and not matches[0].get("minute_energy_profile"):
+                matches[0]["minute_energy_profile"] = minute_profile
+                matches[0]["energy_sensor_delta_kwh"] = last.get("energy_sensor_delta_kwh")
+                matches[0]["program_options"] = option_snapshot(last.get("program_options"))
+                matches[0]["minute_profile_recovered_from_last_capture"] = True
 
 
 def default_program_policy(program: str) -> dict:
@@ -2513,13 +2549,20 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
         }
         for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold",
                     "finish_candidate", "program", "capture_interrupted", "capture_interrupted_at",
-                    "capture_power_gap", "power_source_missing_since"):
+                    "capture_power_gap", "power_source_missing_since", "capture_program_options", "capture_program_options_changed"):
             instance.pop(key, None)
     active = power is not None and power >= config["active_power_threshold"] and not delayed_start
     if active and not operation_state_finished:
         if not instance.get("cycle_start"):
-            instance.update(cycle_start=now.isoformat(), start_energy=energy, peak_power=power, samples=0, profile=[], below_threshold=0)
+            instance.update(cycle_start=now.isoformat(), start_energy=energy, peak_power=power, samples=0, profile=[], below_threshold=0,
+                            capture_program_options=program_options(program_entity))
             EVENTS.info("LO-CYCLE-START", "Cycle capture started", instance_id=instance_id, instance_name=name, power_w=power, program=program)
+        observed_options = program_options(program_entity)
+        previous_options = instance.get("capture_program_options", {"status": "not_exposed", "values": {}})
+        if previous_options["status"] == "not_exposed" and observed_options["status"] == "observed":
+            instance["capture_program_options"] = observed_options
+        elif observed_options != previous_options:
+            instance["capture_program_options_changed"] = True
         start = datetime.fromisoformat(instance["cycle_start"])
         instance.setdefault("profile", []).append(profile_sample(start, now, power, energy))
         instance["samples"] = len(instance["profile"])
@@ -2560,6 +2603,9 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 energy_kwh, energy_source = None, "incomplete_power_profile"
             last = {
                 "program": instance.get("program") or program,
+                "start": instance["cycle_start"],
+                "program_options": instance.get("capture_program_options", {"status": "not_exposed", "values": {}}),
+                "program_options_changed": bool(instance.get("capture_program_options_changed")),
                 "runtime_minutes": round((finish - start).total_seconds() / 60, 1),
                 "energy_kwh": energy_kwh,
                 "energy_source": energy_source,
@@ -2599,7 +2645,7 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
                 update_program_model(instance, last)
                 instance["runs"] = int(instance.get("runs", 0)) + 1
                 EVENTS.info("LO-CYCLE-COMPLETE", "Cycle learned successfully", instance_id=instance_id, program=last.get("program"), runtime_minutes=last.get("runtime_minutes"), energy_kwh=last.get("energy_kwh"), total_runs=instance["runs"])
-            for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold", "finish_candidate", "program", "capture_interrupted", "capture_interrupted_at", "capture_power_gap", "power_source_missing_since"):
+            for key in ("cycle_start", "start_energy", "peak_power", "samples", "profile", "below_threshold", "finish_candidate", "program", "capture_interrupted", "capture_interrupted_at", "capture_power_gap", "power_source_missing_since", "capture_program_options", "capture_program_options_changed"):
                 instance.pop(key, None)
     if instance.get("cycle_start") and program not in ("unknown", "unavailable", ""):
         instance["program"] = program
@@ -2904,6 +2950,10 @@ def update_instance(token: str, database: dict, config: dict, now: datetime | No
             [round(index * 100 / (len(selected_summary.get("representative_profile_w", [])) - 1), 1), power]
             for index, power in enumerate(selected_summary.get("representative_profile_w", []))
         ] if len(selected_summary.get("representative_profile_w", [])) > 1 else [],
+        **({"representative_profile": [
+                [round(minute * 100 / selected_summary["expected_runtime_minutes"], 4), power]
+                for minute, power in chart_points(_profile_segments(selected_summary))]}
+           if selected_summary.get("minute_energy_profile") else {}),
     })
     profile = last.get("power_profile", [])
     if config.get("publish_profile_data", True):

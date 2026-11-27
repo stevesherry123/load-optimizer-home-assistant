@@ -3,6 +3,8 @@ from datetime import datetime
 import math
 from statistics import mean, pstdev
 
+from .minute_profile import forecast, validate, option_snapshot
+
 RECENT_RUNS = 5
 
 
@@ -42,7 +44,7 @@ def recent_prediction(model: dict) -> dict | None:
         return None
     runtimes = [cycle["runtime_minutes"] for cycle in cycles]
     energies = [cycle["energy_kwh"] for cycle in cycles]
-    return {
+    result = {
         "expected_runtime_minutes": round(mean(runtimes), 1),
         "runtime_stddev_minutes": round(pstdev(runtimes), 1),
         "expected_energy_kwh": round(mean(energies), 4),
@@ -53,3 +55,21 @@ def recent_prediction(model: dict) -> dict | None:
         "prediction_runtime_range_minutes": [min(runtimes), max(runtimes)],
         "prediction_energy_range_kwh": [min(energies), max(energies)],
     }
+
+    profiles = [cycle.get("minute_energy_profile") for cycle in cycles]
+    valid_profiles = [profile for profile in profiles if validate(profile)]
+    result["minute_profile_sample_count"] = len(valid_profiles)
+    result["power_profile_basis"] = "legacy_point_fallback"
+    result["minute_profile_fallback_reason"] = "collecting_complete_minute_profiles"
+    options = [option_snapshot(cycle.get("program_options")) for cycle in cycles]
+    compatible = all(option == options[-1] for option in options)
+    if len(valid_profiles) == RECENT_RUNS and compatible:
+        profile = forecast(profiles, result["expected_runtime_minutes"] * 60, result["expected_energy_kwh"])
+        if profile:
+            result["minute_energy_profile"] = profile
+            result["power_profile_basis"] = "minute_energy_v1"
+            result["minute_profile_fallback_reason"] = None
+    elif not compatible:
+        result["minute_profile_fallback_reason"] = "programme_option_metadata_differs"
+    result["program_options_status"] = options[-1].get("status", "not_exposed")
+    return result
